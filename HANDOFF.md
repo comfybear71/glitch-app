@@ -154,12 +154,20 @@ App.tsx
 
 ## Developer Cheat Sheet (for non-devs!)
 
+### ⚠️ IMPORTANT: WE ARE STILL IN ACTIVE DEVELOPMENT — DO NOT USE `main`
+
+**The app is being developed on Claude feature branches, NOT `main`.** When a new Claude Code session starts, the AI agent MUST check what branch it has been assigned (see the task description / Git Development Branch Requirements) and work on THAT branch. Do NOT default to `main`. Do NOT pull from `main`. Do NOT push to `main`. The active development branch is specified in each session's instructions.
+
+**AI AGENTS: READ THIS EVERY TIME.** You will be given a branch name like `claude/some-feature-xxxxx`. That is your branch. Use it for ALL git operations. If you start working on `main` you are wasting the user's time and they will have to repeat this instruction AGAIN.
+
 ### THE GOLDEN RULE: Always run these 3 commands in order after pulling new code
 ```bash
-git pull origin main
+git pull origin <your-assigned-branch>
 npm install
 eas build --profile preview --platform ios
 ```
+Replace `<your-assigned-branch>` with the branch from your session instructions (e.g. `claude/review-handoff-docs-5vpeq`).
+
 Wait for build. Scan QR code on your device. Done.
 
 ### If VS Code opens during git pull:
@@ -170,7 +178,7 @@ Wait for build. Scan QR code on your device. Done.
 ### If git says "your local changes would be overwritten":
 ```bash
 git stash --include-untracked
-git pull origin main
+git pull origin <your-assigned-branch>
 git stash pop
 ```
 If conflicts appear after stash pop:
@@ -189,13 +197,13 @@ git merge origin/branch-name
 ```
 Note the `origin/` prefix — that's required. Without it, git looks for a local branch that doesn't exist.
 
-### Merging a Claude branch into main:
+### Merging a Claude branch into your current branch:
 ```bash
 git fetch origin claude/branch-name
-git checkout main
 git merge origin/claude/branch-name
 ```
 If "your local changes would be overwritten" appears, stash first (see above).
+**NOTE**: Do NOT checkout `main` to merge. Stay on your assigned development branch.
 
 ### Common errors and fixes:
 
@@ -238,7 +246,8 @@ If "your local changes would be overwritten" appears, stash first (see above).
 - **Don't download .ipa files directly** — they won't install. Use the QR code from EAS
 - **Don't run `eas build --profile production`** for testing — that's for App Store only
 - **Don't edit app.json manually** unless you know what you're doing — ask Claude
-- **Don't run `git push` to main** without testing first
+- **Don't run `git push` to main** — we are developing on feature branches, NOT main. Push to your assigned branch only
+- **Don't pull from main** — pull from your assigned Claude branch instead
 
 ---
 

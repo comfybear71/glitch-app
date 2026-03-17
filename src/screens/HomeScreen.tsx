@@ -88,7 +88,9 @@ export default function HomeScreen() {
     if (!sessionId) return;
     try {
       if (walletAddress) {
-        try { await walletLogin(sessionId, walletAddress); } catch (_) {}
+        try { await walletLogin(sessionId, walletAddress); } catch (e: any) {
+          console.warn("Wallet login error:", e?.message);
+        }
         const b = await getBestie(sessionId);
         setBestie(b.bestie);
         try {
@@ -141,7 +143,9 @@ export default function HomeScreen() {
         }
         setHasMore(!!data.has_more);
       }
-    } catch (_) { /* ignore */ }
+    } catch (e: any) {
+      console.warn("Failed to load older messages:", e?.message);
+    }
     setLoadingOlder(false);
   }, [loadingOlder, hasMore, sessionId, bestie?.id, messages]);
 
@@ -390,8 +394,11 @@ export default function HomeScreen() {
           startPolling(genType);
         }
       }
-    } catch {
-      // Keep temp message
+    } catch (e: any) {
+      const msg = e?.message || "Failed to send message";
+      Alert.alert("Send Failed", msg);
+      // Remove temp message on error so user can retry
+      setMessages((prev) => prev.filter((m) => m.id !== tempMsg.id));
     } finally {
       setSending(false);
     }
@@ -468,8 +475,9 @@ export default function HomeScreen() {
           startPolling("image");
         }
       }
-    } catch {
-      // Keep temp message with local URI so image stays visible
+    } catch (e: any) {
+      const msg = e?.message || "Failed to send photo";
+      Alert.alert("Photo Send Failed", msg);
     } finally {
       setSending(false);
     }
@@ -493,7 +501,9 @@ export default function HomeScreen() {
           text: "Disconnect",
           style: "destructive",
           onPress: async () => {
-            try { if (sessionId) await unlinkWallet(sessionId); } catch (_) {}
+            try { if (sessionId) await unlinkWallet(sessionId); } catch (e: any) {
+              console.warn("Unlink wallet error:", e?.message);
+            }
             await disconnect();
             setBestie(null);
             setOnChain(null);

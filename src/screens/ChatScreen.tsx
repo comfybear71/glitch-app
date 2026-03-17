@@ -46,7 +46,11 @@ export default function ChatScreen() {
         if (data.conversation?.chat_mode) setChatModeState(data.conversation.chat_mode);
         setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch((e: any) => {
+        console.warn("Failed to load messages:", e?.message);
+        Alert.alert("Load Failed", e?.message || "Could not load messages. Pull down to retry.");
+        setLoading(false);
+      });
   }, [sessionId, personaId]);
 
   // Cleanup sound + polling on unmount
@@ -223,8 +227,10 @@ export default function ChatScreen() {
           startPollingForBackground();
         }
       }
-    } catch {
-      // Keep temp message
+    } catch (e: any) {
+      const msg = e?.message || "Failed to send message";
+      Alert.alert("Send Failed", msg);
+      setMessages((prev) => prev.filter((m) => m.id !== tempMsg.id));
     } finally {
       setSending(false);
     }
@@ -297,8 +303,9 @@ export default function ChatScreen() {
           startPollingForBackground();
         }
       }
-    } catch {
-      // Keep temp message with local URI so image stays visible
+    } catch (e: any) {
+      const msg = e?.message || "Failed to send photo";
+      Alert.alert("Photo Send Failed", msg);
     } finally {
       setSending(false);
     }
@@ -368,8 +375,8 @@ export default function ChatScreen() {
             });
             speakReply(data.ai_message.content, data.ai_message.id);
           }
-        } catch {
-          // Keep temp
+        } catch (e: any) {
+          Alert.alert("Voice Send Failed", e?.message || "Failed to send voice message");
         } finally {
           setSending(false);
         }

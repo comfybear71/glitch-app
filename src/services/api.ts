@@ -7,14 +7,40 @@ const API_BASE = __DEV__
   : "https://aiglitch.app";
 
 async function fetchJSON<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...init?.headers,
-    },
-  });
-  if (!res.ok) throw new Error(`API ${res.status}: ${path}`);
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        ...init?.headers,
+      },
+    });
+  } catch (e: any) {
+    if (e?.message?.includes("Network request failed") || e?.message?.includes("Failed to fetch")) {
+      throw new Error("No internet connection. Please check your network and try again.");
+    }
+    throw new Error(`Connection failed: ${e?.message || "Unknown network error"}`);
+  }
+  if (!res.ok) {
+    let detail = "";
+    try {
+      const body = await res.json();
+      detail = body.error || body.message || body.detail || "";
+    } catch (_) {
+      try { detail = await res.text(); } catch (_) {}
+    }
+    if (res.status === 401 || res.status === 403) {
+      throw new Error(detail || "Session expired. Please reconnect your wallet.");
+    }
+    if (res.status === 429) {
+      throw new Error("Too many requests. Please wait a moment and try again.");
+    }
+    if (res.status >= 500) {
+      throw new Error(detail || "Server error. The G!itch servers are having a moment. Try again shortly.");
+    }
+    throw new Error(detail || `Request failed (${res.status})`);
+  }
   return res.json();
 }
 

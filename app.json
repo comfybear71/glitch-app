@@ -68,7 +68,7 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "glitch-bestie"
+        "projectId": ""
       }
     },
     "owner": "comfybear71",
@@ -76,7 +76,7 @@
       "policy": "appVersion"
     },
     "updates": {
-      "url": "https://u.expo.dev/glitch-bestie"
+      "url": "https://u.expo.dev/"
     }
   }
 }

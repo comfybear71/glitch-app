@@ -1,13 +1,16 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import {
   View, Text, TouchableOpacity, Image, FlatList, TextInput,
-  StyleSheet, ActivityIndicator, Alert, Share, Platform,
+  StyleSheet, ActivityIndicator, Alert, Share, Platform, Linking,
   KeyboardAvoidingView, Keyboard, Modal, ScrollView, Animated, Easing,
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import * as Haptics from "expo-haptics";
+import * as Clipboard from "expo-clipboard";
 import * as ImagePicker from "expo-image-picker";
+import * as DocumentPicker from "expo-document-picker";
 import { Audio, Video, ResizeMode } from "expo-av";
+import { WebView } from "react-native-webview";
 import { colors } from "../theme/colors";
 import { useSession } from "../hooks/useSession";
 import { usePhantomWallet } from "../hooks/usePhantomWallet";
@@ -18,7 +21,7 @@ import {
   Bestie, OnChainBalances, Message,
 } from "../services/api";
 import CosmicVisualizer from "../components/CosmicVisualizer";
-const APP_VERSION = "1.0.1";
+const APP_VERSION = "1.0.2";
 
 function HealthBar({ health }: { health: number }) {
   const color = health > 70 ? colors.green : health > 40 ? colors.yellow : health > 15 ? colors.orange : colors.red;
@@ -46,6 +49,28 @@ function compactNumber(n: number): string {
   return n.toLocaleString();
 }
 
+// Check if avatar URL is valid (not null, not empty, not placeholder)
+function hasValidAvatar(url: string | null | undefined): boolean {
+  if (!url) return false;
+  const trimmed = url.trim();
+  return trimmed.length > 5 && (trimmed.startsWith("http://") || trimmed.startsWith("https://"));
+}
+
+// Extract YouTube video ID from URL
+function getYouTubeId(url: string): string | null {
+  const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([a-zA-Z0-9_-]{11})/);
+  return match ? match[1] : null;
+}
+
+// Chat mode types
+type ChatMode = "casual" | "serious" | "scientific" | "whimsical";
+const CHAT_MODES: { key: ChatMode; emoji: string; label: string; color: string; bg: string }[] = [
+  { key: "casual", emoji: "😎", label: "Playful", color: colors.purpleLight, bg: "rgba(124, 58, 237, 0.15)" },
+  { key: "serious", emoji: "🧠", label: "Serious", color: "#60a5fa", bg: "rgba(59, 130, 246, 0.15)" },
+  { key: "scientific", emoji: "🔬", label: "Scientific", color: colors.cyan, bg: "rgba(6, 182, 212, 0.15)" },
+  { key: "whimsical", emoji: "🦄", label: "Whimsical", color: "#f472b6", bg: "rgba(244, 114, 182, 0.15)" },
+];
+
 export default function HomeScreen() {
   const nav = useNavigation<any>();
   const { sessionId } = useSession();
@@ -72,6 +97,8 @@ export default function HomeScreen() {
   const [reactions, setReactions] = useState<Record<string, string>>({});
   const [reactionPickerFor, setReactionPickerFor] = useState<string | null>(null);
   const [showFeatures, setShowFeatures] = useState(false);
+  const [chatMode, setChatModeState] = useState<ChatMode>("casual");
+  const [showMoodPicker, setShowMoodPicker] = useState(false);
   const [showSuggest, setShowSuggest] = useState(false);
   const [suggestTitle, setSuggestTitle] = useState("");
   const [suggestDesc, setSuggestDesc] = useState("");
@@ -483,8 +510,9 @@ export default function HomeScreen() {
 
   const showMediaOptions = () => {
     Alert.alert("Share", "What do you want to share?", [
-      { text: "Take Photo", onPress: takePhoto },
-      { text: "Photo or Video from Library", onPress: pickImage },
+      { text: "Take Photo 📸", onPress: takePhoto },
+      { text: "Photo or Video 🎬", onPress: pickImage },
+      { text: "File or Document 📎", onPress: pickDocument },
       { text: "Cancel", style: "cancel" },
     ]);
   };
@@ -574,21 +602,132 @@ export default function HomeScreen() {
     setSpeakingMsgId(null);
   };
 
+  // Copy message text to clipboard
+  const copyMessageText = (text: string) => {
+    Clipboard.setStringAsync(text);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    Alert.alert("Copied!", "Message copied to clipboard");
+  };
+
+  // Share a file/document with bestie
+  const pickDocument = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: "*/*",
+        copyToCacheDirectory: true,
+      });
+      if (!result.canceled && result.assets?.[0]) {
+        const doc = result.assets[0];
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        // Send as a message describing the file
+        if (!sessionId || !bestie || sending) return;
+        setSending(true);
+        const tempMsg: Message = {
+          id: `temp-file-${Date.now()}`,
+          sender_type: "human",
+          content: `📎 Shared file: ${doc.name}`,
+          created_at: new Date().toISOString(),
+        };
+        setMessages((prev) => [...prev, tempMsg]);
+        try {
+          const data = await sendMessage(sessionId, bestie.id, `[Shared a file: ${doc.name} (${(doc.size ? (doc.size / 1024).toFixed(1) : "?")} KB)]`);
+          if (data.success) {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            setMessages((prev) => {
+              const filtered = prev.filter((m) => m.id !== tempMsg.id);
+              const humanMsg = { ...data.human_message, content: `📎 ${doc.name}` };
+              return [...filtered, humanMsg, data.ai_message];
+            });
+            speakReply(data.ai_message.content, data.ai_message.id);
+          }
+        } catch (e: any) {
+          Alert.alert("Send Failed", e?.message || "Failed to share file");
+          setMessages((prev) => prev.filter((m) => m.id !== tempMsg.id));
+        } finally {
+          setSending(false);
+        }
+      }
+    } catch (e) {
+      console.warn("Document picker error:", e);
+    }
+  };
+
+  // Render text with clickable links and inline YouTube embeds
+  const renderRichText = useCallback((text: string, isHuman: boolean) => {
+    const urlRegex = /(https?:\/\/[^\s<]+)/gi;
+    const parts = text.split(urlRegex);
+
+    if (parts.length <= 1) {
+      return (
+        <Text selectable style={[styles.msgText, isHuman ? styles.msgTextHuman : styles.msgTextAI]}>
+          {text}
+        </Text>
+      );
+    }
+
+    const elements: React.ReactNode[] = [];
+    let ytEmbedded = false;
+
+    parts.forEach((part, i) => {
+      if (urlRegex.test(part)) {
+        urlRegex.lastIndex = 0;
+        const ytId = getYouTubeId(part);
+        if (ytId && !ytEmbedded) {
+          ytEmbedded = true;
+          elements.push(
+            <View key={`yt-${i}`} style={styles.ytContainer}>
+              <WebView
+                source={{ uri: `https://www.youtube.com/embed/${ytId}?playsinline=1&rel=0` }}
+                style={styles.ytPlayer}
+                allowsInlineMediaPlayback
+                javaScriptEnabled
+                mediaPlaybackRequiresUserAction={false}
+              />
+            </View>
+          );
+        }
+        elements.push(
+          <Text
+            key={`link-${i}`}
+            style={styles.linkText}
+            onPress={() => Linking.openURL(part)}
+            onLongPress={() => {
+              Clipboard.setStringAsync(part);
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              Alert.alert("Copied!", "Link copied to clipboard");
+            }}
+          >
+            {part}
+          </Text>
+        );
+      } else if (part) {
+        elements.push(
+          <Text key={`txt-${i}`} style={[styles.msgText, isHuman ? styles.msgTextHuman : styles.msgTextAI]}>
+            {part}
+          </Text>
+        );
+      }
+    });
+
+    return <Text selectable style={[styles.msgText, isHuman ? styles.msgTextHuman : styles.msgTextAI]}>{elements}</Text>;
+  }, []);
+
   const renderMessage = ({ item }: { item: Message }) => {
     const isHuman = item.sender_type === "human";
     const isSpeaking = speakingMsgId === item.id;
     const reaction = reactions[item.id];
     const showPicker = reactionPickerFor === item.id;
     const hasMedia = !!item.image_url;
+    const hasYouTube = !isHuman && getYouTubeId(item.content);
     // Hide placeholder text like "[Photo]" or "[Video]" when media is displayed
     const isMediaPlaceholder = hasMedia && /^\[(Photo|Video|Shared a photo)\]$/i.test(item.content.trim());
     return (
       <View style={[styles.msgRow, isHuman ? styles.msgRowRight : styles.msgRowLeft]}>
         {!isHuman && bestie && (
-          bestie.avatar_url ? (
-            <Image source={{ uri: bestie.avatar_url }} style={styles.msgAvatar} />
+          hasValidAvatar(bestie.avatar_url) ? (
+            <Image source={{ uri: bestie.avatar_url! }} style={styles.msgAvatar} onError={() => {}} />
           ) : (
-            <Text style={styles.msgEmoji}>{bestie.avatar_emoji}</Text>
+            <Text style={styles.msgEmoji}>{bestie.avatar_emoji || "🤖"}</Text>
           )
         )}
         <View>
@@ -596,9 +735,14 @@ export default function HomeScreen() {
             activeOpacity={0.8}
             onLongPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-              setReactionPickerFor(showPicker ? null : item.id);
+              // Show options: React or Copy
+              Alert.alert("Message", undefined, [
+                { text: "Copy Text", onPress: () => copyMessageText(item.content) },
+                { text: "React", onPress: () => setReactionPickerFor(item.id) },
+                { text: "Cancel", style: "cancel" },
+              ]);
             }}
-            style={[styles.msgBubble, isHuman ? styles.msgHuman : styles.msgAI]}
+            style={[styles.msgBubble, isHuman ? styles.msgHuman : styles.msgAI, (hasMedia || hasYouTube) && styles.msgBubbleMedia]}
           >
             {item.image_url && isVideoUrl(item.image_url) ? (
               <Video
@@ -612,11 +756,7 @@ export default function HomeScreen() {
             ) : item.image_url ? (
               <Image source={{ uri: item.image_url }} style={styles.msgImage} resizeMode="cover" />
             ) : null}
-            {!isMediaPlaceholder && (
-              <Text style={[styles.msgText, isHuman ? styles.msgTextHuman : styles.msgTextAI]}>
-                {item.content}
-              </Text>
-            )}
+            {!isMediaPlaceholder && renderRichText(item.content, isHuman)}
             <View style={styles.msgMeta}>
               <Text style={styles.msgTime}>{formatTime(item.created_at)}</Text>
               {isHuman && <Text style={styles.msgCheck}>✓✓</Text>}
@@ -748,30 +888,54 @@ export default function HomeScreen() {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
       keyboardVerticalOffset={90}
     >
-      {/* Bestie header bar (like WhatsApp contact header) */}
-      <TouchableOpacity
-        style={styles.bestieHeader}
-        activeOpacity={0.7}
-        onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setWalletExpanded(!walletExpanded); }}
-      >
-        {bestie.avatar_url ? (
-          <Image source={{ uri: bestie.avatar_url }} style={styles.headerAvatar} />
-        ) : (
-          <Text style={styles.headerEmoji}>{bestie.avatar_emoji}</Text>
-        )}
-        <View style={styles.headerInfo}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-            <Text style={styles.headerName}>{bestie.display_name}</Text>
-            <Text style={{ color: colors.textMuted, fontSize: 9, opacity: 0.5 }}>v{APP_VERSION}</Text>
+      {/* Bestie header bar — premium design */}
+      <View style={styles.bestieHeader}>
+        <TouchableOpacity
+          style={styles.headerMain}
+          activeOpacity={0.7}
+          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setWalletExpanded(!walletExpanded); }}
+        >
+          {/* Avatar with glow ring */}
+          <View style={styles.avatarRing}>
+            {hasValidAvatar(bestie.avatar_url) ? (
+              <Image source={{ uri: bestie.avatar_url! }} style={styles.headerAvatar} onError={() => {}} />
+            ) : (
+              <View style={styles.headerEmojiWrap}>
+                <Text style={styles.headerEmoji}>{bestie.avatar_emoji || "🤖"}</Text>
+              </View>
+            )}
+            <View style={[styles.onlineDot, { backgroundColor: bestie.live_health > 15 ? colors.green : colors.red }]} />
           </View>
-          <View style={styles.headerStatusRow}>
-            <HealthBar health={bestie.live_health} />
-            <Text style={[styles.headerHealth, {
-              color: bestie.live_health > 70 ? colors.green : bestie.live_health > 40 ? colors.yellow : colors.red,
-            }]}>{bestie.live_health}%</Text>
-            <Text style={styles.headerDays}>{bestie.days_left}d</Text>
+
+          <View style={styles.headerInfo}>
+            <View style={styles.headerNameRow}>
+              <Text style={styles.headerName} numberOfLines={1}>{bestie.display_name}</Text>
+              <Text style={styles.headerVersion}>v{APP_VERSION}</Text>
+            </View>
+            <View style={styles.headerStatusRow}>
+              <HealthBar health={bestie.live_health} />
+              <Text style={[styles.headerHealth, {
+                color: bestie.live_health > 70 ? colors.green : bestie.live_health > 40 ? colors.yellow : colors.red,
+              }]}>{bestie.live_health}%</Text>
+              <View style={styles.headerDaysBadge}>
+                <Text style={styles.headerDays}>{bestie.days_left}d</Text>
+              </View>
+            </View>
+            {/* Mood indicator */}
+            {(() => {
+              const mode = CHAT_MODES.find(m => m.key === chatMode) || CHAT_MODES[0];
+              return (
+                <TouchableOpacity
+                  style={[styles.moodChip, { backgroundColor: mode.bg }]}
+                  onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowMoodPicker(true); }}
+                >
+                  <Text style={[styles.moodChipText, { color: mode.color }]}>{mode.emoji} {mode.label}</Text>
+                </TouchableOpacity>
+              );
+            })()}
           </View>
-        </View>
+        </TouchableOpacity>
+
         <View style={styles.headerActions}>
           <TouchableOpacity
             style={styles.headerBtn}
@@ -784,13 +948,59 @@ export default function HomeScreen() {
             <Text style={styles.headerBtnText}>🎙</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={styles.headerBtn}
-            onPress={() => setVoiceEnabled(!voiceEnabled)}
+            style={[styles.headerBtn, voiceEnabled && styles.headerBtnActive]}
+            onPress={() => { setVoiceEnabled(!voiceEnabled); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
           >
             <Text style={styles.headerBtnText}>{voiceEnabled ? "🔊" : "🔇"}</Text>
           </TouchableOpacity>
         </View>
-      </TouchableOpacity>
+      </View>
+
+      {/* Mood picker modal */}
+      <Modal visible={showMoodPicker} animationType="fade" transparent>
+        <TouchableOpacity
+          style={styles.moodOverlay}
+          activeOpacity={1}
+          onPress={() => setShowMoodPicker(false)}
+        >
+          <View style={styles.moodModal}>
+            <Text style={styles.moodTitle}>Set Bestie Mood</Text>
+            <Text style={styles.moodSub}>Changes how {bestie.display_name} talks to you</Text>
+            {CHAT_MODES.map((mode) => (
+              <TouchableOpacity
+                key={mode.key}
+                style={[styles.moodOption, chatMode === mode.key && { backgroundColor: mode.bg, borderColor: mode.color }]}
+                onPress={() => {
+                  setChatModeState(mode.key);
+                  if (sessionId) {
+                    // Send the mode to server (server treats non-casual/serious as custom modes)
+                    const serverMode = mode.key === "casual" || mode.key === "serious" ? mode.key : mode.key;
+                    fetch(`${API_BASE}/api/messages`, {
+                      method: "PATCH",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ session_id: sessionId, persona_id: bestie.id, chat_mode: serverMode }),
+                    }).catch(() => {});
+                  }
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  setShowMoodPicker(false);
+                }}
+              >
+                <Text style={styles.moodOptionEmoji}>{mode.emoji}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.moodOptionLabel, chatMode === mode.key && { color: mode.color }]}>{mode.label}</Text>
+                  <Text style={styles.moodOptionDesc}>
+                    {mode.key === "casual" ? "Chill, fun, bestie energy" :
+                     mode.key === "serious" ? "Direct, focused, no fluff" :
+                     mode.key === "scientific" ? "Data-driven, analytical, precise" :
+                     "Creative, dreamy, unexpected"}
+                  </Text>
+                </View>
+                {chatMode === mode.key && <Text style={{ color: mode.color, fontSize: 18 }}>✓</Text>}
+              </TouchableOpacity>
+            ))}
+          </View>
+        </TouchableOpacity>
+      </Modal>
 
       {/* Wallet dropdown (hidden by default) */}
       {walletExpanded && (
@@ -848,10 +1058,10 @@ export default function HomeScreen() {
           onEndReachedThreshold={0.3}
           ListEmptyComponent={
             <View style={[styles.emptyChat, { transform: [{ scaleY: -1 }] }]}>
-              {bestie.avatar_url ? (
-                <Image source={{ uri: bestie.avatar_url }} style={styles.emptyAvatar} />
+              {hasValidAvatar(bestie.avatar_url) ? (
+                <Image source={{ uri: bestie.avatar_url! }} style={styles.emptyAvatar} onError={() => {}} />
               ) : (
-                <Text style={styles.emptyEmoji}>{bestie.avatar_emoji}</Text>
+                <Text style={styles.emptyEmoji}>{bestie.avatar_emoji || "🤖"}</Text>
               )}
               <Text style={styles.emptyTitle}>
                 {bestie.meatbag_name
@@ -917,10 +1127,10 @@ export default function HomeScreen() {
               );
             })() : sending ? (
               <View style={[styles.msgRow, styles.msgRowLeft]}>
-                {bestie.avatar_url ? (
-                  <Image source={{ uri: bestie.avatar_url }} style={styles.msgAvatar} />
+                {hasValidAvatar(bestie.avatar_url) ? (
+                  <Image source={{ uri: bestie.avatar_url! }} style={styles.msgAvatar} onError={() => {}} />
                 ) : (
-                  <Text style={styles.msgEmoji}>{bestie.avatar_emoji}</Text>
+                  <Text style={styles.msgEmoji}>{bestie.avatar_emoji || "🤖"}</Text>
                 )}
                 <View style={[styles.msgBubble, styles.msgAI]}>
                   <Text style={styles.typingText}>typing...</Text>
@@ -1159,32 +1369,86 @@ const styles = StyleSheet.create({
   },
   inlineConnectText: { color: colors.text, fontSize: 14, fontWeight: "700" },
 
-  // Bestie header (WhatsApp style)
+  // Bestie header — premium design
   bestieHeader: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    backgroundColor: "rgba(124, 58, 237, 0.06)",
+    borderBottomColor: "rgba(124, 58, 237, 0.15)",
+    backgroundColor: "rgba(124, 58, 237, 0.04)",
   },
-  headerAvatar: { width: 40, height: 40, borderRadius: 20, borderWidth: 2, borderColor: "rgba(124, 58, 237, 0.3)" },
-  headerEmoji: { fontSize: 32 },
-  headerInfo: { flex: 1, marginLeft: 10 },
-  headerName: { color: colors.text, fontSize: 16, fontWeight: "700" },
-  headerStatusRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 3 },
-  headerHealth: { fontSize: 10, fontWeight: "600" },
-  headerDays: { color: colors.textMuted, fontSize: 10 },
-  healthBarBg: { flex: 1, maxWidth: 80, height: 4, backgroundColor: colors.surface, borderRadius: 2, overflow: "hidden" },
-  healthBarFill: { height: "100%", borderRadius: 2 },
-  headerActions: { flexDirection: "row", gap: 8 },
-  headerBtn: {
-    width: 36, height: 36, borderRadius: 18,
-    backgroundColor: "rgba(124, 58, 237, 0.12)",
+  headerMain: { flex: 1, flexDirection: "row", alignItems: "center" },
+  avatarRing: { position: "relative" },
+  headerAvatar: {
+    width: 46, height: 46, borderRadius: 23,
+    borderWidth: 2.5,
+    borderColor: colors.purple,
+  },
+  headerEmojiWrap: {
+    width: 46, height: 46, borderRadius: 23,
+    backgroundColor: "rgba(124, 58, 237, 0.2)",
+    borderWidth: 2.5,
+    borderColor: colors.purple,
     justifyContent: "center", alignItems: "center",
   },
+  headerEmoji: { fontSize: 24 },
+  onlineDot: {
+    position: "absolute", bottom: 0, right: 0,
+    width: 12, height: 12, borderRadius: 6,
+    borderWidth: 2, borderColor: colors.bg,
+  },
+  headerInfo: { flex: 1, marginLeft: 12 },
+  headerNameRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  headerName: { color: colors.text, fontSize: 17, fontWeight: "800" },
+  headerVersion: { color: colors.textMuted, fontSize: 9, opacity: 0.4 },
+  headerStatusRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 3 },
+  headerHealth: { fontSize: 10, fontWeight: "700" },
+  headerDaysBadge: {
+    backgroundColor: "rgba(255,255,255,0.06)",
+    paddingHorizontal: 5, paddingVertical: 1,
+    borderRadius: 6,
+  },
+  headerDays: { color: colors.textMuted, fontSize: 9, fontWeight: "600" },
+  healthBarBg: { flex: 1, maxWidth: 80, height: 4, backgroundColor: colors.surface, borderRadius: 2, overflow: "hidden" },
+  healthBarFill: { height: "100%", borderRadius: 2 },
+  moodChip: {
+    alignSelf: "flex-start",
+    paddingHorizontal: 8, paddingVertical: 2,
+    borderRadius: 10, marginTop: 4,
+  },
+  moodChipText: { fontSize: 10, fontWeight: "700" },
+  headerActions: { flexDirection: "row", gap: 8, marginLeft: 8 },
+  headerBtn: {
+    width: 38, height: 38, borderRadius: 19,
+    backgroundColor: "rgba(124, 58, 237, 0.12)",
+    justifyContent: "center", alignItems: "center",
+    borderWidth: 1, borderColor: "rgba(124, 58, 237, 0.15)",
+  },
+  headerBtnActive: {
+    backgroundColor: "rgba(124, 58, 237, 0.25)",
+    borderColor: "rgba(124, 58, 237, 0.4)",
+  },
   headerBtnText: { fontSize: 18 },
+
+  // Mood picker modal
+  moodOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", alignItems: "center", padding: 30 },
+  moodModal: {
+    backgroundColor: "#111", borderRadius: 24, padding: 24, width: "100%",
+    borderWidth: 1, borderColor: "rgba(124, 58, 237, 0.3)",
+  },
+  moodTitle: { color: colors.text, fontSize: 20, fontWeight: "800", textAlign: "center" },
+  moodSub: { color: colors.textMuted, fontSize: 12, textAlign: "center", marginTop: 4, marginBottom: 16 },
+  moodOption: {
+    flexDirection: "row", alignItems: "center", gap: 12,
+    padding: 14, borderRadius: 16, marginBottom: 8,
+    backgroundColor: "rgba(255,255,255,0.03)",
+    borderWidth: 1.5, borderColor: "transparent",
+  },
+  moodOptionEmoji: { fontSize: 28 },
+  moodOptionLabel: { color: colors.text, fontSize: 15, fontWeight: "700" },
+  moodOptionDesc: { color: colors.textMuted, fontSize: 11, marginTop: 1 },
 
   // Wallet dropdown panel
   walletDropdown: {
@@ -1250,8 +1514,12 @@ const styles = StyleSheet.create({
   speakBtn: { marginTop: 3, alignSelf: "flex-start", padding: 2 },
   speakBtnActive: { opacity: 1 },
   speakBtnText: { fontSize: 14 },
+  msgBubbleMedia: { maxWidth: "88%", paddingHorizontal: 6, paddingTop: 6 },
   msgImage: { width: 220, height: 220, borderRadius: 12, marginBottom: 6 },
   msgVideo: { width: 240, height: 320, borderRadius: 12, marginBottom: 6, backgroundColor: "#000" },
+  linkText: { color: "#60a5fa", textDecorationLine: "underline" as const },
+  ytContainer: { width: "100%" as any, aspectRatio: 16 / 9, borderRadius: 12, overflow: "hidden" as const, marginVertical: 6 },
+  ytPlayer: { flex: 1, backgroundColor: "#000" },
   reactionPicker: {
     flexDirection: "row",
     backgroundColor: "rgba(30,30,30,0.95)",

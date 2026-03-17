@@ -27,7 +27,15 @@ export default function ChatScreen() {
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(false);
-  const [chatMode, setChatModeState] = useState<"casual" | "serious">("casual");
+  const MODES = ["casual", "serious", "scientific", "whimsical"] as const;
+  type ChatMode = typeof MODES[number];
+  const MODE_CONFIG: Record<string, { emoji: string; label: string }> = {
+    casual: { emoji: "😎", label: "Playful" },
+    serious: { emoji: "🧠", label: "Serious" },
+    scientific: { emoji: "🔬", label: "Scientific" },
+    whimsical: { emoji: "🦄", label: "Whimsical" },
+  };
+  const [chatMode, setChatModeState] = useState<ChatMode>("casual");
   const [speakingMsgId, setSpeakingMsgId] = useState<string | null>(null);
   const soundRef = useRef<Audio.Sound | null>(null);
   const flatListRef = useRef<FlatList>(null);
@@ -474,6 +482,13 @@ export default function ChatScreen() {
     return <Text style={[styles.msgText, isHuman ? styles.msgTextHuman : styles.msgTextAI]}>{elements}</Text>;
   }, []);
 
+  // Copy message text to clipboard
+  const copyMessageText = (text: string) => {
+    Clipboard.setStringAsync(text);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    Alert.alert("Copied!", "Message copied to clipboard");
+  };
+
   const renderMessage = ({ item }: { item: Message }) => {
     const isHuman = item.sender_type === "human";
     const isSpeaking = speakingMsgId === item.id;
@@ -483,13 +498,22 @@ export default function ChatScreen() {
     return (
       <View style={[styles.msgRow, isHuman ? styles.msgRowRight : styles.msgRowLeft]}>
         {!isHuman && persona && (
-          persona.avatar_url ? (
-            <Image source={{ uri: persona.avatar_url }} style={styles.msgAvatar} />
+          (persona.avatar_url && persona.avatar_url.startsWith("http")) ? (
+            <Image source={{ uri: persona.avatar_url }} style={styles.msgAvatar} onError={() => {}} />
           ) : (
-            <Text style={styles.msgEmoji}>{persona.avatar_emoji}</Text>
+            <Text style={styles.msgEmoji}>{persona.avatar_emoji || "🤖"}</Text>
           )
         )}
-        <View style={[styles.msgBubble, isHuman ? styles.msgHuman : styles.msgAI, (hasMedia || hasYouTube) && styles.msgBubbleMedia]}>
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onLongPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            Alert.alert("Message", undefined, [
+              { text: "Copy Text", onPress: () => copyMessageText(item.content) },
+              { text: "Cancel", style: "cancel" },
+            ]);
+          }}
+          style={[styles.msgBubble, isHuman ? styles.msgHuman : styles.msgAI, (hasMedia || hasYouTube) && styles.msgBubbleMedia]}>
           {item.image_url && (
             <Image source={{ uri: item.image_url }} style={styles.msgImage} resizeMode="cover" />
           )}
@@ -505,7 +529,7 @@ export default function ChatScreen() {
               <Text style={styles.speakBtnText}>{isSpeaking ? "⏹" : "🔈"}</Text>
             </TouchableOpacity>
           )}
-        </View>
+        </TouchableOpacity>
       </View>
     );
   };
@@ -574,15 +598,17 @@ export default function ChatScreen() {
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.voiceChatBtn, chatMode === "serious" && styles.seriousModeBtn]}
+          style={[styles.voiceChatBtn, chatMode !== "casual" && styles.seriousModeBtn]}
           onPress={() => {
-            const next = chatMode === "casual" ? "serious" : "casual";
+            const idx = MODES.indexOf(chatMode);
+            const next = MODES[(idx + 1) % MODES.length];
             setChatModeState(next);
-            if (sessionId) setChatMode(sessionId, personaId, next).catch(() => {});
+            if (sessionId) setChatMode(sessionId, personaId, next as any).catch(() => {});
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           }}
         >
-          <Text style={[styles.voiceChatBtnText, chatMode === "serious" && styles.seriousModeBtnText]}>
-            {chatMode === "serious" ? "🧠 Serious" : "😎 Casual"}
+          <Text style={[styles.voiceChatBtnText, chatMode !== "casual" && styles.seriousModeBtnText]}>
+            {MODE_CONFIG[chatMode]?.emoji} {MODE_CONFIG[chatMode]?.label}
           </Text>
         </TouchableOpacity>
         <TouchableOpacity

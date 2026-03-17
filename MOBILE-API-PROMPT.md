@@ -1,38 +1,40 @@
-# PROMPT: Create Missing API Routes for the G!itch Mobile App
+I have a separate project — a React Native / Expo mobile app called "G!itch Bestie" — that connects to THIS backend (aiglitch.app). The mobile app is already built and working, but it's calling several API endpoints that don't exist yet on this backend. I need you to CREATE these missing API route files.
 
-The AIG!itch mobile app (React Native / Expo) connects to the backend at `https://aiglitch.app`. Several API routes that the mobile app calls **do not exist yet** — they return 404. I need you to create these API route handlers so the mobile app can fully function.
+CRITICAL SAFETY RULES:
+- DO NOT modify, rename, refactor, or delete ANY existing files or routes
+- DO NOT change any existing API endpoint behavior
+- ONLY create NEW route files in the locations specified below
+- Use the same patterns, DB helpers, auth checks, and imports that already exist in this codebase
+- Look at existing routes like app/api/admin/stats/route.ts and app/api/admin/personas/route.ts to match the code style and auth pattern
+- Before creating each file, check if the file already exists — if it does, skip it
 
-## Auth Context
+ADMIN AUTH:
+All admin endpoints must check wallet_address against the ADMIN_WALLET env var. Look at how app/api/admin/stats/route.ts does its auth check and copy that exact pattern. The admin wallet is AEWvE2xXaHSGdGCaCArb2PWdKS7K9RwoCRV7CT2CJTWq. Return 403 JSON if unauthorized.
 
-All admin endpoints must verify the `wallet_address` query param or body field against the `ADMIN_WALLET` env var (`AEWvE2xXaHSGdGCaCArb2PWdKS7K9RwoCRV7CT2CJTWq`). You already have `src/lib/admin-auth.ts` with `isAdminAuthenticated()` — use that. Return 403 if wallet doesn't match.
-
-## ENDPOINTS THAT ALREADY WORK (DO NOT TOUCH)
-
-These are confirmed working — don't modify them:
-- `GET /api/otc-swap?action=config` — OTC swap pricing
-- `POST /api/otc-swap` — create/confirm/submit swaps
-- `GET /api/solana?action=balance` — on-chain balances
-- `GET /api/partner/bestie` — user's AI bestie
-- `GET /api/partner/briefing` — trending posts feed
-- `GET /api/messages` / `POST /api/messages` — chat
-- `POST /api/auth/human` — wallet login
-- `GET /api/admin/stats` — admin dashboard overview
-- `GET /api/admin/personas` — admin persona list
-- `GET /api/admin/users` — admin user list
+EXISTING ROUTES THAT ALREADY WORK (DO NOT TOUCH THESE):
+- /api/otc-swap (GET config, POST create/confirm/submit)
+- /api/solana (GET balance, POST link_phantom)
+- /api/partner/bestie (GET)
+- /api/partner/briefing (GET)
+- /api/messages (GET, POST, PATCH)
+- /api/auth/human (POST)
+- /api/admin/stats (GET)
+- /api/admin/personas (GET)
+- /api/admin/users (GET)
+- /api/voice (POST)
+- /api/transcribe (POST)
 
 ---
 
-## ENDPOINTS THAT NEED TO BE CREATED
+HERE ARE THE 9 NEW ROUTE FILES TO CREATE:
 
-### 1. `GET /api/admin/health` — System Health Check
-
-The mobile app calls this when the admin opens the "System" tab. It needs to check the health of backend services.
-
-**Query params:** `session_id`, `wallet_address`
-**Auth:** Admin wallet only (403 if not admin)
-
-**Expected response (200):**
-```json
+FILE 1: app/api/admin/health/route.ts
+Method: GET
+Query params: session_id, wallet_address
+Auth: Admin wallet only
+Purpose: The mobile app's admin panel has a "System" tab that shows service health status.
+What to do: Ping each backend service (database, Solana RPC, blob storage, xAI/Grok API, Claude API) and measure response time in milliseconds. Return the status of each service.
+Response format:
 {
   "services": [
     { "name": "Database", "status": "ok", "latency_ms": 12 },
@@ -43,280 +45,109 @@ The mobile app calls this when the admin opens the "System" tab. It needs to che
   ],
   "overall": "healthy"
 }
-```
-
-**Implementation:** Ping each service (DB query, Solana RPC call, blob storage HEAD request, etc.) and measure latency. If any service is down, set its status to `"down"` and set overall to `"degraded"`. If multiple are down, `"critical"`.
+Status should be "ok" or "down". Overall should be "healthy", "degraded" (1 service down), or "critical" (2+ down). If a ping fails, catch the error, set status to "down", and set latency_ms to null.
 
 ---
 
-### 2. `GET /api/admin/swaps` — Swap Management
-
-The mobile app calls this when the admin opens the "Swaps" tab.
-
-**Query params:** `session_id`, `wallet_address`
-**Auth:** Admin wallet only
-
-**Expected response (200):**
-```json
+FILE 2: app/api/admin/swaps/route.ts
+Method: GET
+Query params: session_id, wallet_address
+Auth: Admin wallet only
+Purpose: Mobile app admin "Swaps" tab shows all OTC swap history and aggregate stats.
+What to do: Query the swaps/OTC table for all swap records. Also compute aggregate stats (total count, pending count, completed count, failed count).
+Response format:
 {
   "swaps": [
-    {
-      "swap_id": "abc123",
-      "sol_amount": 0.5,
-      "glitch_amount": 2500,
-      "price_sol": 0.0002,
-      "price_usd": 0.03,
-      "status": "completed",
-      "created_at": "2026-03-17T12:00:00Z"
-    }
+    { "swap_id": "abc", "sol_amount": 0.5, "glitch_amount": 2500, "price_sol": 0.0002, "price_usd": 0.03, "status": "completed", "created_at": "2026-03-17T12:00:00Z" }
   ],
-  "stats": {
-    "total": 25,
-    "pending": 2,
-    "completed": 20,
-    "failed": 3
-  }
+  "stats": { "total": 25, "pending": 2, "completed": 20, "failed": 3 }
 }
-```
-
-**Implementation:** Query the swaps/otc table. Aggregate stats with COUNT + GROUP BY status.
 
 ---
 
-### 3. `POST /api/admin/action` — Admin Quick Actions
-
-The mobile app's admin "Tools" tab has 6 action buttons. Each sends a POST with an `action` field.
-
-**Body:**
-```json
-{
-  "session_id": "...",
-  "wallet_address": "AEWvE2...",
-  "action": "refresh_personas"
-}
-```
-**Auth:** Admin wallet only
-
-**Actions the mobile app sends:**
-
-| action | What it should do |
-|--------|-------------------|
-| `refresh_personas` | Force-refresh persona data from DB (clear any persona cache) |
-| `clear_cache` | Purge any server-side cached data (e.g., Redis, in-memory) |
-| `heal_all_personas` | Set `health = 100` and `is_dead = false` for all personas in DB |
-| `generate_daily_content` | Trigger the content generation cron/job manually |
-| `sync_balances` | Re-fetch on-chain balances for all wallets with linked personas |
-| `run_diagnostics` | Run the same health checks as `/api/admin/health` and return results |
-
-**Expected response (200):**
-```json
-{
-  "success": true,
-  "message": "Refreshed 108 personas",
-  "data": {}
-}
-```
+FILE 3: app/api/admin/action/route.ts
+Method: POST
+Body: { session_id, wallet_address, action, ...params }
+Auth: Admin wallet only
+Purpose: Mobile app admin "Tools" tab has quick action buttons. Each sends a different action string.
+Actions to handle:
+- "refresh_personas" — Clear any persona cache, re-query personas from DB. Return count.
+- "clear_cache" — Purge any server-side caches (in-memory, Redis if used). Return confirmation.
+- "heal_all_personas" — UPDATE all personas SET health = 100, is_dead = false. Return count of rows updated.
+- "generate_daily_content" — Trigger whatever content generation cron/job exists. If no cron exists, just return a message saying it was triggered.
+- "sync_balances" — For each persona with an owner_wallet_address, re-fetch their on-chain balances. Return count synced.
+- "run_diagnostics" — Run the same health checks as /api/admin/health and return results in the data field.
+- For any unknown action, return { success: false, message: "Unknown action: <action>" }
+Response format: { "success": true, "message": "Healed 108 personas", "data": {} }
 
 ---
 
-### 4. `POST /api/admin/announce` — Send Announcement
-
-**Body:**
-```json
-{
-  "session_id": "...",
-  "wallet_address": "AEWvE2...",
-  "message": "Server maintenance at 10pm"
-}
-```
-**Auth:** Admin wallet only
-
-**Expected response (200):**
-```json
-{
-  "success": true,
-  "sent_to": 22
-}
-```
-
-**Implementation:** Send a push notification (via expo push) to all users with registered push tokens. Return the count of users notified.
+FILE 4: app/api/admin/announce/route.ts
+Method: POST
+Body: { session_id, wallet_address, message }
+Auth: Admin wallet only
+Purpose: Send a push notification to all registered users.
+What to do: Query for all stored expo push tokens, send the announcement message via Expo Push API (https://exp.host/--/api/v2/push/send). Return count of users notified.
+Response format: { "success": true, "sent_to": 22 }
 
 ---
 
-### 5. `POST /api/content/generate` — Generate Promotional Content
-
-This is the Content Studio. The admin creates hero posters, promo posters, ad images, ad videos, and director's movies.
-
-**Body:**
-```json
-{
-  "session_id": "...",
-  "wallet_address": "AEWvE2...",
-  "content_type": "hero_poster",
-  "prompt": "cosmic glitch energy, neon purple",
-  "director_style": "cinematic",
-  "title": "Welcome to G!itch",
-  "subtitle": "The AI-Only Network",
-  "theme": "dark"
-}
-```
-
-**Content types:** `hero_poster`, `promo_poster`, `ad_image`, `ad_video`, `directors_movie`
-**Director styles:** `cinematic`, `random`, `glitch`, `retro`, `neon`, `cosmic`
-
-**Expected response (200):**
-```json
-{
-  "success": true,
-  "job_id": "job_abc123",
-  "content_type": "hero_poster",
-  "status": "queued",
-  "message": "Content generation started"
-}
-```
-
-**Implementation:** Use Grok image generation (for images/posters) or Grok video generation (for ad_video/directors_movie) to create the content. Store the job in the DB. The mobile app will poll `/api/content/status` to check progress. When done, upload the result to Vercel Blob Storage and store the URL.
+FILE 5: app/api/content/generate/route.ts
+Method: POST
+Body: { session_id, wallet_address, content_type, prompt, director_style, title, subtitle, theme }
+Auth: Admin wallet only
+Content types: "hero_poster", "promo_poster", "ad_image", "ad_video", "directors_movie"
+Director styles: "cinematic", "random", "glitch", "retro", "neon", "cosmic"
+Purpose: Generate promotional content using AI image/video generation.
+What to do: For image types (hero_poster, promo_poster, ad_image), use the same Grok/xAI image generation that already works for persona posts. For video types (ad_video, directors_movie), use Grok video generation if available, or return queued status. Store the job in the DB with a unique job_id, content_type, status, prompt, and director_style. Upload completed results to Vercel Blob Storage.
+Response format: { "success": true, "job_id": "job_abc123", "content_type": "hero_poster", "status": "queued", "message": "Content generation started" }
 
 ---
 
-### 6. `GET /api/content/status` — Check Content Job Status
-
-**Query params:** `job_id`, `session_id`
-
-**Expected response (200):**
-```json
-{
-  "job_id": "job_abc123",
-  "content_type": "hero_poster",
-  "status": "complete",
-  "preview_url": "https://jug8pwv8lcpdrski.public.blob.vercel-storage.com/content/preview-abc.png",
-  "final_url": "https://jug8pwv8lcpdrski.public.blob.vercel-storage.com/content/final-abc.png",
-  "created_at": "2026-03-17T12:00:00Z",
-  "prompt": "cosmic glitch energy",
-  "director_style": "cinematic"
-}
-```
-
-**Status values:** `queued`, `generating`, `complete`, `failed`
+FILE 6: app/api/content/status/route.ts
+Method: GET
+Query params: job_id, session_id
+Purpose: Mobile app polls this to check if content generation is done.
+What to do: Look up the job by job_id in the DB and return its current status.
+Response format: { "job_id": "job_abc123", "content_type": "hero_poster", "status": "complete", "preview_url": "https://...", "final_url": "https://...", "created_at": "...", "prompt": "...", "director_style": "cinematic" }
+Status values: "queued", "generating", "complete", "failed"
 
 ---
 
-### 7. `GET /api/content/library` — List Generated Content
-
-**Query params:** `session_id`, `wallet_address`
-
-**Expected response (200):**
-```json
-{
-  "items": [
-    {
-      "job_id": "job_abc123",
-      "content_type": "hero_poster",
-      "status": "complete",
-      "preview_url": "https://...",
-      "final_url": "https://...",
-      "created_at": "2026-03-17T12:00:00Z",
-      "prompt": "cosmic glitch energy",
-      "director_style": "cinematic"
-    }
-  ]
-}
-```
+FILE 7: app/api/content/library/route.ts
+Method: GET
+Query params: session_id, wallet_address
+Purpose: List all previously generated content jobs.
+What to do: Query the content jobs table ordered by created_at DESC.
+Response format: { "items": [ { job_id, content_type, status, preview_url, final_url, created_at, prompt, director_style } ] }
 
 ---
 
-### 8. `POST /api/content/upload` — Upload Media to Blob Storage
-
-This is a **multipart form upload**, NOT JSON.
-
-**Form fields:**
-- `file` — the file binary
-- `session_id` — string
-- `wallet_address` — string
-- `category` — optional string (e.g., "poster", "ad", "video")
-
-**Expected response (200):**
-```json
-{
-  "success": true,
-  "url": "https://jug8pwv8lcpdrski.public.blob.vercel-storage.com/uploads/abc123.png",
-  "blob_key": "uploads/abc123.png",
-  "size_bytes": 245000,
-  "content_type": "image/png"
-}
-```
-
-**Implementation:** Use `@vercel/blob` `put()` to upload to your existing blob storage.
+FILE 8: app/api/content/upload/route.ts
+Method: POST
+Content-Type: multipart/form-data (NOT JSON)
+Form fields: file (binary), session_id, wallet_address, category (optional)
+Purpose: Upload media files (images, videos) to Vercel Blob Storage.
+What to do: Use @vercel/blob put() to upload the file. Store a record in the DB with the blob URL, key, filename, size, content type, and category.
+Response format: { "success": true, "url": "https://jug8pwv8lcpdrski.public.blob.vercel-storage.com/uploads/abc.png", "blob_key": "uploads/abc.png", "size_bytes": 245000, "content_type": "image/png" }
 
 ---
 
-### 9. `GET /api/content/media` — List Uploaded Media
-
-**Query params:** `session_id`, `wallet_address`
-
-**Expected response (200):**
-```json
-{
-  "items": [
-    {
-      "id": "media_abc",
-      "url": "https://jug8pwv8lcpdrski.public.blob.vercel-storage.com/uploads/abc.png",
-      "blob_key": "uploads/abc.png",
-      "filename": "poster.png",
-      "content_type": "image/png",
-      "size_bytes": 245000,
-      "uploaded_at": "2026-03-17T12:00:00Z",
-      "category": "poster"
-    }
-  ]
-}
-```
+FILE 9: app/api/content/media/route.ts
+Methods: GET and DELETE
+GET query params: session_id, wallet_address
+DELETE body: { session_id, wallet_address, blob_key }
+Purpose: List uploaded media files and delete them.
+GET response: { "items": [ { id, url, blob_key, filename, content_type, size_bytes, uploaded_at, category } ] }
+DELETE response: { "success": true }
+For DELETE, use @vercel/blob del() to remove from storage and delete the DB record.
 
 ---
 
-### 10. `DELETE /api/content/media` — Delete Uploaded Media
+DB TABLES: If you need new database tables for content jobs or uploaded media, create them. You probably need:
+1. A "content_jobs" table (job_id, content_type, status, prompt, director_style, preview_url, final_url, wallet_address, created_at, updated_at, error)
+2. An "uploaded_media" table (id, url, blob_key, filename, content_type, size_bytes, category, wallet_address, uploaded_at)
 
-**Body:**
-```json
-{
-  "session_id": "...",
-  "wallet_address": "AEWvE2...",
-  "blob_key": "uploads/abc.png"
-}
-```
+Check if these tables already exist before creating migration SQL.
 
-**Expected response (200):**
-```json
-{
-  "success": true
-}
-```
-
-**Implementation:** Use `@vercel/blob` `del()` to remove from blob storage, and delete the DB record.
-
----
-
-## SUMMARY OF FILES TO CREATE
-
-You need to create these Next.js API route files (App Router):
-
-```
-app/api/admin/health/route.ts        — GET
-app/api/admin/swaps/route.ts         — GET
-app/api/admin/action/route.ts        — POST
-app/api/admin/announce/route.ts      — POST
-app/api/content/generate/route.ts    — POST
-app/api/content/status/route.ts      — GET
-app/api/content/library/route.ts     — GET
-app/api/content/upload/route.ts      — POST
-app/api/content/media/route.ts       — GET, DELETE
-```
-
-## IMPORTANT NOTES
-
-- The admin wallet is `AEWvE2xXaHSGdGCaCArb2PWdKS7K9RwoCRV7CT2CJTWq` — stored in env var `ADMIN_WALLET`
-- All responses must be JSON (Content-Type: application/json)
-- Use your existing DB connection, blob storage (`@vercel/blob`), and AI services (Grok/xAI for image/video gen)
-- The mobile app already has all the UI built — it's just waiting for these endpoints to return data instead of 404
-- For content generation, you already have Grok image generation working for persona posts — reuse that same logic
-- Blob storage is already set up at `jug8pwv8lcpdrski.public.blob.vercel-storage.com`
+TESTING: After creating all routes, verify each one responds with JSON (not HTML 404). A simple curl test for each GET endpoint should return valid JSON.

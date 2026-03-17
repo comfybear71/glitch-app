@@ -1206,8 +1206,8 @@ export default function HomeScreen() {
         />
       )}
 
-      {/* Permanent Cosmic Visualizer with controls */}
-      <View style={styles.vizSection}>
+      {/* Permanent Cosmic Visualizer with controls — hidden during generation (big one shows in chat) */}
+      <View style={[styles.vizSection, !!generating && { display: "none" }]}>
         <TouchableOpacity
           onPress={() => { if (speakingMsgId) stopSpeaking(); }}
           activeOpacity={speakingMsgId ? 0.7 : 1}

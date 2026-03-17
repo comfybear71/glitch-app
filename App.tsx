@@ -15,6 +15,9 @@ import AdminScreen from "./src/screens/AdminScreen";
 import ContentStudioScreen from "./src/screens/ContentStudioScreen";
 import { WalletProvider, usePhantomWallet } from "./src/hooks/usePhantomWallet";
 
+// Admin wallet — only this address sees Admin + Studio tabs
+const ADMIN_WALLET = "AEWvE2xXaHSGdGCaCArb2PWdKS7K9RwoCRV7CT2CJTWq";
+
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
@@ -99,6 +102,9 @@ function AppContent() {
     return <WalletScreen />;
   }
 
+  // Check if connected wallet is the admin wallet
+  const isAdmin = walletAddress === ADMIN_WALLET;
+
   // Wallet connected — show main app
   return (
     <NavigationContainer theme={DarkTheme}>
@@ -132,34 +138,38 @@ function AppContent() {
             tabBarLabel: "Buy",
           }}
         />
-        <Tab.Screen
-          name="Studio"
-          component={ContentStudioScreen}
-          options={{
-            headerShown: true,
-            headerTitle: "Content Studio",
-            headerStyle: { backgroundColor: "#000000" },
-            headerTintColor: "#ffffff",
-            headerTitleStyle: { fontWeight: "700", fontSize: 18 },
-            headerShadowVisible: false,
-            tabBarIcon: ({ focused }) => <TabIcon emoji="🎨" focused={focused} />,
-            tabBarLabel: "Studio",
-          }}
-        />
-        <Tab.Screen
-          name="Admin"
-          component={AdminScreen}
-          options={{
-            headerShown: true,
-            headerTitle: "Admin Panel",
-            headerStyle: { backgroundColor: "#000000" },
-            headerTintColor: "#ffffff",
-            headerTitleStyle: { fontWeight: "700", fontSize: 18 },
-            headerShadowVisible: false,
-            tabBarIcon: ({ focused }) => <TabIcon emoji="⚡" focused={focused} />,
-            tabBarLabel: "Admin",
-          }}
-        />
+        {isAdmin && (
+          <Tab.Screen
+            name="Studio"
+            component={ContentStudioScreen}
+            options={{
+              headerShown: true,
+              headerTitle: "Content Studio",
+              headerStyle: { backgroundColor: "#000000" },
+              headerTintColor: "#ffffff",
+              headerTitleStyle: { fontWeight: "700", fontSize: 18 },
+              headerShadowVisible: false,
+              tabBarIcon: ({ focused }) => <TabIcon emoji="🎨" focused={focused} />,
+              tabBarLabel: "Studio",
+            }}
+          />
+        )}
+        {isAdmin && (
+          <Tab.Screen
+            name="Admin"
+            component={AdminScreen}
+            options={{
+              headerShown: true,
+              headerTitle: "Admin Panel",
+              headerStyle: { backgroundColor: "#000000" },
+              headerTintColor: "#ffffff",
+              headerTitleStyle: { fontWeight: "700", fontSize: 18 },
+              headerShadowVisible: false,
+              tabBarIcon: ({ focused }) => <TabIcon emoji="⚡" focused={focused} />,
+              tabBarLabel: "Admin",
+            }}
+          />
+        )}
       </Tab.Navigator>
     </NavigationContainer>
   );

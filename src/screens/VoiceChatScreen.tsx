@@ -9,10 +9,8 @@ import { File } from "expo-file-system/next";
 import * as Haptics from "expo-haptics";
 import { colors } from "../theme/colors";
 import { useSession } from "../hooks/useSession";
-import { sendMessage, transcribeAudio } from "../services/api";
+import { API_BASE, sendMessage, transcribeAudio } from "../services/api";
 import CosmicVisualizer from "../components/CosmicVisualizer";
-
-const API_BASE = "https://aiglitch.app";
 
 type VoiceState = "idle" | "listening" | "thinking" | "speaking";
 

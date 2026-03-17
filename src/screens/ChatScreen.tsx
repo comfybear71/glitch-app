@@ -12,9 +12,7 @@ import { Audio } from "expo-av";
 import { WebView } from "react-native-webview";
 import { colors } from "../theme/colors";
 import { useSession } from "../hooks/useSession";
-import { getMessages, sendMessage, sendImageMessage, setChatMode, Message } from "../services/api";
-
-const API_BASE = "https://aiglitch.app";
+import { API_BASE, getMessages, sendMessage, sendImageMessage, setChatMode, Message } from "../services/api";
 
 export default function ChatScreen() {
   const route = useRoute<any>();

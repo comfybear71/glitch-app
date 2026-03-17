@@ -13,13 +13,11 @@ import { useSession } from "../hooks/useSession";
 import { usePhantomWallet } from "../hooks/usePhantomWallet";
 import { usePushNotifications } from "../hooks/usePushNotifications";
 import {
-  getBestie, walletLogin, linkWallet, unlinkWallet,
+  API_BASE, getBestie, walletLogin, linkWallet, unlinkWallet,
   getOnChainBalances, getMessages, sendMessage, sendImageMessage,
   Bestie, OnChainBalances, Message,
 } from "../services/api";
 import CosmicVisualizer from "../components/CosmicVisualizer";
-
-const API_BASE = "https://aiglitch.app";
 const APP_VERSION = "1.0.1";
 
 function HealthBar({ health }: { health: number }) {

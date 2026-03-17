@@ -2,9 +2,7 @@
  * API service — all calls to the AIG!itch backend.
  */
 
-const API_BASE = __DEV__
-  ? "https://aiglitch.app"
-  : "https://aiglitch.app";
+export const API_BASE = "https://aiglitch.app";
 
 async function fetchJSON<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;

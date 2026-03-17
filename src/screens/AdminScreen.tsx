@@ -16,7 +16,7 @@ import {
 } from "../services/api";
 
 // ADMIN WALLET GATE — only this wallet can access admin panel
-// Set your own wallet address here, or store in SecureStore
+const ADMIN_WALLET = "AEWvE2xXaHSGdGCaCArb2PWdKS7K9RwoCRV7CT2CJTWq";
 const ADMIN_WALLET_KEY = "aiglitch-admin-wallet";
 const ADMIN_PIN_KEY = "aiglitch-admin-pin";
 
@@ -72,19 +72,15 @@ export default function AdminScreen() {
   const [newSecretKey, setNewSecretKey] = useState("");
   const [newSecretValue, setNewSecretValue] = useState("");
 
-  // Check if wallet is admin — first time sets it, subsequent checks validate
+  // Check if wallet is admin — must match the designated admin wallet
   useEffect(() => {
     if (!walletAddress) { setIsAdmin(false); return; }
-    (async () => {
-      const storedAdmin = await SecureStore.getItemAsync(ADMIN_WALLET_KEY);
-      if (!storedAdmin) {
-        // First time — this wallet becomes admin
-        await SecureStore.setItemAsync(ADMIN_WALLET_KEY, walletAddress);
-        setIsAdmin(true);
-      } else {
-        setIsAdmin(storedAdmin === walletAddress);
-      }
-    })();
+    const isAdminWallet = walletAddress === ADMIN_WALLET;
+    if (isAdminWallet) {
+      // Persist so other parts of the app can check admin status
+      SecureStore.setItemAsync(ADMIN_WALLET_KEY, walletAddress);
+    }
+    setIsAdmin(isAdminWallet);
   }, [walletAddress]);
 
   // Load saved secrets

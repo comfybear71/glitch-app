@@ -1,8 +1,10 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { Alert } from "react-native";
 import * as SecureStore from "expo-secure-store";
+import * as Crypto from "expo-crypto";
 
 const WALLET_KEY = "aiglitch-wallet";
+const SESSION_KEY = "aiglitch-session";
 
 interface WalletContextType {
   walletAddress: string | null;
@@ -45,6 +47,9 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const submitAddress = useCallback(async (address: string) => {
     const trimmed = address.trim();
     if (trimmed.length >= 32 && trimmed.length <= 44) {
+      // Generate a fresh session for this wallet so personas don't leak across wallets
+      const newSessionId = Crypto.randomUUID();
+      await SecureStore.setItemAsync(SESSION_KEY, newSessionId);
       await SecureStore.setItemAsync(WALLET_KEY, trimmed);
       setWalletAddress(trimmed);
       setIsConnecting(false);
@@ -55,7 +60,10 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const disconnect = useCallback(async () => {
+    // Clear both wallet AND session so next wallet gets a fresh session
+    // This prevents persona leaking between different wallets
     await SecureStore.deleteItemAsync(WALLET_KEY);
+    await SecureStore.deleteItemAsync(SESSION_KEY);
     setWalletAddress(null);
   }, []);
 

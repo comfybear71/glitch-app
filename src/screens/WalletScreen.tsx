@@ -3,6 +3,7 @@ import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
   RefreshControl, ActivityIndicator, Alert, Share, Platform,
   TextInput, Keyboard, Image, Dimensions, Animated, Easing,
+  KeyboardAvoidingView,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
@@ -319,6 +320,11 @@ export default function WalletScreen() {
       <View style={styles.loginContainer}>
         <AnimatedBackground />
 
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
+        >
         <ScrollView
           contentContainerStyle={[styles.loginContent, { paddingTop: Math.max(safeTop + 20, 60) }]}
           keyboardShouldPersistTaps="handled"
@@ -456,6 +462,7 @@ export default function WalletScreen() {
             </Animated.View>
           )}
         </ScrollView>
+        </KeyboardAvoidingView>
       </View>
     );
   }

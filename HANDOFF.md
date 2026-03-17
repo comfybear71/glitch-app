@@ -1,6 +1,6 @@
 # HANDOFF.md — AI G!itch App Project Status
 
-Last updated: 2026-03-17 (Session 3 — comprehensive update)
+Last updated: 2026-03-17 (Session 4 — xAI accounts documented, iPhone registered, new preview build)
 
 ## Project Overview
 
@@ -226,12 +226,13 @@ If "your local changes would be overwritten" appears, stash first (see above).
 
 ### Device registration:
 - Each device must be registered ONCE in the provisioning profile
-- Currently registered: iPad (UDID: 00008132-001C105E3E85001C)
-- **To register iPhone**: Run `eas device:create` → scan QR code ON THE iPHONE
-- Apple may require a "Security delay" (up to 1 hour) — this only happens once
-- After registering, run a new preview build and select BOTH devices
-- The final install QR code works on ALL registered devices
+- **Currently registered (both active as of Session 4)**:
+  - iPad (UDID: 00008132-001C105E3E85001C) — registered Session 3
+  - iPhone (UDID: 00008130-001E59D901C0001C) — registered Session 4
+- Both devices are in provisioning profile `M2DSHAU6CX`
+- The install QR code works on ALL registered devices
 - You never need to register a device again after the first time
+- To add MORE devices: Run `eas device:create` → scan QR code on the new device → rebuild with preview profile
 
 ### What NOT to do:
 - **Don't download .ipa files directly** — they won't install. Use the QR code from EAS
@@ -368,6 +369,22 @@ If "your local changes would be overwritten" appears, stash first (see above).
 
 ---
 
+## Recent Changes — Session 2026-03-17 (Session 4)
+
+### xAI Account Documentation
+- Documented two xAI/X accounts in HANDOFF.md
+- **Main account**: `console.x.ai` (team 4b936db5-8c75-4788-add0-6d171ace23ab) — used by backend for Grok TTS, image gen, AI text
+- **Secondary account**: `console.x.com` (account 2026609136566415363) — X Developer Portal, has extra credits bought by mistake
+- Added warning: credits on `console.x.com` are for X/Twitter API, NOT Grok/TTS
+
+### iPhone Registered + New Preview Build
+- iPhone (UDID: 00008130-001E59D901C0001C) added to provisioning profile
+- Both iPad and iPhone now provisioned in profile `M2DSHAU6CX`
+- New preview build with both devices: `4454899a` (pre-merge) and `ad512f05` (with Session 4 changes)
+- Latest build: https://expo.dev/accounts/comfybear/projects/glitch-bestie/builds/ad512f05-2a5b-41aa-bbe4-6739ebf5d7db
+
+---
+
 ## Recent Changes — Session 2026-03-14 (Session 2)
 
 ### Image Display Fix
@@ -500,7 +517,7 @@ This section documents a chain of errors that cost significant time. AI agents M
 ## Future Features (Planned)
 - **EAS Update**: Over-the-air JS updates without rebuilding (eliminates build queue waits)
 - **Deep link wallet connect**: Real Phantom/Solflare app integration (now possible with standalone builds)
-- **Register iPhone**: Complete Apple security delay, then `eas device:create` + new preview build
+- ~~**Register iPhone**~~: DONE (Session 4) — iPhone UDID 00008130-001E59D901C0001C now in provisioning profile
 - **Personal Assistant abilities**: Weather, crypto prices, news, reminders, to-do lists, web search
 - **Push notifications**: Reminders, crypto alerts, bestie check-ins, news alerts
 - **Siri Shortcuts**: Summon bestie via Siri

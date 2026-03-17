@@ -5,6 +5,7 @@ import {
 } from "react-native";
 import * as Haptics from "expo-haptics";
 import * as LocalAuthentication from "expo-local-authentication";
+import * as SecureStore from "expo-secure-store";
 import { colors } from "../theme/colors";
 import { useSession } from "../hooks/useSession";
 import { usePhantomWallet } from "../hooks/usePhantomWallet";
@@ -14,7 +15,12 @@ import {
   AdminStats, AdminPersona, AdminUser,
 } from "../services/api";
 
-type Tab = "overview" | "personas" | "users" | "swaps" | "system" | "tools";
+// ADMIN WALLET GATE — only this wallet can access admin panel
+// Set your own wallet address here, or store in SecureStore
+const ADMIN_WALLET_KEY = "aiglitch-admin-wallet";
+const ADMIN_PIN_KEY = "aiglitch-admin-pin";
+
+type Tab = "overview" | "personas" | "users" | "swaps" | "system" | "tools" | "secrets";
 
 function StatCard({ label, value, color, sub }: { label: string; value: string | number; color?: string; sub?: string }) {
   return (
@@ -43,9 +49,12 @@ export default function AdminScreen() {
   const { walletAddress } = usePhantomWallet();
   const [authenticated, setAuthenticated] = useState(false);
   const [biometricAvailable, setBiometricAvailable] = useState(false);
+  const [isAdmin, setIsAdmin] = useState<boolean | null>(null); // null = checking
   const [activeTab, setActiveTab] = useState<Tab>("overview");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [pinInput, setPinInput] = useState("");
+  const [showPinSetup, setShowPinSetup] = useState(false);
 
   // Data
   const [stats, setStats] = useState<AdminStats | null>(null);
@@ -58,6 +67,42 @@ export default function AdminScreen() {
   const [announceSending, setAnnounceSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Secrets state
+  const [secrets, setSecrets] = useState<Record<string, string>>({});
+  const [newSecretKey, setNewSecretKey] = useState("");
+  const [newSecretValue, setNewSecretValue] = useState("");
+
+  // Check if wallet is admin — first time sets it, subsequent checks validate
+  useEffect(() => {
+    if (!walletAddress) { setIsAdmin(false); return; }
+    (async () => {
+      const storedAdmin = await SecureStore.getItemAsync(ADMIN_WALLET_KEY);
+      if (!storedAdmin) {
+        // First time — this wallet becomes admin
+        await SecureStore.setItemAsync(ADMIN_WALLET_KEY, walletAddress);
+        setIsAdmin(true);
+      } else {
+        setIsAdmin(storedAdmin === walletAddress);
+      }
+    })();
+  }, [walletAddress]);
+
+  // Load saved secrets
+  useEffect(() => {
+    (async () => {
+      try {
+        const stored = await SecureStore.getItemAsync("aiglitch-admin-secrets");
+        if (stored) setSecrets(JSON.parse(stored));
+      } catch (_) {}
+    })();
+  }, []);
+
+  // Save secrets
+  const saveSecrets = async (updated: Record<string, string>) => {
+    setSecrets(updated);
+    await SecureStore.setItemAsync("aiglitch-admin-secrets", JSON.stringify(updated));
+  };
+
   // Check biometric availability
   useEffect(() => {
     (async () => {
@@ -67,30 +112,52 @@ export default function AdminScreen() {
     })();
   }, []);
 
-  // Authenticate with biometrics or skip if unavailable
+  // Authenticate with biometrics + optional PIN
   const authenticate = useCallback(async () => {
-    if (!biometricAvailable) {
-      setAuthenticated(true);
+    // Check if PIN is set
+    const storedPin = await SecureStore.getItemAsync(ADMIN_PIN_KEY);
+
+    if (biometricAvailable) {
+      const result = await LocalAuthentication.authenticateAsync({
+        promptMessage: "Authenticate to access Admin Panel",
+        cancelLabel: "Cancel",
+        disableDeviceFallback: false,
+      });
+      if (!result.success) {
+        Alert.alert("Authentication Failed", "Biometric authentication is required to access the admin panel.");
+        return;
+      }
+    }
+
+    // If PIN is set, require it too
+    if (storedPin) {
+      setShowPinSetup(false);
+      // PIN will be checked in the render via pinInput
       return;
     }
-    const result = await LocalAuthentication.authenticateAsync({
-      promptMessage: "Authenticate to access Admin Panel",
-      cancelLabel: "Cancel",
-      disableDeviceFallback: false,
-    });
-    if (result.success) {
+
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setAuthenticated(true);
+  }, [biometricAvailable]);
+
+  const verifyPin = async () => {
+    const storedPin = await SecureStore.getItemAsync(ADMIN_PIN_KEY);
+    if (pinInput === storedPin) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setAuthenticated(true);
+      setPinInput("");
     } else {
-      Alert.alert("Authentication Failed", "Biometric authentication is required to access the admin panel.");
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert("Wrong PIN", "The PIN you entered is incorrect.");
+      setPinInput("");
     }
-  }, [biometricAvailable]);
+  };
 
   // Auto-authenticate on mount
   useEffect(() => {
-    if (!walletAddress || !sessionId) return;
+    if (!walletAddress || !sessionId || isAdmin !== true) return;
     authenticate();
-  }, [walletAddress, sessionId, authenticate]);
+  }, [walletAddress, sessionId, isAdmin, authenticate]);
 
   // Load admin data
   const loadData = useCallback(async () => {
@@ -220,6 +287,25 @@ export default function AdminScreen() {
     );
   }
 
+  // ── Wallet is not the admin wallet ──
+  if (isAdmin === null) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator color={colors.purple} size="large" />
+      </View>
+    );
+  }
+
+  if (isAdmin === false) {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.lockEmoji}>⛔</Text>
+        <Text style={styles.lockTitle}>Access Denied</Text>
+        <Text style={styles.lockSub}>This wallet is not authorized to access the admin panel. Only the platform owner's wallet can use this.</Text>
+      </View>
+    );
+  }
+
   // ── Biometric auth required ──
   if (!authenticated) {
     return (
@@ -232,6 +318,28 @@ export default function AdminScreen() {
             {biometricAvailable ? "Authenticate with Face ID" : "Unlock Admin Panel"}
           </Text>
         </TouchableOpacity>
+
+        {/* PIN entry if PIN is set */}
+        <View style={styles.pinSection}>
+          <Text style={styles.pinLabel}>Admin PIN</Text>
+          <TextInput
+            style={styles.pinInput}
+            value={pinInput}
+            onChangeText={setPinInput}
+            placeholder="Enter PIN..."
+            placeholderTextColor={colors.textMuted}
+            secureTextEntry
+            keyboardType="number-pad"
+            maxLength={8}
+          />
+          <TouchableOpacity
+            style={[styles.authBtn, { marginTop: 10 }, !pinInput.trim() && { opacity: 0.4 }]}
+            onPress={verifyPin}
+            disabled={!pinInput.trim()}
+          >
+            <Text style={styles.authBtnText}>Verify PIN</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   }
@@ -462,6 +570,7 @@ export default function AdminScreen() {
     { key: "swaps", emoji: "💰", label: "Swaps" },
     { key: "system", emoji: "🔧", label: "System" },
     { key: "tools", emoji: "🛠", label: "Tools" },
+    { key: "secrets", emoji: "🔐", label: "Secrets" },
   ];
 
   return (
@@ -627,6 +736,152 @@ export default function AdminScreen() {
           </>
         )}
 
+        {/* Secrets Tab — secure variables & PIN */}
+        {activeTab === "secrets" && (
+          <>
+            <Text style={styles.sectionTitle}>Admin PIN</Text>
+            <View style={styles.toolCard}>
+              <Text style={styles.toolTitle}>🔐 Set / Change Admin PIN</Text>
+              <Text style={styles.toolDesc}>Extra layer of security on top of Face ID</Text>
+              <TextInput
+                style={[styles.toolInput, { minHeight: 44 }]}
+                value={pinInput}
+                onChangeText={setPinInput}
+                placeholder="Enter new PIN (4-8 digits)..."
+                placeholderTextColor={colors.textMuted}
+                secureTextEntry
+                keyboardType="number-pad"
+                maxLength={8}
+              />
+              <TouchableOpacity
+                style={[styles.toolBtn, !pinInput.trim() && { opacity: 0.4 }]}
+                onPress={async () => {
+                  if (pinInput.trim().length < 4) {
+                    Alert.alert("Too Short", "PIN must be at least 4 digits");
+                    return;
+                  }
+                  await SecureStore.setItemAsync(ADMIN_PIN_KEY, pinInput.trim());
+                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                  Alert.alert("PIN Set!", "Your admin PIN has been saved securely.");
+                  setPinInput("");
+                }}
+                disabled={!pinInput.trim()}
+              >
+                <Text style={styles.toolBtnText}>Save PIN</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.toolBtn, { backgroundColor: "rgba(239,68,68,0.15)", marginTop: 8 }]}
+                onPress={async () => {
+                  await SecureStore.deleteItemAsync(ADMIN_PIN_KEY);
+                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+                  Alert.alert("PIN Removed", "Admin PIN has been cleared.");
+                }}
+              >
+                <Text style={[styles.toolBtnText, { color: colors.red }]}>Remove PIN</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={[styles.sectionTitle, { marginTop: 20 }]}>Secret Variables</Text>
+            <Text style={styles.secretNote}>
+              Stored securely on-device with SecureStore (Keychain on iOS). These are NOT sent to the server unless you explicitly use them.
+            </Text>
+
+            {/* Existing secrets */}
+            {Object.entries(secrets).map(([key, value]) => (
+              <View key={key} style={styles.secretItem}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.secretKey}>{key}</Text>
+                  <Text style={styles.secretValue}>{"•".repeat(Math.min(value.length, 20))}</Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => {
+                    Alert.alert(key, `Value: ${value}`, [
+                      { text: "Copy", onPress: () => {
+                        const Clipboard = require("expo-clipboard");
+                        Clipboard.setStringAsync(value);
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      }},
+                      { text: "Delete", style: "destructive", onPress: () => {
+                        const updated = { ...secrets };
+                        delete updated[key];
+                        saveSecrets(updated);
+                      }},
+                      { text: "Cancel", style: "cancel" },
+                    ]);
+                  }}
+                  style={styles.secretBtn}
+                >
+                  <Text style={styles.secretBtnText}>👁</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+
+            {/* Add new secret */}
+            <View style={[styles.toolCard, { marginTop: 12 }]}>
+              <Text style={styles.toolTitle}>Add Secret Variable</Text>
+              <TextInput
+                style={[styles.toolInput, { minHeight: 44, marginTop: 8 }]}
+                value={newSecretKey}
+                onChangeText={setNewSecretKey}
+                placeholder="Key (e.g. API_KEY, PASSWORD, etc.)"
+                placeholderTextColor={colors.textMuted}
+                autoCapitalize="characters"
+                maxLength={50}
+              />
+              <TextInput
+                style={[styles.toolInput, { minHeight: 44, marginTop: 8 }]}
+                value={newSecretValue}
+                onChangeText={setNewSecretValue}
+                placeholder="Value (stored encrypted on device)"
+                placeholderTextColor={colors.textMuted}
+                secureTextEntry
+                maxLength={500}
+              />
+              <TouchableOpacity
+                style={[styles.toolBtn, { marginTop: 10 }, (!newSecretKey.trim() || !newSecretValue.trim()) && { opacity: 0.4 }]}
+                onPress={() => {
+                  if (!newSecretKey.trim() || !newSecretValue.trim()) return;
+                  const updated = { ...secrets, [newSecretKey.trim()]: newSecretValue.trim() };
+                  saveSecrets(updated);
+                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                  setNewSecretKey("");
+                  setNewSecretValue("");
+                  Alert.alert("Saved!", `Secret "${newSecretKey.trim()}" stored securely.`);
+                }}
+                disabled={!newSecretKey.trim() || !newSecretValue.trim()}
+              >
+                <Text style={styles.toolBtnText}>Save Secret</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={[styles.sectionTitle, { marginTop: 20 }]}>Admin Wallet</Text>
+            <View style={styles.toolCard}>
+              <Text style={styles.toolTitle}>🛡️ Admin Wallet Address</Text>
+              <Text style={styles.secretValue}>{walletAddress}</Text>
+              <Text style={styles.toolDesc}>Only this wallet can access admin features. Other users will see "Access Denied".</Text>
+              <TouchableOpacity
+                style={[styles.toolBtn, { backgroundColor: "rgba(239,68,68,0.15)", marginTop: 12 }]}
+                onPress={() => {
+                  Alert.alert(
+                    "Reset Admin Wallet",
+                    "This will clear the admin wallet. The next wallet to connect will become admin. Are you sure?",
+                    [
+                      { text: "Cancel", style: "cancel" },
+                      { text: "Reset", style: "destructive", onPress: async () => {
+                        await SecureStore.deleteItemAsync(ADMIN_WALLET_KEY);
+                        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+                        Alert.alert("Reset", "Admin wallet cleared. Reconnect to set a new admin.");
+                      }},
+                    ]
+                  );
+                }}
+              >
+                <Text style={[styles.toolBtnText, { color: colors.red }]}>Reset Admin Wallet</Text>
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
+
         <View style={{ height: 40 }} />
       </ScrollView>
     </View>
@@ -647,7 +902,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32, paddingVertical: 14, borderRadius: 14,
   },
   authBtnText: { color: colors.text, fontSize: 15, fontWeight: "700" },
+  pinSection: { marginTop: 24, width: "80%", alignItems: "center" },
+  pinLabel: { color: colors.textMuted, fontSize: 13, fontWeight: "600", marginBottom: 8 },
+  pinInput: {
+    width: "100%", backgroundColor: "rgba(255,255,255,0.05)",
+    borderWidth: 1, borderColor: colors.border, borderRadius: 12,
+    paddingHorizontal: 14, paddingVertical: 12, color: colors.text,
+    fontSize: 20, textAlign: "center", letterSpacing: 8,
+  },
   loadingText: { color: colors.textMuted, fontSize: 13, marginTop: 12 },
+
+  // Secrets
+  secretNote: { color: colors.textMuted, fontSize: 12, lineHeight: 18, marginBottom: 12 },
+  secretItem: {
+    flexDirection: "row", alignItems: "center", gap: 12,
+    backgroundColor: colors.surface, borderRadius: 14, padding: 14,
+    marginBottom: 8, borderWidth: 1, borderColor: colors.border,
+  },
+  secretKey: { color: colors.purpleLight, fontSize: 13, fontWeight: "700", fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace" },
+  secretValue: { color: colors.textMuted, fontSize: 12, marginTop: 4, fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace" },
+  secretBtn: { padding: 8 },
+  secretBtnText: { fontSize: 18 },
 
   // Header
   headerSection: { alignItems: "center", paddingVertical: 20 },

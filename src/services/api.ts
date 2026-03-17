@@ -497,3 +497,140 @@ export function adminAnnounce(sessionId: string, walletAddress: string, message:
     }),
   });
 }
+
+// ── Content Studio ──
+
+export type ContentType = "hero_poster" | "promo_poster" | "ad_image" | "ad_video" | "directors_movie";
+export type DirectorStyle = "cinematic" | "random" | "glitch" | "retro" | "neon" | "cosmic";
+
+export interface ContentGenerateResult {
+  success: boolean;
+  job_id: string;
+  content_type: ContentType;
+  status: "queued" | "generating" | "complete" | "failed";
+  preview_url?: string;
+  final_url?: string;
+  message?: string;
+}
+
+export interface ContentJob {
+  job_id: string;
+  content_type: ContentType;
+  status: "queued" | "generating" | "complete" | "failed";
+  preview_url?: string;
+  final_url?: string;
+  created_at: string;
+  prompt?: string;
+  director_style?: DirectorStyle;
+  error?: string;
+}
+
+export interface UploadResult {
+  success: boolean;
+  url: string;
+  blob_key: string;
+  size_bytes: number;
+  content_type: string;
+  message?: string;
+}
+
+export interface MediaLibraryItem {
+  id: string;
+  url: string;
+  blob_key: string;
+  filename: string;
+  content_type: string;
+  size_bytes: number;
+  uploaded_at: string;
+  category?: string;
+}
+
+// Generate promotional content
+export function generateContent(
+  sessionId: string,
+  walletAddress: string,
+  contentType: ContentType,
+  options: {
+    prompt?: string;
+    director_style?: DirectorStyle;
+    title?: string;
+    subtitle?: string;
+    theme?: string;
+  } = {}
+) {
+  return fetchJSON<ContentGenerateResult>("/api/content/generate", {
+    method: "POST",
+    body: JSON.stringify({
+      session_id: sessionId,
+      wallet_address: walletAddress,
+      content_type: contentType,
+      ...options,
+    }),
+  });
+}
+
+// Check content generation job status
+export function getContentJobStatus(jobId: string, sessionId: string) {
+  return fetchJSON<ContentJob>(
+    `/api/content/status?job_id=${encodeURIComponent(jobId)}&session_id=${encodeURIComponent(sessionId)}`
+  );
+}
+
+// Get all generated content
+export function getContentLibrary(sessionId: string, walletAddress: string) {
+  return fetchJSON<{ items: ContentJob[] }>(
+    `/api/content/library?session_id=${encodeURIComponent(sessionId)}&wallet_address=${encodeURIComponent(walletAddress)}`
+  );
+}
+
+// Upload media to blob storage
+export async function uploadMedia(
+  sessionId: string,
+  walletAddress: string,
+  fileUri: string,
+  fileName: string,
+  mimeType: string,
+  category?: string,
+): Promise<UploadResult> {
+  const formData = new FormData();
+  formData.append("file", {
+    uri: fileUri,
+    name: fileName,
+    type: mimeType,
+  } as any);
+  formData.append("session_id", sessionId);
+  formData.append("wallet_address", walletAddress);
+  if (category) formData.append("category", category);
+
+  const res = await fetch(`${API_BASE}/api/content/upload`, {
+    method: "POST",
+    body: formData,
+    // Don't set Content-Type — let fetch set multipart/form-data with boundary
+  });
+
+  if (!res.ok) {
+    let detail = "";
+    try { const body = await res.json(); detail = body.error || body.message || ""; } catch (_) {}
+    throw new Error(detail || `Upload failed (${res.status})`);
+  }
+  return res.json();
+}
+
+// Get uploaded media library
+export function getMediaLibrary(sessionId: string, walletAddress: string) {
+  return fetchJSON<{ items: MediaLibraryItem[] }>(
+    `/api/content/media?session_id=${encodeURIComponent(sessionId)}&wallet_address=${encodeURIComponent(walletAddress)}`
+  );
+}
+
+// Delete uploaded media
+export function deleteMedia(sessionId: string, walletAddress: string, blobKey: string) {
+  return fetchJSON<{ success: boolean }>("/api/content/media", {
+    method: "DELETE",
+    body: JSON.stringify({
+      session_id: sessionId,
+      wallet_address: walletAddress,
+      blob_key: blobKey,
+    }),
+  });
+}

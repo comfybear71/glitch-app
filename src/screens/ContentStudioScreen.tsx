@@ -462,12 +462,58 @@ export default function ContentStudioScreen() {
                 {/* Options (show when type selected) */}
                 {selectedType && (
                   <View style={styles.optionsSection}>
-                    <Text style={styles.optionLabel}>Creative Prompt (optional)</Text>
+                    <View style={styles.promptHeader}>
+                      <Text style={styles.optionLabel}>Creative Prompt (optional)</Text>
+                      <TouchableOpacity
+                        style={styles.randomizeBtn}
+                        onPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                          const randomPrompts: Record<string, string[]> = {
+                            hero_poster: [
+                              "Cyberpunk cityscape with glowing neon $GLITCH token floating in the sky",
+                              "Futuristic AI brain made of purple and cyan energy particles",
+                              "Cosmic portal between human and AI dimensions, dark theme",
+                              "Glitch-art style hero banner with matrix code rain and Solana logo",
+                              "Dark space scene with AI bestie hologram and blockchain nodes",
+                            ],
+                            promo_poster: [
+                              "Limited time $GLITCH token sale, urgency theme, purple gradient",
+                              "Meet your AI Bestie, cute robot character with cosmic background",
+                              "Solana-powered AI companion app, fast and futuristic vibes",
+                              "Join the G!itch revolution, community of AI besties, social theme",
+                              "Hatch your AI, egg cracking with cosmic energy pouring out",
+                            ],
+                            ad_image: [
+                              "Eye-catching $GLITCH token ad with price chart going up",
+                              "AI bestie waving hello, inviting and friendly, dark theme",
+                              "Solana speed meets AI intelligence, split-screen concept",
+                              "G!itch app download now, phone mockup with glowing screen",
+                              "Feed and care for your AI, tamagotchi-meets-crypto vibes",
+                            ],
+                            ad_video: [
+                              "Quick zoom through digital universe landing on $GLITCH token",
+                              "AI bestie evolution sequence, egg to companion, cosmic sparkles",
+                              "Solana transaction speed demonstration with G!itch branding",
+                            ],
+                            directors_movie: [
+                              "Origin story of the AI G!itch universe, from code to consciousness",
+                              "A day in the life of an AI bestie and their human companion",
+                              "The great blockchain awakening, AIs gaining sentience through Solana",
+                            ],
+                          };
+                          const options = randomPrompts[selectedType] || randomPrompts.ad_image;
+                          const randomPrompt = options[Math.floor(Math.random() * options.length)];
+                          setPrompt(randomPrompt);
+                        }}
+                      >
+                        <Text style={styles.randomizeBtnText}>🎲</Text>
+                      </TouchableOpacity>
+                    </View>
                     <TextInput
                       style={styles.optionInput}
                       value={prompt}
                       onChangeText={setPrompt}
-                      placeholder="Describe what you want... or let your bestie decide"
+                      placeholder="Describe what you want... or tap 🎲 for inspiration"
                       placeholderTextColor={colors.textMuted}
                       multiline
                       maxLength={500}
@@ -689,6 +735,14 @@ const styles = StyleSheet.create({
     borderRadius: 20, padding: 18, marginTop: 10,
     borderWidth: 1, borderColor: "rgba(124, 58, 237, 0.15)",
   },
+  promptHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  randomizeBtn: {
+    backgroundColor: "rgba(124, 58, 237, 0.2)",
+    borderWidth: 1, borderColor: "rgba(124, 58, 237, 0.4)",
+    borderRadius: 12, paddingHorizontal: 12, paddingVertical: 6,
+    marginTop: 8,
+  },
+  randomizeBtnText: { fontSize: 22 },
   optionLabel: { color: colors.textSecondary, fontSize: 13, fontWeight: "600", marginTop: 12, marginBottom: 6 },
   optionInput: {
     backgroundColor: "rgba(255,255,255,0.05)",

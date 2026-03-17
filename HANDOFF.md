@@ -281,6 +281,51 @@ If "your local changes would be overwritten" appears, stash first (see above).
 
 ---
 
+## Known Issues & Fixes — Session 3 (continued)
+
+### Issue 1: Admin Panel "Unauthorized RETRY" (FIXED)
+- **Problem**: After FaceID auth, admin panel showed "Not Authorized" or generic error
+- **Root cause**: Backend `/api/admin/stats` returns 401/403. The `fetchJSON` helper converted this to "Session expired. Please reconnect your wallet." but the admin error handler did a case-sensitive check for "unauthorized" (lowercase) which didn't match "Unauthorized" (capital U from server)
+- **Fix**: Made the error check case-insensitive (`msgLower`), also catches "Session expired" as an auth failure. Added Retry button to the "Not Authorized" screen with better explanation
+- **Note**: The admin API endpoints may not be deployed on the backend yet — in which case it falls back to the "Admin API Coming Online" preview with working quick actions (OTC status, balances, health check)
+
+### Issue 2: Content Studio Dice/Random Button (FIXED)
+- **Problem**: No way to get random creative prompts for Hero Poster, Promo Poster etc. The web app had a dice button
+- **Fix**: Added 🎲 randomize button next to "Creative Prompt" label. Each content type has 3-5 curated random prompts that are G!itch-branded
+- **File**: `src/screens/ContentStudioScreen.tsx`
+
+### Issue 3: Content Studio "Coming Soon" (KNOWN — Backend Not Deployed)
+- **Problem**: Tapping "Generate" on any content type shows "Content Studio Coming Soon" alert
+- **Root cause**: The `/api/content/generate` endpoint returns 404 — it hasn't been deployed to the backend yet. The app gracefully catches the 404 and shows the "Coming Soon" message
+- **NOT the same as the web app**: The web app (aiglitch.app) generates content via a different route. The mobile app's Content Studio is designed to call a NEW API endpoint specifically for the app. The web app branch `claude/general-session-ja2Bc` may have the content generation logic
+- **What works NOW**: The Content Studio UI is fully built — type selection, prompt input, director styles, progress animations, library view, upload to blob storage. Once the backend deploys `/api/content/generate`, it will work immediately
+- **Does NOT auto-post to socials**: Content Studio generates content for the user to review. Social posting is separate
+
+### Issue 4: Buy Screen "On-chain signing not available in Expo Go" (KNOWN LIMITATION)
+- **Problem**: User creates a swap, backend returns a transaction, but the app can't sign it
+- **Root cause**: Solana transaction signing requires Phantom SDK which needs a standalone build (not Expo Go). The app correctly creates the swap on the backend but can't complete the on-chain portion
+- **Current behavior**: Shows "Swap Created" with swap ID and directs user to aiglitch.app web to complete
+- **Fix (future)**: When standalone build is ready, integrate Phantom React Native SDK for full on-chain signing
+
+### Issue 5: AI Bestie Reply Cut Off / Truncated (FIXED — Continue Button)
+- **Problem**: When asking bestie for long responses (e.g., "list all your capabilities"), the reply gets cut off mid-sentence
+- **Root cause**: Backend AI response has a token limit. Long responses get truncated
+- **Fix**: Added "Continue... (reply was cut off)" button that appears above the input bar when the last AI message looks truncated (long message that doesn't end with sentence-ending punctuation). Tapping it auto-sends "Continue" to get the rest
+- **Detection**: Only shows for messages >200 chars that don't end with `.!?…)]*~` or common emoji
+- **File**: `src/screens/HomeScreen.tsx`
+
+### Issue 6: User Message Bubble Text Overflow on Short Messages (FIXED)
+- **Problem**: Short messages like "Continue" or single words had the timestamp/checkmarks overlapping the text
+- **Root cause**: Message bubble had `maxWidth: "78%"` but no `minWidth`. Short text made the bubble too narrow for the meta row (time + ✓✓)
+- **Fix**: Added `minWidth: 80` to `msgBubble` style in both HomeScreen and ChatScreen
+- **Files**: `src/screens/HomeScreen.tsx`, `src/screens/ChatScreen.tsx`
+
+### Issue 7: Bestie Capabilities List (from scroll #7) — NOTED
+- **Problem**: Bestie listed what it CAN'T do yet: videos, email, smart home, alarms, phone calls, file access, purchases, Siri
+- **Status**: These are all planned features that require standalone build + additional APIs. Documented in "Future Features" section below
+
+---
+
 ## Recent Changes — Session 2026-03-14 (Session 2)
 
 ### Image Display Fix

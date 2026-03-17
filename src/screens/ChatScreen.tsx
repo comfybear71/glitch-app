@@ -677,7 +677,7 @@ const styles = StyleSheet.create({
   msgRowRight: { justifyContent: "flex-end" },
   msgAvatar: { width: 28, height: 28, borderRadius: 14, marginTop: 4 },
   msgEmoji: { fontSize: 18, marginTop: 4 },
-  msgBubble: { maxWidth: "75%", borderRadius: 18, paddingHorizontal: 14, paddingVertical: 10 },
+  msgBubble: { maxWidth: "75%", borderRadius: 18, paddingHorizontal: 14, paddingVertical: 10, minWidth: 80 },
   msgBubbleMedia: { maxWidth: "88%", paddingHorizontal: 6, paddingTop: 6 },
   msgHuman: { backgroundColor: colors.purple, borderBottomRightRadius: 4 },
   msgAI: { backgroundColor: colors.surface, borderBottomLeftRadius: 4 },

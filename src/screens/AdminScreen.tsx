@@ -169,7 +169,8 @@ export default function AdminScreen() {
       setStats(statsData);
     } catch (e: any) {
       const msg = e?.message || "";
-      if (msg.includes("403") || msg.includes("unauthorized") || msg.includes("not admin") || msg.includes("Forbidden")) {
+      const msgLower = msg.toLowerCase();
+      if (msgLower.includes("403") || msgLower.includes("unauthorized") || msgLower.includes("not admin") || msgLower.includes("forbidden") || msgLower.includes("session expired")) {
         setError("admin_not_authorized");
       } else if (msg.includes("404") || msg.includes("Not Found")) {
         // Admin endpoint not yet deployed — show placeholder
@@ -544,7 +545,10 @@ export default function AdminScreen() {
       <View style={styles.center}>
         <Text style={styles.lockEmoji}>⛔</Text>
         <Text style={styles.lockTitle}>Not Authorized</Text>
-        <Text style={styles.lockSub}>This wallet doesn't have admin access. Only the platform owner's wallet can use this panel.</Text>
+        <Text style={styles.lockSub}>The server rejected this wallet for admin access. This usually means the admin API endpoints aren't deployed yet, or this wallet isn't registered as admin on the server.</Text>
+        <TouchableOpacity style={styles.authBtn} onPress={() => { setError(null); setLoading(true); loadData(); }}>
+          <Text style={styles.authBtnText}>Retry</Text>
+        </TouchableOpacity>
       </View>
     );
   }

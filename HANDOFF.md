@@ -324,6 +324,39 @@ If "your local changes would be overwritten" appears, stash first (see above).
 - **Problem**: Bestie listed what it CAN'T do yet: videos, email, smart home, alarms, phone calls, file access, purchases, Siri
 - **Status**: These are all planned features that require standalone build + additional APIs. Documented in "Future Features" section below
 
+### Issue 8: Logo/Wallet Button Covered by Status Bar on iPad (FIXED — Round 2)
+- **Problem**: After login, the main HomeScreen header (logo + wallet button) was covered by the date/time and battery percentage
+- **Root cause**: The `walletHeader` style had `paddingTop: 8` — a static value that doesn't account for the iOS status bar / safe area
+- **Fix**: Added `useSafeAreaInsets()` to HomeScreen, applied dynamic `paddingTop: Math.max(insets.top, 8)` to the header
+- **Note**: This was a different screen than the login page fix in Session 3 — the WalletScreen (login) was fixed but HomeScreen (main chat) wasn't
+
+### Issue 9: Mood Button Doesn't Persist (FIXED)
+- **Problem**: User sets mood to Serious/Scientific/Whimsical, works for one message, then bestie reverts to default Playful/Wizard personality
+- **Root cause**: `chatMode` was stored in React state only (`useState("casual")`). On re-render or app restart, it reset to "casual"
+- **Fix**: Mood now persists via SecureStore (`aiglitch-chat-mode` key). On app load, saved mood is loaded AND synced to the server via PATCH `/api/messages`
+- **Note**: The server-side mood may also need reinforcing — if the backend resets mood per conversation, the server needs fixing too
+
+### Issue 10: PDF Upload — Bestie Can't Read PDF Content (FIXED)
+- **Problem**: User uploaded a PDF payslip, but bestie only saw the filename, not the actual content
+- **Root cause**: The `pickDocument` function sent `[Shared a file: payslip.pdf (123 KB)]` as text — no actual file content was read
+- **Fix**: Updated `pickDocument` to:
+  - **Text files** (txt, csv, json, md, etc.): Read file content via FileSystem and include it in the message (max 3000 chars)
+  - **PDF files**: Read as base64 and include in message so backend can process. Large PDFs (>500KB base64) get a "too large" message suggesting copy-paste
+  - **Other files**: Just the filename (as before)
+- **Note**: The backend needs to handle `[PDF_BASE64:...]` content to extract text from PDFs. If not implemented, bestie will see the base64 string
+
+### Issue 11: User Photo Overriding the Speech/Message Box (FIXED)
+- **Problem**: When user shares a photo, the image overflows the message bubble and covers the text input area
+- **Root cause**: Message image had fixed `width: 220, height: 220` which could overflow the bubble's `maxWidth` on smaller screens. Also `msgBubbleMedia` had `maxWidth: "88%"` — too wide
+- **Fix**: Changed image to `width: "100%", aspectRatio: 1, maxHeight: 250` (responsive). Changed media bubble maxWidth to "78%" with `overflow: "hidden"`
+
+### Issue 12: xAI TTS Credit Exhaustion — Fallback to Google TTS (KNOWN — Backend)
+- **Problem**: Voice replies suddenly sounded different (robotic) — "Fell back to Google TTS"
+- **Root cause**: xAI Grok TTS API credits ran out. Backend `/api/voice` has a fallback to Google Cloud TTS when xAI returns an error
+- **Fix**: Check xAI credit balance at console.xai.com and top up. This is a backend issue, not an app issue
+- **Note**: The app code just calls `/api/voice` and plays whatever MP3 comes back — it doesn't know which TTS engine was used
+- **Where to check credits**: console.xai.com → API Keys → Usage
+
 ---
 
 ## Recent Changes — Session 2026-03-14 (Session 2)

@@ -6,11 +6,14 @@ import {
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import * as Haptics from "expo-haptics";
+import * as SecureStore from "expo-secure-store";
 import * as Clipboard from "expo-clipboard";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system";
 import { Audio, Video, ResizeMode } from "expo-av";
 import { WebView } from "react-native-webview";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors } from "../theme/colors";
 import { useSession } from "../hooks/useSession";
 import { usePhantomWallet } from "../hooks/usePhantomWallet";
@@ -73,6 +76,7 @@ const CHAT_MODES: { key: ChatMode; emoji: string; label: string; color: string; 
 
 export default function HomeScreen() {
   const nav = useNavigation<any>();
+  const insets = useSafeAreaInsets();
   const { sessionId } = useSession();
   const { walletAddress, isConnecting, isLoading: walletLoading, connect, disconnect, submitAddress, cancelConnect } = usePhantomWallet();
   const [addressInput, setAddressInput] = useState("");
@@ -97,8 +101,14 @@ export default function HomeScreen() {
   const [reactions, setReactions] = useState<Record<string, string>>({});
   const [reactionPickerFor, setReactionPickerFor] = useState<string | null>(null);
   const [showFeatures, setShowFeatures] = useState(false);
-  const [chatMode, setChatModeState] = useState<ChatMode>("casual");
+  const [chatMode, setChatModeRaw] = useState<ChatMode>("casual");
   const [showMoodPicker, setShowMoodPicker] = useState(false);
+
+  // Persist mood to SecureStore
+  const setChatModeState = useCallback((mode: ChatMode) => {
+    setChatModeRaw(mode);
+    SecureStore.setItemAsync("aiglitch-chat-mode", mode).catch(() => {});
+  }, []);
   const [showSuggest, setShowSuggest] = useState(false);
   const [suggestTitle, setSuggestTitle] = useState("");
   const [suggestDesc, setSuggestDesc] = useState("");
@@ -137,6 +147,23 @@ export default function HomeScreen() {
   }, [sessionId, walletAddress]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Load persisted chat mode and sync to server when bestie loads
+  useEffect(() => {
+    SecureStore.getItemAsync("aiglitch-chat-mode").then((saved) => {
+      if (saved && ["casual", "serious", "scientific", "whimsical"].includes(saved)) {
+        setChatModeRaw(saved as ChatMode);
+        // Sync to server so bestie uses the right mode
+        if (sessionId && bestie) {
+          fetch(`${API_BASE}/api/messages`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ session_id: sessionId, persona_id: bestie.id, chat_mode: saved }),
+          }).catch(() => {});
+        }
+      }
+    }).catch(() => {});
+  }, [sessionId, bestie?.id]);
 
   // Load chat when bestie is ready (most recent 50 messages)
   useEffect(() => {
@@ -609,7 +636,7 @@ export default function HomeScreen() {
     Alert.alert("Copied!", "Message copied to clipboard");
   };
 
-  // Share a file/document with bestie
+  // Share a file/document with bestie — reads content for text/PDF files
   const pickDocument = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
@@ -619,7 +646,6 @@ export default function HomeScreen() {
       if (!result.canceled && result.assets?.[0]) {
         const doc = result.assets[0];
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-        // Send as a message describing the file
         if (!sessionId || !bestie || sending) return;
         setSending(true);
         const tempMsg: Message = {
@@ -629,8 +655,43 @@ export default function HomeScreen() {
           created_at: new Date().toISOString(),
         };
         setMessages((prev) => [...prev, tempMsg]);
+
         try {
-          const data = await sendMessage(sessionId, bestie.id, `[Shared a file: ${doc.name} (${(doc.size ? (doc.size / 1024).toFixed(1) : "?")} KB)]`);
+          // Try to read file contents for text-based files
+          let fileContent = "";
+          const ext = (doc.name || "").toLowerCase().split(".").pop() || "";
+          const sizeKB = doc.size ? (doc.size / 1024).toFixed(1) : "?";
+          const isTextFile = ["txt", "csv", "json", "md", "xml", "html", "js", "ts", "py", "log"].includes(ext);
+
+          if (isTextFile && doc.uri) {
+            try {
+              const text = await FileSystem.readAsStringAsync(doc.uri, { encoding: FileSystem.EncodingType.UTF8 });
+              // Truncate very long files
+              fileContent = text.length > 3000 ? text.substring(0, 3000) + "\n...(truncated)" : text;
+            } catch (_) {}
+          }
+
+          let messageText: string;
+          if (fileContent) {
+            messageText = `[Shared a file: ${doc.name} (${sizeKB} KB)]\n\nFile contents:\n${fileContent}`;
+          } else if (ext === "pdf") {
+            // For PDFs, send as base64 so backend can process
+            try {
+              const base64 = await FileSystem.readAsStringAsync(doc.uri, { encoding: FileSystem.EncodingType.Base64 });
+              // Only send if under 500KB base64 (to avoid huge payloads)
+              if (base64.length < 500_000) {
+                messageText = `[Shared a PDF: ${doc.name} (${sizeKB} KB)]\n\n[PDF_BASE64:${base64.substring(0, 200_000)}]`;
+              } else {
+                messageText = `[Shared a large PDF: ${doc.name} (${sizeKB} KB)] — This PDF is too large for me to read in chat. Try copying the text from the PDF and pasting it here instead.`;
+              }
+            } catch (_) {
+              messageText = `[Shared a PDF: ${doc.name} (${sizeKB} KB)] — Could not read the PDF contents. Try copying text from it and pasting here.`;
+            }
+          } else {
+            messageText = `[Shared a file: ${doc.name} (${sizeKB} KB)]`;
+          }
+
+          const data = await sendMessage(sessionId, bestie.id, messageText);
           if (data.success) {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             setMessages((prev) => {
@@ -891,7 +952,7 @@ export default function HomeScreen() {
       keyboardVerticalOffset={90}
     >
       {/* Crypto wallet-style header */}
-      <View style={styles.walletHeader}>
+      <View style={[styles.walletHeader, { paddingTop: Math.max(insets.top, 8) }]}>
         {/* Top row: Logo + Wallet */}
         <View style={styles.walletHeaderTop}>
           <View style={styles.logoSection}>
@@ -1633,8 +1694,8 @@ const styles = StyleSheet.create({
   speakBtn: { marginTop: 3, alignSelf: "flex-start", padding: 2 },
   speakBtnActive: { opacity: 1 },
   speakBtnText: { fontSize: 14 },
-  msgBubbleMedia: { maxWidth: "88%", paddingHorizontal: 6, paddingTop: 6 },
-  msgImage: { width: 220, height: 220, borderRadius: 12, marginBottom: 6 },
+  msgBubbleMedia: { maxWidth: "78%", paddingHorizontal: 6, paddingTop: 6, overflow: "hidden" },
+  msgImage: { width: "100%" as any, aspectRatio: 1, borderRadius: 12, marginBottom: 6, maxHeight: 250 },
   msgVideo: { width: 240, height: 320, borderRadius: 12, marginBottom: 6, backgroundColor: "#000" },
   linkText: { color: "#60a5fa", textDecorationLine: "underline" as const },
   ytContainer: { width: "100%" as any, aspectRatio: 16 / 9, borderRadius: 12, overflow: "hidden" as const, marginVertical: 6 },

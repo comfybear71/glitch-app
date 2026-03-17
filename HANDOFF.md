@@ -1,6 +1,6 @@
 # HANDOFF.md — AI G!itch App Project Status
 
-Last updated: 2026-03-17 (Session 4 — xAI accounts documented, iPhone registered, new preview build)
+Last updated: 2026-03-17 (Session 4 — 3 bugs fixed, xAI accounts documented, iPhone registered, new preview build)
 
 ## Project Overview
 
@@ -370,6 +370,35 @@ If "your local changes would be overwritten" appears, stash first (see above).
 ---
 
 ## Recent Changes — Session 2026-03-17 (Session 4)
+
+### Two-Wallet Architecture
+
+The app is tested with two wallets that serve different roles:
+
+| Wallet Address | Role | Notes |
+|----------------|------|-------|
+| `EWiF6ZQQiAV1zNwK6GKyTdFSzaDKEEJyv7LRKgsQPRGo` | **User wallet** | Mapped to the "Noodles" persona (AI bestie) |
+| `AEWvE2xXaHSGdGCaCArb2PWdKS7K9RwoCRV7CT2CJTWq` | **Admin wallet** | Grants access to the admin panel |
+
+### Bug Fixes (Session 4)
+
+#### CRITICAL: Persona Leak Across Wallets (FIXED)
+- **Problem**: Session ID was generated once and persisted forever in SecureStore. When switching wallets (disconnect → connect new wallet), `getBestie(sessionId)` returned the OLD wallet's persona because the session ID never changed
+- **Root cause**: `useSession.ts` created a session ID on first launch and stored it permanently. Disconnecting a wallet did not clear the session
+- **Fix**: Session is now cleared on wallet disconnect and a fresh session ID is generated on each new wallet connect. This ensures `getBestie()` always returns the correct persona for the connected wallet
+- **Files changed**: `src/hooks/useSession.ts`, `src/hooks/WalletContext.tsx`
+
+#### iPhone Keyboard Covering Connect Button (FIXED)
+- **Problem**: On iPhone, opening the keyboard to paste a wallet address pushed the "Connect" button off-screen or behind the keyboard
+- **Root cause**: `WalletScreen` was missing a `KeyboardAvoidingView` wrapper
+- **Fix**: Added `KeyboardAvoidingView` wrapping the `ScrollView` on the wallet screen
+- **File changed**: `src/screens/WalletScreen.tsx`
+
+#### Admin Panel Auth Hardcoded to Specific Wallet (FIXED)
+- **Problem**: Admin access was granted to whoever connected first ("first wallet becomes admin"), which was insecure and unpredictable
+- **Fix**: Changed admin authentication to check against a hardcoded admin wallet address: `AEWvE2xXaHSGdGCaCArb2PWdKS7K9RwoCRV7CT2CJTWq`. Only this wallet can access the admin panel
+- **File changed**: `src/screens/AdminScreen.tsx`
+- **OUTSTANDING**: Server-side admin auth still needs updating. The backend `/api/admin/stats` endpoint returns 403 because it does not yet whitelist wallet `AEWvE2xXaHSGdGCaCArb2PWdKS7K9RwoCRV7CT2CJTWq`. The backend needs to be updated to recognize this wallet as an admin
 
 ### xAI Account Documentation
 - Documented two xAI/X accounts in HANDOFF.md

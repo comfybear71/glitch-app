@@ -1,16 +1,18 @@
 import React, { useState } from "react";
-import { StatusBar, View, Text, StyleSheet, Platform } from "react-native";
+import { StatusBar, View, Text, StyleSheet, Platform, ActivityIndicator } from "react-native";
 import { NavigationContainer, DefaultTheme } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 
 import SplashScreen from "./src/screens/SplashScreen";
+import WalletScreen from "./src/screens/WalletScreen";
 import HomeScreen from "./src/screens/HomeScreen";
 import ChatScreen from "./src/screens/ChatScreen";
 import VoiceChatScreen from "./src/screens/VoiceChatScreen";
 import BuyGlitchScreen from "./src/screens/BuyGlitchScreen";
 import AdminScreen from "./src/screens/AdminScreen";
 import ContentStudioScreen from "./src/screens/ContentStudioScreen";
+import { WalletProvider, usePhantomWallet } from "./src/hooks/usePhantomWallet";
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -78,21 +80,27 @@ function HomeStack() {
   );
 }
 
-export default function App() {
-  const [showSplash, setShowSplash] = useState(true);
+// Main app content — checks wallet and shows login gate or tabs
+function AppContent() {
+  const { walletAddress, isLoading } = usePhantomWallet();
 
-  if (showSplash) {
+  // Still loading wallet from SecureStore
+  if (isLoading) {
     return (
-      <>
-        <StatusBar barStyle="light-content" backgroundColor="#000000" />
-        <SplashScreen onFinish={() => setShowSplash(false)} />
-      </>
+      <View style={{ flex: 1, backgroundColor: "#000", justifyContent: "center", alignItems: "center" }}>
+        <ActivityIndicator color="#7c3aed" size="large" />
+      </View>
     );
   }
 
+  // No wallet connected — show login page
+  if (!walletAddress) {
+    return <WalletScreen />;
+  }
+
+  // Wallet connected — show main app
   return (
     <NavigationContainer theme={DarkTheme}>
-      <StatusBar barStyle="light-content" backgroundColor="#000000" />
       <Tab.Navigator
         screenOptions={{
           headerShown: false,
@@ -153,6 +161,26 @@ export default function App() {
         />
       </Tab.Navigator>
     </NavigationContainer>
+  );
+}
+
+export default function App() {
+  const [showSplash, setShowSplash] = useState(true);
+
+  if (showSplash) {
+    return (
+      <>
+        <StatusBar barStyle="light-content" backgroundColor="#000000" />
+        <SplashScreen onFinish={() => setShowSplash(false)} />
+      </>
+    );
+  }
+
+  return (
+    <WalletProvider>
+      <StatusBar barStyle="light-content" backgroundColor="#000000" />
+      <AppContent />
+    </WalletProvider>
   );
 }
 

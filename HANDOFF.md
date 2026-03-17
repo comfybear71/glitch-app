@@ -1,6 +1,6 @@
 # HANDOFF.md — AI G!itch App Project Status
 
-Last updated: 2026-03-14 (Session 2)
+Last updated: 2026-03-17 (Session 3)
 
 ## Project Overview
 
@@ -66,7 +66,7 @@ React Native / Expo mobile app for the AI G!itch ecosystem. Connects to Solana b
 - No hardcoded token addresses or dummy values
 
 ### Navigation
-- Bottom tabs: Home, Buy
+- Bottom tabs: Home, Buy, Studio, Admin
 - Home tab has nested stack: HomeMain -> Chat -> VoiceChat
 
 ## Recent Changes — Session 2026-03-14 (Session 2)
@@ -134,11 +134,108 @@ The master branch HomeScreen had `connect()` which set `isConnecting = true` but
 11. **Images must persist** — always preserve local URI as fallback for sent photos
 12. **Voice must have stop** — every speaking state needs a stop mechanism
 
+## Recent Changes — Session 2026-03-17 (Session 3)
+
+### Login Page Redesign
+- **Before**: Simple "Connect Wallet" button → paste TextInput. Ghost emoji (👻) as icon
+- **After**: Full branded login page with:
+  - **G!itch logo** at top (from assets/aiglitch-logo.jpg) with glitch shake animation
+  - **Animated cosmic background** — 20 floating particles (purple/cyan), pulsing radial glows, different every time app opens
+  - **3 branded wallet buttons**: Phantom (purple 👻), Solflare (orange 🔥), Jupiter (green 🪐)
+  - **Wallet-specific paste flow** — shows selected wallet badge, disabled Connect button until valid address
+  - **2x2 perks grid** — AI Bestie, $GLITCH, Feed & Care, Hatch
+  - **Entrance animations** — logo fades in first, then title, then buttons (sequenced)
+- File changed: `src/screens/WalletScreen.tsx`
+
+### New Screens Added (Session 2-3)
+- **AdminScreen** (`src/screens/AdminScreen.tsx`) — FaceID-gated admin panel with tabs: Overview, Personas, Users, Swaps, System, Tools, Secrets
+- **ContentStudioScreen** (`src/screens/ContentStudioScreen.tsx`) — AI content generation, media uploads to blob storage, media library
+
+### App Store Build & EAS Configuration
+- **iOS Bundle ID**: `app.aiglitch.bestie`
+- **Apple Team**: PALMERSTON SHIPPING & LOGISTIC PTY LTD (4FT68E9XCG)
+- **Apple ID**: sfrench1@bigpond.net.au
+- **ASC App ID**: 6760682894
+- First App Store build submitted successfully
+- TestFlight submission completed
+
+---
+
+## Developer Cheat Sheet (for non-devs!)
+
+### After code changes are pushed, get them on your device:
+```bash
+git fetch origin main
+git pull origin main
+npm install
+eas build --profile preview --platform ios
+```
+
+### If you get merge conflicts:
+```bash
+git stash --include-untracked
+git pull origin main
+git stash pop
+# If conflicts appear, run:
+git checkout --ours .
+git add .
+git commit -m "Resolve conflicts"
+```
+
+### Common errors and fixes:
+
+| Error | Fix |
+|-------|-----|
+| `Failed to resolve plugin for module "expo-..."` | Run `npm install` first |
+| `Unable to install - integrity could not be verified` | Your device isn't registered. Run `eas build --profile preview --platform ios` and register device when prompted |
+| `Your local changes would be overwritten by merge` | Run `git stash --include-untracked` before pulling |
+| `not something we can merge` | Use `origin/` prefix: `git merge origin/branch-name` (need `git fetch` first) |
+| App shows old version after install | The build was queued before code was pushed. Pull latest code, then build again |
+| `exited with non-zero code` on eas build | Usually missing dependencies. Run `npm install` |
+
+### Build types:
+- **Preview** (for testing on your devices): `eas build --profile preview --platform ios`
+- **Production** (for App Store): `eas build --profile production --platform ios`
+- **Submit to App Store**: `eas submit --platform ios`
+
+### Device registration:
+- Devices must be registered in provisioning profile to install preview builds
+- Currently registered: iPad (UDID: 00008132-001C105E3E85001C)
+- To add iPhone: run preview build, EAS will prompt to register new device
+- After registering, a new provisioning profile is created automatically
+
+---
+
+## Error Log — Session 2026-03-17
+
+### "Unable to install - integrity could not be verified"
+- **When**: Trying to install .ipa downloaded from EAS artifacts link on iPhone
+- **Cause**: App Store builds (.ipa) are signed for Apple review, not for direct device install. Also, iPhone was not in the provisioning profile (only iPad was registered)
+- **Fix**: Use `eas build --profile preview` (not production) and register device during build
+
+### "Failed to resolve plugin for module expo-local-authentication"
+- **When**: Running `eas build` after merging new code
+- **Cause**: Dependencies not installed — `node_modules` was missing or outdated after merge
+- **Fix**: Run `npm install` before `eas build`
+
+### Merge conflict after git stash pop
+- **When**: Stashing local changes, merging remote branch, then popping stash
+- **Cause**: Both local changes and remote branch modified same files (app.json, eas.json, screen files)
+- **Fix**: `git checkout --ours <files>` to keep merged version, then `git add .` and commit
+
+### "not something we can merge"
+- **When**: Running `git merge claude/branch-name` without fetching first
+- **Cause**: Branch only exists on remote (GitHub), not fetched locally
+- **Fix**: `git fetch origin branch-name` first, then `git merge origin/branch-name` (with `origin/` prefix)
+
+---
+
 ## Future Features (Planned)
+- **EAS Update**: Over-the-air JS updates without rebuilding (eliminates build queue waits)
+- **Deep link wallet connect**: Real Phantom/Solflare app integration (now possible with standalone builds)
 - **Personal Assistant abilities**: Weather, crypto prices, news, reminders, to-do lists, web search
 - **Push notifications**: Reminders, crypto alerts, bestie check-ins, news alerts
 - **Siri Shortcuts**: Summon bestie via Siri (requires standalone build)
 - **Email access**: Read/summarize emails (requires OAuth — standalone build)
-- **Phantom React Native SDK**: Full wallet connect + transaction signing (requires standalone build)
 - **Alarm/Calendar integration**: Requires standalone build
 - **Digital Void video posts**: Enable video content in social feed (currently text-only)

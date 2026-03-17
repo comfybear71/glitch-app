@@ -634,3 +634,125 @@ export function deleteMedia(sessionId: string, walletAddress: string, blobKey: s
     }),
   });
 }
+
+// ── Social Media Spreading ──
+
+export function spreadPost(walletAddress: string, postId: string) {
+  return fetchJSON<{ success: boolean; results?: any }>(`/api/admin/spread?wallet_address=${encodeURIComponent(walletAddress)}`, {
+    method: "POST",
+    body: JSON.stringify({ post_id: postId, wallet_address: walletAddress }),
+  });
+}
+
+export function spreadCustomContent(walletAddress: string, text: string, mediaUrl?: string, mediaType?: string) {
+  return fetchJSON<{ success: boolean; results?: any }>(`/api/admin/spread?wallet_address=${encodeURIComponent(walletAddress)}`, {
+    method: "POST",
+    body: JSON.stringify({ text, media_url: mediaUrl, media_type: mediaType, wallet_address: walletAddress }),
+  });
+}
+
+export function getSpreadHistory(walletAddress: string) {
+  return fetchJSON<{ spreads: any[] }>(`/api/admin/spread?wallet_address=${encodeURIComponent(walletAddress)}`);
+}
+
+// ── Admin Hatching ──
+
+export function adminHatch(
+  walletAddress: string,
+  mode: "custom" | "random",
+  meatbagName: string,
+  opts?: { display_name?: string; personality_hint?: string; persona_type?: string; avatar_emoji?: string }
+) {
+  return fetchJSON<{ success: boolean; persona?: any; message?: string }>(`/api/admin/hatch-admin?wallet_address=${encodeURIComponent(walletAddress)}`, {
+    method: "POST",
+    body: JSON.stringify({ mode, meatbag_name: meatbagName, wallet_address: walletAddress, ...opts }),
+  });
+}
+
+export function getHatchedPersonas(walletAddress: string) {
+  return fetchJSON<{ personas: any[] }>(`/api/admin/hatch-admin?wallet_address=${encodeURIComponent(walletAddress)}`);
+}
+
+// ── Cron Control ──
+
+export function getCronStatus(walletAddress: string) {
+  return fetchJSON<{ jobs: any[] }>(`/api/admin/cron-control?wallet_address=${encodeURIComponent(walletAddress)}`);
+}
+
+export function triggerCron(walletAddress: string, job: string) {
+  return fetchJSON<{ success: boolean; message?: string }>(`/api/admin/cron-control?wallet_address=${encodeURIComponent(walletAddress)}`, {
+    method: "POST",
+    body: JSON.stringify({ job, wallet_address: walletAddress }),
+  });
+}
+
+// ── Coin Economy ──
+
+export function getCoinEconomy(walletAddress: string) {
+  return fetchJSON<{ economy: any }>(`/api/admin/coins?wallet_address=${encodeURIComponent(walletAddress)}`);
+}
+
+export function adminAwardCoins(walletAddress: string, sessionId: string, amount: number) {
+  return fetchJSON<{ success: boolean; message?: string }>(`/api/admin/coins?wallet_address=${encodeURIComponent(walletAddress)}`, {
+    method: "POST",
+    body: JSON.stringify({ action: "award", session_id: sessionId, amount, wallet_address: walletAddress }),
+  });
+}
+
+// ── Marketing / Posters ──
+
+export function generatePoster(walletAddress: string) {
+  return fetchJSON<{ success: boolean; url?: string; message?: string }>(`/api/admin/mktg?wallet_address=${encodeURIComponent(walletAddress)}`, {
+    method: "POST",
+    body: JSON.stringify({ action: "generate_poster", wallet_address: walletAddress }),
+  });
+}
+
+export function generateHeroImage(walletAddress: string) {
+  return fetchJSON<{ success: boolean; url?: string; message?: string }>(`/api/admin/mktg?wallet_address=${encodeURIComponent(walletAddress)}`, {
+    method: "POST",
+    body: JSON.stringify({ action: "generate_hero", wallet_address: walletAddress }),
+  });
+}
+
+export function getMarketingStats(walletAddress: string) {
+  return fetchJSON<{ stats: any }>(`/api/admin/mktg?action=stats&wallet_address=${encodeURIComponent(walletAddress)}`);
+}
+
+// ── Director Movies ──
+
+export function triggerDirectorMovie(walletAddress: string, opts?: { genre?: string; director?: string; concept?: string }) {
+  return fetchJSON<{ success: boolean; job_id?: string; message?: string }>(`/api/generate-director-movie?wallet_address=${encodeURIComponent(walletAddress)}`, {
+    method: "POST",
+    body: JSON.stringify({ ...opts, wallet_address: walletAddress }),
+  });
+}
+
+// ── BUDJU Trading ──
+
+export function getBudjuDashboard(walletAddress: string) {
+  return fetchJSON<{ dashboard: any }>(`/api/admin/budju-trading?action=dashboard&wallet_address=${encodeURIComponent(walletAddress)}`);
+}
+
+export function budjuAction(walletAddress: string, action: string, params?: Record<string, any>) {
+  return fetchJSON<{ success: boolean; data?: any; message?: string }>(`/api/admin/budju-trading?wallet_address=${encodeURIComponent(walletAddress)}`, {
+    method: "POST",
+    body: JSON.stringify({ action, wallet_address: walletAddress, ...params }),
+  });
+}
+
+// ── Persona Management ──
+
+export function generatePersonaAvatar(walletAddress: string, personaId: string) {
+  return fetchJSON<{ success: boolean; avatar_url?: string; message?: string }>(`/api/admin/persona-avatar?wallet_address=${encodeURIComponent(walletAddress)}`, {
+    method: "POST",
+    body: JSON.stringify({ persona_id: personaId, use_grok: true, wallet_address: walletAddress }),
+  });
+}
+
+export function animatePersona(walletAddress: string, personaId: string) {
+  return fetchJSON<{ success: boolean; animation_url?: string; message?: string }>(`/api/admin/animate-persona?wallet_address=${encodeURIComponent(walletAddress)}`, {
+    method: "POST",
+    body: JSON.stringify({ persona_id: personaId, wallet_address: walletAddress }),
+  });
+}

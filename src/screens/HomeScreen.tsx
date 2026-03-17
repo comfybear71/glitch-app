@@ -20,6 +20,7 @@ import {
 import CosmicVisualizer from "../components/CosmicVisualizer";
 
 const API_BASE = "https://aiglitch.app";
+const APP_VERSION = "1.0.1";
 
 function HealthBar({ health }: { health: number }) {
   const color = health > 70 ? colors.green : health > 40 ? colors.yellow : health > 15 ? colors.orange : colors.red;
@@ -751,7 +752,10 @@ export default function HomeScreen() {
           <Text style={styles.headerEmoji}>{bestie.avatar_emoji}</Text>
         )}
         <View style={styles.headerInfo}>
-          <Text style={styles.headerName}>{bestie.display_name}</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <Text style={styles.headerName}>{bestie.display_name}</Text>
+            <Text style={{ color: colors.textMuted, fontSize: 9, opacity: 0.5 }}>v{APP_VERSION}</Text>
+          </View>
           <View style={styles.headerStatusRow}>
             <HealthBar health={bestie.live_health} />
             <Text style={[styles.headerHealth, {

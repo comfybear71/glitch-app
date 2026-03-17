@@ -398,7 +398,7 @@ The app is tested with two wallets that serve different roles:
 - **Problem**: Admin access was granted to whoever connected first ("first wallet becomes admin"), which was insecure and unpredictable
 - **Fix**: Changed admin authentication to check against a hardcoded admin wallet address: `AEWvE2xXaHSGdGCaCArb2PWdKS7K9RwoCRV7CT2CJTWq`. Only this wallet can access the admin panel
 - **File changed**: `src/screens/AdminScreen.tsx`
-- **OUTSTANDING**: Server-side admin auth still needs updating. The backend `/api/admin/stats` endpoint returns 403 because it does not yet whitelist wallet `AEWvE2xXaHSGdGCaCArb2PWdKS7K9RwoCRV7CT2CJTWq`. The backend needs to be updated to recognize this wallet as an admin
+- **RESOLVED**: Backend admin auth updated — `src/lib/admin-auth.ts` `isAdminAuthenticated()` now accepts wallet-based auth alongside cookie auth. The `ADMIN_WALLET` env var is set in Vercel to `AEWvE2xXaHSGdGCaCArb2PWdKS7K9RwoCRV7CT2CJTWq`. All 42 admin route handlers pass the request through for wallet auth. Mobile app's `?wallet_address=` query param now authenticates correctly
 
 ### xAI Account Documentation
 - Documented two xAI/X accounts in HANDOFF.md

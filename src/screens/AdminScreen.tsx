@@ -13,6 +13,13 @@ import {
   API_BASE, getAdminStats, getAdminPersonas, getAdminUsers,
   getAdminHealth, getAdminSwaps, adminAction, adminAnnounce,
   AdminStats, AdminPersona, AdminUser,
+  spreadPost, spreadCustomContent, getSpreadHistory,
+  adminHatch, getHatchedPersonas,
+  getCronStatus, triggerCron,
+  getCoinEconomy, adminAwardCoins,
+  generatePoster, generateHeroImage, getMarketingStats,
+  getBudjuDashboard, budjuAction,
+  generatePersonaAvatar, animatePersona,
 } from "../services/api";
 
 // ADMIN WALLET GATE — only this wallet can access admin panel
@@ -20,7 +27,7 @@ const ADMIN_WALLET = "AEWvE2xXaHSGdGCaCArb2PWdKS7K9RwoCRV7CT2CJTWq";
 const ADMIN_WALLET_KEY = "aiglitch-admin-wallet";
 const ADMIN_PIN_KEY = "aiglitch-admin-pin";
 
-type Tab = "overview" | "personas" | "users" | "swaps" | "system" | "tools" | "secrets";
+type Tab = "overview" | "personas" | "users" | "swaps" | "system" | "tools" | "secrets" | "spread" | "hatch" | "cron" | "coins" | "mktg" | "budju";
 
 function StatCard({ label, value, color, sub }: { label: string; value: string | number; color?: string; sub?: string }) {
   return (
@@ -71,6 +78,40 @@ export default function AdminScreen() {
   const [secrets, setSecrets] = useState<Record<string, string>>({});
   const [newSecretKey, setNewSecretKey] = useState("");
   const [newSecretValue, setNewSecretValue] = useState("");
+
+  // Spread state
+  const [spreadText, setSpreadText] = useState("");
+  const [spreadPostId, setSpreadPostId] = useState("");
+  const [spreadHistory, setSpreadHistory] = useState<any[]>([]);
+  const [spreading, setSpreading] = useState(false);
+
+  // Hatch state
+  const [hatchMode, setHatchMode] = useState<"custom" | "random">("random");
+  const [hatchMeatbag, setHatchMeatbag] = useState("");
+  const [hatchDisplayName, setHatchDisplayName] = useState("");
+  const [hatchPersonality, setHatchPersonality] = useState("");
+  const [hatchType, setHatchType] = useState("");
+  const [hatchEmoji, setHatchEmoji] = useState("");
+  const [hatchedPersonas, setHatchedPersonas] = useState<any[]>([]);
+  const [hatching, setHatching] = useState(false);
+
+  // Cron state
+  const [cronJobs, setCronJobs] = useState<any[]>([]);
+  const [cronLoading, setCronLoading] = useState(false);
+
+  // Coins state
+  const [coinEconomy, setCoinEconomy] = useState<any>(null);
+  const [awardSessionId, setAwardSessionId] = useState("");
+  const [awardAmount, setAwardAmount] = useState("");
+  const [awarding, setAwarding] = useState(false);
+
+  // Marketing state
+  const [mktgStats, setMktgStats] = useState<any>(null);
+  const [mktgGenerating, setMktgGenerating] = useState(false);
+
+  // BUDJU state
+  const [budjuDashboard, setBudjuDashboard] = useState<any>(null);
+  const [budjuLoading, setBudjuLoading] = useState(false);
 
   // Check if wallet is admin — must match the designated admin wallet
   useEffect(() => {
@@ -206,6 +247,40 @@ export default function AdminScreen() {
         case "swaps": {
           const data = await getAdminSwaps(sessionId, walletAddress);
           setSwapStats(data.stats || null);
+          break;
+        }
+        case "spread": {
+          const data = await getSpreadHistory(walletAddress);
+          setSpreadHistory((data as any).spreads || (data as any).history || []);
+          break;
+        }
+        case "hatch": {
+          const data = await getHatchedPersonas(walletAddress);
+          setHatchedPersonas((data as any).personas || []);
+          break;
+        }
+        case "cron": {
+          setCronLoading(true);
+          const data = await getCronStatus(walletAddress);
+          setCronJobs((data as any).jobs || []);
+          setCronLoading(false);
+          break;
+        }
+        case "coins": {
+          const data = await getCoinEconomy(walletAddress);
+          setCoinEconomy(data);
+          break;
+        }
+        case "mktg": {
+          const data = await getMarketingStats(walletAddress);
+          setMktgStats((data as any).stats || data);
+          break;
+        }
+        case "budju": {
+          setBudjuLoading(true);
+          const data = await getBudjuDashboard(walletAddress);
+          setBudjuDashboard((data as any).dashboard || data);
+          setBudjuLoading(false);
           break;
         }
       }
@@ -570,6 +645,12 @@ export default function AdminScreen() {
     { key: "swaps", emoji: "💰", label: "Swaps" },
     { key: "system", emoji: "🔧", label: "System" },
     { key: "tools", emoji: "🛠", label: "Tools" },
+    { key: "spread", emoji: "📡", label: "Spread" },
+    { key: "hatch", emoji: "🥚", label: "Hatch" },
+    { key: "cron", emoji: "⏰", label: "Cron" },
+    { key: "coins", emoji: "🪙", label: "Coins" },
+    { key: "mktg", emoji: "🎨", label: "Marketing" },
+    { key: "budju", emoji: "💹", label: "BUDJU" },
     { key: "secrets", emoji: "🔐", label: "Secrets" },
   ];
 
@@ -622,7 +703,47 @@ export default function AdminScreen() {
                   <Text style={styles.listName}>{p.display_name}</Text>
                   <Text style={styles.listMeta}>@{p.username} · {p.persona_type} · {p.message_count} msgs</Text>
                 </View>
-                <View style={[styles.statusDot, { backgroundColor: p.is_active ? colors.green : colors.red }]} />
+                <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
+                  <TouchableOpacity
+                    style={{ backgroundColor: "rgba(124,58,237,0.15)", borderRadius: 8, paddingHorizontal: 8, paddingVertical: 6 }}
+                    onPress={() => {
+                      Alert.alert("Generate Avatar", `Create AI avatar for ${p.display_name}?`, [
+                        { text: "Cancel", style: "cancel" },
+                        { text: "Generate", onPress: async () => {
+                          try {
+                            const res = await generatePersonaAvatar(walletAddress!, p.id);
+                            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                            Alert.alert("Avatar Generated!", res.message || (res.avatar_url ? `URL: ${res.avatar_url}` : "Done!"));
+                          } catch (e: any) {
+                            Alert.alert("Error", e?.message || "Failed");
+                          }
+                        }},
+                      ]);
+                    }}
+                  >
+                    <Text style={{ fontSize: 14 }}>🎨</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={{ backgroundColor: "rgba(6,182,212,0.15)", borderRadius: 8, paddingHorizontal: 8, paddingVertical: 6 }}
+                    onPress={() => {
+                      Alert.alert("Animate Persona", `Create animation for ${p.display_name}?`, [
+                        { text: "Cancel", style: "cancel" },
+                        { text: "Animate", onPress: async () => {
+                          try {
+                            const res = await animatePersona(walletAddress!, p.id);
+                            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                            Alert.alert("Animation Created!", res.message || (res.animation_url ? `URL: ${res.animation_url}` : "Done!"));
+                          } catch (e: any) {
+                            Alert.alert("Error", e?.message || "Failed");
+                          }
+                        }},
+                      ]);
+                    }}
+                  >
+                    <Text style={{ fontSize: 14 }}>🎬</Text>
+                  </TouchableOpacity>
+                  <View style={[styles.statusDot, { backgroundColor: p.is_active ? colors.green : colors.red }]} />
+                </View>
               </View>
             ))}
             {personas.length === 0 && <Text style={styles.emptyText}>Loading personas...</Text>}
@@ -724,6 +845,431 @@ export default function AdminScreen() {
                 key={a.action}
                 style={styles.actionCard}
                 onPress={() => runAction(a.action, a.label)}
+              >
+                <Text style={styles.actionEmoji}>{a.emoji}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.actionTitle}>{a.label}</Text>
+                  <Text style={styles.actionDesc}>{a.desc}</Text>
+                </View>
+                <Text style={styles.actionChevron}>›</Text>
+              </TouchableOpacity>
+            ))}
+          </>
+        )}
+
+        {/* Spread Tab */}
+        {activeTab === "spread" && (
+          <>
+            <Text style={styles.sectionTitle}>Social Media Spread</Text>
+
+            {/* Spread existing post */}
+            <View style={styles.toolCard}>
+              <Text style={styles.toolTitle}>📡 Spread Existing Post</Text>
+              <Text style={styles.toolDesc}>Post an existing G!itch post to all social platforms</Text>
+              <TextInput
+                style={[styles.toolInput, { minHeight: 44 }]}
+                value={spreadPostId}
+                onChangeText={setSpreadPostId}
+                placeholder="Post ID..."
+                placeholderTextColor={colors.textMuted}
+                maxLength={100}
+              />
+              <TouchableOpacity
+                style={[styles.toolBtn, (!spreadPostId.trim() || spreading) && { opacity: 0.4 }]}
+                onPress={async () => {
+                  if (!spreadPostId.trim() || spreading || !walletAddress) return;
+                  setSpreading(true);
+                  try {
+                    const res = await spreadPost(walletAddress, spreadPostId.trim());
+                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                    Alert.alert("Spread!", JSON.stringify(res, null, 2));
+                    setSpreadPostId("");
+                  } catch (e: any) {
+                    Alert.alert("Error", e?.message || "Spread failed");
+                  }
+                  setSpreading(false);
+                }}
+                disabled={!spreadPostId.trim() || spreading}
+              >
+                <Text style={styles.toolBtnText}>{spreading ? "Spreading..." : "Spread Post"}</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Spread custom content */}
+            <View style={[styles.toolCard, { marginTop: 12 }]}>
+              <Text style={styles.toolTitle}>✍️ Spread Custom Content</Text>
+              <Text style={styles.toolDesc}>Post custom text to all platforms</Text>
+              <TextInput
+                style={styles.toolInput}
+                value={spreadText}
+                onChangeText={setSpreadText}
+                placeholder="Write your message..."
+                placeholderTextColor={colors.textMuted}
+                multiline
+                maxLength={500}
+              />
+              <TouchableOpacity
+                style={[styles.toolBtn, (!spreadText.trim() || spreading) && { opacity: 0.4 }]}
+                onPress={async () => {
+                  if (!spreadText.trim() || spreading || !walletAddress) return;
+                  setSpreading(true);
+                  try {
+                    const res = await spreadCustomContent(walletAddress, spreadText.trim());
+                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                    Alert.alert("Spread!", "Content posted to all platforms");
+                    setSpreadText("");
+                  } catch (e: any) {
+                    Alert.alert("Error", e?.message || "Spread failed");
+                  }
+                  setSpreading(false);
+                }}
+                disabled={!spreadText.trim() || spreading}
+              >
+                <Text style={styles.toolBtnText}>{spreading ? "Posting..." : "Post to All Platforms"}</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Spread history */}
+            <Text style={[styles.sectionTitle, { marginTop: 20 }]}>Spread History ({spreadHistory.length})</Text>
+            {spreadHistory.length === 0 && <Text style={styles.emptyText}>No spread history yet</Text>}
+            {spreadHistory.map((s: any, i: number) => (
+              <View key={i} style={styles.listItem}>
+                <Text style={styles.listEmoji}>📡</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.listName} numberOfLines={1}>{s.text || s.post_id || "Spread"}</Text>
+                  <Text style={styles.listMeta}>{s.created_at ? new Date(s.created_at).toLocaleDateString() : "—"}</Text>
+                </View>
+              </View>
+            ))}
+          </>
+        )}
+
+        {/* Hatch Tab */}
+        {activeTab === "hatch" && (
+          <>
+            <Text style={styles.sectionTitle}>Admin Persona Hatching</Text>
+
+            <View style={styles.toolCard}>
+              <Text style={styles.toolTitle}>🥚 Hatch a New Persona</Text>
+              <Text style={styles.toolDesc}>Create a persona without payment (admin-only)</Text>
+
+              {/* Mode toggle */}
+              <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
+                {(["random", "custom"] as const).map((m) => (
+                  <TouchableOpacity
+                    key={m}
+                    style={[styles.modeChip, hatchMode === m && styles.modeChipActive]}
+                    onPress={() => { setHatchMode(m); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+                  >
+                    <Text style={[styles.modeChipText, hatchMode === m && styles.modeChipTextActive]}>
+                      {m === "random" ? "🎲 Random" : "✏️ Custom"}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <TextInput
+                style={[styles.toolInput, { minHeight: 44, marginTop: 12 }]}
+                value={hatchMeatbag}
+                onChangeText={setHatchMeatbag}
+                placeholder="Meatbag name (owner)..."
+                placeholderTextColor={colors.textMuted}
+                maxLength={50}
+              />
+
+              {hatchMode === "custom" && (
+                <>
+                  <TextInput
+                    style={[styles.toolInput, { minHeight: 44, marginTop: 8 }]}
+                    value={hatchDisplayName}
+                    onChangeText={setHatchDisplayName}
+                    placeholder="Display name..."
+                    placeholderTextColor={colors.textMuted}
+                    maxLength={50}
+                  />
+                  <TextInput
+                    style={[styles.toolInput, { minHeight: 44, marginTop: 8 }]}
+                    value={hatchPersonality}
+                    onChangeText={setHatchPersonality}
+                    placeholder="Personality hint..."
+                    placeholderTextColor={colors.textMuted}
+                    maxLength={200}
+                  />
+                  <TextInput
+                    style={[styles.toolInput, { minHeight: 44, marginTop: 8 }]}
+                    value={hatchType}
+                    onChangeText={setHatchType}
+                    placeholder="Persona type (e.g. artist, trader)..."
+                    placeholderTextColor={colors.textMuted}
+                    maxLength={50}
+                  />
+                  <TextInput
+                    style={[styles.toolInput, { minHeight: 44, marginTop: 8 }]}
+                    value={hatchEmoji}
+                    onChangeText={setHatchEmoji}
+                    placeholder="Avatar emoji (e.g. 🤖)..."
+                    placeholderTextColor={colors.textMuted}
+                    maxLength={4}
+                  />
+                </>
+              )}
+
+              <TouchableOpacity
+                style={[styles.toolBtn, { marginTop: 14 }, (!hatchMeatbag.trim() || hatching) && { opacity: 0.4 }]}
+                onPress={async () => {
+                  if (!hatchMeatbag.trim() || hatching || !walletAddress) return;
+                  setHatching(true);
+                  try {
+                    const opts = hatchMode === "custom" ? {
+                      display_name: hatchDisplayName.trim() || undefined,
+                      personality_hint: hatchPersonality.trim() || undefined,
+                      persona_type: hatchType.trim() || undefined,
+                      avatar_emoji: hatchEmoji.trim() || undefined,
+                    } : undefined;
+                    const res = await adminHatch(walletAddress, hatchMode, hatchMeatbag.trim(), opts);
+                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                    Alert.alert("Hatched!", res.message || "New persona created!");
+                    setHatchMeatbag(""); setHatchDisplayName(""); setHatchPersonality(""); setHatchType(""); setHatchEmoji("");
+                    // Refresh list
+                    const data = await getHatchedPersonas(walletAddress);
+                    setHatchedPersonas((data as any).personas || []);
+                  } catch (e: any) {
+                    Alert.alert("Hatch Failed", e?.message || "Could not hatch persona");
+                  }
+                  setHatching(false);
+                }}
+                disabled={!hatchMeatbag.trim() || hatching}
+              >
+                <Text style={styles.toolBtnText}>{hatching ? "Hatching..." : "🥚 Hatch Persona"}</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={[styles.sectionTitle, { marginTop: 20 }]}>Hatched Personas ({hatchedPersonas.length})</Text>
+            {hatchedPersonas.length === 0 && <Text style={styles.emptyText}>No admin-hatched personas yet</Text>}
+            {hatchedPersonas.map((p: any, i: number) => (
+              <View key={p.id || i} style={styles.listItem}>
+                <Text style={styles.listEmoji}>{p.avatar_emoji || "🤖"}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.listName}>{p.display_name || p.username || "Persona"}</Text>
+                  <Text style={styles.listMeta}>{p.persona_type || "—"} · {p.meatbag_name || "—"}</Text>
+                </View>
+              </View>
+            ))}
+          </>
+        )}
+
+        {/* Cron Tab */}
+        {activeTab === "cron" && (
+          <>
+            <Text style={styles.sectionTitle}>Cron Jobs</Text>
+            {cronLoading && <ActivityIndicator color={colors.purple} style={{ marginTop: 20 }} />}
+            {cronJobs.length === 0 && !cronLoading && <Text style={styles.emptyText}>No cron jobs found</Text>}
+            {cronJobs.map((job: any, i: number) => (
+              <View key={job.name || i} style={styles.actionCard}>
+                <Text style={styles.actionEmoji}>⏰</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.actionTitle}>{job.name || job.job || `Job ${i + 1}`}</Text>
+                  <Text style={styles.actionDesc}>
+                    {job.schedule || "—"} · Last: {job.last_run ? new Date(job.last_run).toLocaleString() : "Never"}
+                  </Text>
+                  {job.status && (
+                    <Text style={[styles.actionDesc, { color: job.status === "ok" ? colors.green : colors.yellow }]}>
+                      Status: {job.status}
+                    </Text>
+                  )}
+                </View>
+                <TouchableOpacity
+                  style={{ backgroundColor: colors.purple, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 }}
+                  onPress={() => {
+                    Alert.alert("Trigger Cron", `Run "${job.name || job.job}" now?`, [
+                      { text: "Cancel", style: "cancel" },
+                      {
+                        text: "Run",
+                        onPress: async () => {
+                          try {
+                            const res = await triggerCron(walletAddress!, job.name || job.job);
+                            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                            Alert.alert("Triggered!", res.message || "Cron job triggered");
+                          } catch (e: any) {
+                            Alert.alert("Error", e?.message || "Failed to trigger");
+                          }
+                        },
+                      },
+                    ]);
+                  }}
+                >
+                  <Text style={{ color: colors.text, fontSize: 12, fontWeight: "700" }}>Run</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+          </>
+        )}
+
+        {/* Coins Tab */}
+        {activeTab === "coins" && (
+          <>
+            <Text style={styles.sectionTitle}>Coin Economy</Text>
+            {coinEconomy && (
+              <View style={styles.statsGrid}>
+                <StatCard label="Total Supply" value={coinEconomy.total_supply?.toLocaleString() || coinEconomy.economy?.total_supply?.toLocaleString() || "—"} color={colors.cyan} />
+                <StatCard label="Circulating" value={coinEconomy.circulating?.toLocaleString() || coinEconomy.economy?.circulating?.toLocaleString() || "—"} color={colors.green} />
+                <StatCard label="Awarded" value={coinEconomy.total_awarded?.toLocaleString() || coinEconomy.economy?.total_awarded?.toLocaleString() || "—"} color={colors.purpleLight} />
+                <StatCard label="Holders" value={coinEconomy.holders?.toLocaleString() || coinEconomy.economy?.holders?.toLocaleString() || "—"} color={colors.yellow} />
+              </View>
+            )}
+            {!coinEconomy && <Text style={styles.emptyText}>Loading economy data...</Text>}
+
+            <Text style={[styles.sectionTitle, { marginTop: 20 }]}>Award Coins</Text>
+            <View style={styles.toolCard}>
+              <Text style={styles.toolTitle}>🪙 Award Coins to User</Text>
+              <Text style={styles.toolDesc}>Grant coins to a user session</Text>
+              <TextInput
+                style={[styles.toolInput, { minHeight: 44, marginTop: 8 }]}
+                value={awardSessionId}
+                onChangeText={setAwardSessionId}
+                placeholder="User session ID..."
+                placeholderTextColor={colors.textMuted}
+                maxLength={100}
+              />
+              <TextInput
+                style={[styles.toolInput, { minHeight: 44, marginTop: 8 }]}
+                value={awardAmount}
+                onChangeText={setAwardAmount}
+                placeholder="Amount..."
+                placeholderTextColor={colors.textMuted}
+                keyboardType="numeric"
+                maxLength={10}
+              />
+              <TouchableOpacity
+                style={[styles.toolBtn, { marginTop: 12 }, (!awardSessionId.trim() || !awardAmount.trim() || awarding) && { opacity: 0.4 }]}
+                onPress={async () => {
+                  if (!awardSessionId.trim() || !awardAmount.trim() || awarding || !walletAddress) return;
+                  const amount = parseInt(awardAmount, 10);
+                  if (isNaN(amount) || amount <= 0) { Alert.alert("Invalid", "Enter a valid amount"); return; }
+                  setAwarding(true);
+                  try {
+                    const res = await adminAwardCoins(walletAddress, awardSessionId.trim(), amount);
+                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                    Alert.alert("Awarded!", res.message || `${amount} coins awarded`);
+                    setAwardSessionId(""); setAwardAmount("");
+                  } catch (e: any) {
+                    Alert.alert("Error", e?.message || "Award failed");
+                  }
+                  setAwarding(false);
+                }}
+                disabled={!awardSessionId.trim() || !awardAmount.trim() || awarding}
+              >
+                <Text style={styles.toolBtnText}>{awarding ? "Awarding..." : "Award Coins"}</Text>
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
+
+        {/* Marketing Tab */}
+        {activeTab === "mktg" && (
+          <>
+            <Text style={styles.sectionTitle}>Marketing</Text>
+
+            {mktgStats && (
+              <View style={styles.statsGrid}>
+                <StatCard label="Posters" value={mktgStats.posters_generated || mktgStats.total_posters || "—"} color={colors.purpleLight} />
+                <StatCard label="Hero Images" value={mktgStats.heroes_generated || mktgStats.total_heroes || "—"} color={colors.cyan} />
+              </View>
+            )}
+
+            <Text style={[styles.sectionTitle, { marginTop: 20 }]}>Generate</Text>
+
+            <TouchableOpacity
+              style={[styles.actionCard, mktgGenerating && { opacity: 0.5 }]}
+              onPress={async () => {
+                if (mktgGenerating || !walletAddress) return;
+                setMktgGenerating(true);
+                try {
+                  const res = await generatePoster(walletAddress);
+                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                  Alert.alert("Poster Generated!", res.message || (res.url ? `URL: ${res.url}` : "Done!"));
+                } catch (e: any) {
+                  Alert.alert("Error", e?.message || "Generation failed");
+                }
+                setMktgGenerating(false);
+              }}
+              disabled={mktgGenerating}
+            >
+              <Text style={styles.actionEmoji}>📢</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.actionTitle}>{mktgGenerating ? "Generating..." : "Generate Promo Poster"}</Text>
+                <Text style={styles.actionDesc}>AI-generated promotional poster</Text>
+              </View>
+              <Text style={styles.actionChevron}>›</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.actionCard, mktgGenerating && { opacity: 0.5 }]}
+              onPress={async () => {
+                if (mktgGenerating || !walletAddress) return;
+                setMktgGenerating(true);
+                try {
+                  const res = await generateHeroImage(walletAddress);
+                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                  Alert.alert("Hero Image Generated!", res.message || (res.url ? `URL: ${res.url}` : "Done!"));
+                } catch (e: any) {
+                  Alert.alert("Error", e?.message || "Generation failed");
+                }
+                setMktgGenerating(false);
+              }}
+              disabled={mktgGenerating}
+            >
+              <Text style={styles.actionEmoji}>🖼</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.actionTitle}>{mktgGenerating ? "Generating..." : "Generate Hero Image"}</Text>
+                <Text style={styles.actionDesc}>Landing page hero banner</Text>
+              </View>
+              <Text style={styles.actionChevron}>›</Text>
+            </TouchableOpacity>
+          </>
+        )}
+
+        {/* BUDJU Tab */}
+        {activeTab === "budju" && (
+          <>
+            <Text style={styles.sectionTitle}>BUDJU Trading Dashboard</Text>
+            {budjuLoading && <ActivityIndicator color={colors.purple} style={{ marginTop: 20 }} />}
+            {budjuDashboard && !budjuLoading && (
+              <View style={styles.statsGrid}>
+                <StatCard label="BUDJU Price" value={budjuDashboard.price ? `$${Number(budjuDashboard.price).toFixed(4)}` : "—"} color={colors.cyan} />
+                <StatCard label="Volume 24h" value={budjuDashboard.volume_24h?.toLocaleString() || "—"} color={colors.green} />
+                <StatCard label="Total Trades" value={budjuDashboard.total_trades?.toLocaleString() || "—"} color={colors.purpleLight} />
+                <StatCard label="Holders" value={budjuDashboard.holders?.toLocaleString() || "—"} color={colors.yellow} />
+              </View>
+            )}
+            {!budjuDashboard && !budjuLoading && <Text style={styles.emptyText}>Loading BUDJU data...</Text>}
+
+            <Text style={[styles.sectionTitle, { marginTop: 20 }]}>Quick Actions</Text>
+            {[
+              { action: "refresh_prices", label: "Refresh Prices", emoji: "🔄", desc: "Re-fetch live BUDJU pricing" },
+              { action: "sync_holders", label: "Sync Holders", emoji: "👥", desc: "Update holder count" },
+              { action: "run_market_maker", label: "Run Market Maker", emoji: "🤖", desc: "Trigger market making bot" },
+            ].map((a) => (
+              <TouchableOpacity
+                key={a.action}
+                style={styles.actionCard}
+                onPress={() => {
+                  Alert.alert("Confirm", `Run "${a.label}"?`, [
+                    { text: "Cancel", style: "cancel" },
+                    {
+                      text: "Run",
+                      onPress: async () => {
+                        try {
+                          const res = await budjuAction(walletAddress!, a.action);
+                          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                          Alert.alert("Done", res.message || "Action completed");
+                        } catch (e: any) {
+                          Alert.alert("Error", e?.message || "Action failed");
+                        }
+                      },
+                    },
+                  ]);
+                }}
               >
                 <Text style={styles.actionEmoji}>{a.emoji}</Text>
                 <View style={{ flex: 1 }}>
@@ -1033,4 +1579,17 @@ const styles = StyleSheet.create({
   deployList: { width: "100%", marginTop: 16, gap: 6 },
   deployItem: { color: colors.textSecondary, fontSize: 13, lineHeight: 22 },
   deployNote: { color: colors.textMuted, fontSize: 11, textAlign: "center", marginTop: 16, fontStyle: "italic" },
+
+  // Mode chips (hatch tab)
+  modeChip: {
+    flex: 1, alignItems: "center", paddingVertical: 10,
+    borderRadius: 12, borderWidth: 1.5, borderColor: colors.border,
+    backgroundColor: "rgba(255,255,255,0.03)",
+  },
+  modeChipActive: {
+    borderColor: colors.purple,
+    backgroundColor: "rgba(124, 58, 237, 0.15)",
+  },
+  modeChipText: { color: colors.textMuted, fontSize: 13, fontWeight: "600" },
+  modeChipTextActive: { color: colors.purpleLight },
 });

@@ -13,11 +13,11 @@ import { usePhantomWallet } from "../hooks/usePhantomWallet";
 import CosmicVisualizer from "../components/CosmicVisualizer";
 import {
   API_BASE, generateContent, getContentJobStatus, getContentLibrary,
-  uploadMedia, getMediaLibrary, deleteMedia,
+  uploadMedia, getMediaLibrary, deleteMedia, triggerDirectorMovie,
   ContentType, DirectorStyle, ContentJob, MediaLibraryItem, UploadResult,
 } from "../services/api";
 
-type Tab = "create" | "library" | "uploads";
+type Tab = "create" | "library" | "uploads" | "movies";
 
 const CONTENT_TYPES: { key: ContentType; emoji: string; title: string; desc: string }[] = [
   { key: "hero_poster", emoji: "🖼", title: "Hero Poster", desc: "Main banner for your platform landing page" },
@@ -123,6 +123,12 @@ export default function ContentStudioScreen() {
   const [uploadsLoading, setUploadsLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadCategory, setUploadCategory] = useState("general");
+
+  // Director Movies state
+  const [movieGenre, setMovieGenre] = useState("");
+  const [movieDirector, setMovieDirector] = useState("");
+  const [movieConcept, setMovieConcept] = useState("");
+  const [movieGenerating, setMovieGenerating] = useState(false);
 
   // Animations
   const pulseAnim = useRef(new Animated.Value(0)).current;
@@ -391,6 +397,7 @@ export default function ContentStudioScreen() {
           { key: "create" as Tab, emoji: "🎨", label: "Create" },
           { key: "library" as Tab, emoji: "📚", label: "Library" },
           { key: "uploads" as Tab, emoji: "☁️", label: "Uploads" },
+          { key: "movies" as Tab, emoji: "🎥", label: "Movies" },
         ]).map((tab) => (
           <TouchableOpacity
             key={tab.key}
@@ -680,6 +687,76 @@ export default function ContentStudioScreen() {
                 </TouchableOpacity>
               </View>
             ))}
+          </>
+        )}
+
+        {/* ══ MOVIES TAB ══ */}
+        {activeTab === "movies" && (
+          <>
+            <Text style={styles.sectionTitle}>Director Movies</Text>
+            <Text style={{ color: colors.textSecondary, fontSize: 13, marginBottom: 16 }}>
+              Trigger AI-directed short films via the dedicated movie generation endpoint.
+            </Text>
+
+            <View style={styles.optionsSection}>
+              <Text style={styles.optionLabel}>Genre (optional)</Text>
+              <TextInput
+                style={styles.optionInputSmall}
+                value={movieGenre}
+                onChangeText={setMovieGenre}
+                placeholder="e.g. sci-fi, horror, comedy..."
+                placeholderTextColor={colors.textMuted}
+                maxLength={50}
+              />
+
+              <Text style={styles.optionLabel}>Director (optional)</Text>
+              <TextInput
+                style={styles.optionInputSmall}
+                value={movieDirector}
+                onChangeText={setMovieDirector}
+                placeholder="e.g. Kubrick, Tarantino, Lynch..."
+                placeholderTextColor={colors.textMuted}
+                maxLength={50}
+              />
+
+              <Text style={styles.optionLabel}>Concept (optional)</Text>
+              <TextInput
+                style={styles.optionInput}
+                value={movieConcept}
+                onChangeText={setMovieConcept}
+                placeholder="Describe the movie concept..."
+                placeholderTextColor={colors.textMuted}
+                multiline
+                maxLength={500}
+              />
+
+              <TouchableOpacity
+                style={[styles.generateBtn, movieGenerating && { opacity: 0.5 }]}
+                onPress={async () => {
+                  if (movieGenerating || !walletAddress) return;
+                  setMovieGenerating(true);
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+                  try {
+                    const opts: { genre?: string; director?: string; concept?: string } = {};
+                    if (movieGenre.trim()) opts.genre = movieGenre.trim();
+                    if (movieDirector.trim()) opts.director = movieDirector.trim();
+                    if (movieConcept.trim()) opts.concept = movieConcept.trim();
+                    const res = await triggerDirectorMovie(walletAddress, Object.keys(opts).length > 0 ? opts : undefined);
+                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                    Alert.alert("Movie Triggered!", res.message || (res.job_id ? `Job: ${res.job_id}` : "Generation started!"));
+                    setMovieGenre(""); setMovieDirector(""); setMovieConcept("");
+                  } catch (e: any) {
+                    Alert.alert("Error", e?.message || "Movie generation failed");
+                  }
+                  setMovieGenerating(false);
+                }}
+                disabled={movieGenerating}
+              >
+                <Text style={styles.generateBtnText}>
+                  {movieGenerating ? "🎬 Generating..." : "🎥 Generate Director Movie"}
+                </Text>
+              </TouchableOpacity>
+            </View>
           </>
         )}
 

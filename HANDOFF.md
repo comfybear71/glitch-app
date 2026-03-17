@@ -161,37 +161,80 @@ The master branch HomeScreen had `connect()` which set `isConnecting = true` but
 
 ---
 
+## CRITICAL PROJECT IDs — DO NOT CHANGE
+
+These values are required for EAS to work. If they get corrupted, everything breaks.
+
+```
+EAS Project ID:  418c0a46-e73f-42b1-b388-cb801ca7d798
+Expo Account:    comfybear (NOT comfybear71 — that's the GitHub username)
+Expo Slug:       glitch-bestie
+Bundle ID:       app.aiglitch.bestie
+Apple Team ID:   4FT68E9XCG
+Apple ID:        sfrench1@bigpond.net.au
+ASC App ID:      6760682894
+```
+
+In `app.json`, these MUST always be:
+```json
+"owner": "comfybear"
+"extra": { "eas": { "projectId": "418c0a46-e73f-42b1-b388-cb801ca7d798" } }
+"updates": { "url": "https://u.expo.dev/418c0a46-e73f-42b1-b388-cb801ca7d798" }
+```
+
+**WARNING TO AI AGENTS**: When merging branches or resolving conflicts on `app.json`, ALWAYS verify these values are correct. The `owner` and `projectId` fields are the #1 source of build errors. NEVER replace the UUID with a slug name.
+
+---
+
 ## Developer Cheat Sheet (for non-devs!)
 
-### After code changes are pushed, get them on your device:
+### THE GOLDEN RULE: Always run these 4 commands in order after pulling new code
 ```bash
-git fetch origin main
 git pull origin main
 npm install
 eas build --profile preview --platform ios
 ```
+Wait for build. Scan QR code on your device. Done.
 
-### If you get merge conflicts:
+### If VS Code opens during git pull:
+- Just close the VS Code tab/window
+- The git command will finish automatically
+
+### If git says "your local changes would be overwritten":
 ```bash
 git stash --include-untracked
 git pull origin main
 git stash pop
-# If conflicts appear, run:
+```
+If conflicts appear after stash pop:
+```bash
 git checkout --ours .
 git add .
+git stash drop
 git commit -m "Resolve conflicts"
 ```
+
+### If git says "not something we can merge":
+You need to fetch the branch first:
+```bash
+git fetch origin branch-name
+git merge origin/branch-name
+```
+Note the `origin/` prefix — that's required.
 
 ### Common errors and fixes:
 
 | Error | Fix |
 |-------|-----|
-| `Failed to resolve plugin for module "expo-..."` | Run `npm install` first |
-| `Unable to install - integrity could not be verified` | Your device isn't registered. Run `eas build --profile preview --platform ios` and register device when prompted |
+| `Failed to resolve plugin for module "expo-..."` | Run `npm install` — dependencies are missing |
+| `Unable to install - integrity could not be verified` | Device not registered. Run preview build, register device when prompted |
 | `Your local changes would be overwritten by merge` | Run `git stash --include-untracked` before pulling |
-| `not something we can merge` | Use `origin/` prefix: `git merge origin/branch-name` (need `git fetch` first) |
-| App shows old version after install | The build was queued before code was pushed. Pull latest code, then build again |
-| `exited with non-zero code` on eas build | Usually missing dependencies. Run `npm install` |
+| `not something we can merge` | Need `git fetch origin branch-name` first, then use `origin/` prefix |
+| `Invalid UUID appId` | The `projectId` in app.json is wrong. Must be `418c0a46-e73f-42b1-b388-cb801ca7d798` |
+| `You don't have permission to create a new project` | The `owner` in app.json is wrong. Must be `comfybear` (not `comfybear71`) |
+| App shows old version after install | Build was queued before code push. Pull latest, `npm install`, build again |
+| `exited with non-zero code` on eas build | Run `npm install` first |
+| VS Code opens during git pull | Just close VS Code, git will finish |
 
 ### Build types:
 - **Preview** (for testing on your devices): `eas build --profile preview --platform ios`
@@ -199,14 +242,27 @@ git commit -m "Resolve conflicts"
 - **Submit to App Store**: `eas submit --platform ios`
 
 ### Device registration:
-- Devices must be registered in provisioning profile to install preview builds
+- Each device must be registered ONCE in the provisioning profile
 - Currently registered: iPad (UDID: 00008132-001C105E3E85001C)
-- To add iPhone: run preview build, EAS will prompt to register new device
-- After registering, a new provisioning profile is created automatically
+- To add iPhone: run preview build, EAS will prompt "register new devices?" — say Yes
+- Scan the QR code ON THE DEVICE you want to register (one QR per device)
+- After registering, all future builds automatically include that device
+- The final install QR code works on ALL registered devices
 
 ---
 
 ## Error Log — Session 2026-03-17
+
+### "Invalid UUID appId" (EAS build & init failed)
+- **When**: Running any `eas` command after merging branches
+- **Cause**: During merge conflict resolution, the `projectId` in app.json got replaced with `"glitch-bestie"` (slug name) instead of the real UUID `"418c0a46-e73f-42b1-b388-cb801ca7d798"`. Same for the `updates.url` field. The `owner` field was also `"comfybear71"` (GitHub username) instead of `"comfybear"` (Expo account name)
+- **Fix**: Restored correct UUID in `extra.eas.projectId` and `updates.url`, changed owner to `"comfybear"`
+- **Prevention**: AI agents MUST verify app.json projectId, owner, and updates.url after ANY merge
+
+### "You don't have permission to create a new project"
+- **When**: Running `eas init` with empty projectId
+- **Cause**: projectId was cleared to empty string during troubleshooting, and owner was wrong
+- **Fix**: Set correct owner (`comfybear`) so EAS could find existing project, then restored UUID
 
 ### "Unable to install - integrity could not be verified"
 - **When**: Trying to install .ipa downloaded from EAS artifacts link on iPhone

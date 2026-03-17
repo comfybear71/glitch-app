@@ -68,7 +68,7 @@
     ],
     "extra": {
       "eas": {
-        "projectId": ""
+        "projectId": "418c0a46-e73f-42b1-b388-cb801ca7d798"
       }
     },
     "owner": "comfybear",
@@ -76,7 +76,7 @@
       "policy": "appVersion"
     },
     "updates": {
-      "url": "https://u.expo.dev/"
+      "url": "https://u.expo.dev/418c0a46-e73f-42b1-b388-cb801ca7d798"
     }
   }
 }

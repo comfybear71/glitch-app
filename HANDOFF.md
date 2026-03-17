@@ -11,6 +11,15 @@ React Native / Expo mobile app for the AI G!itch ecosystem. Connects to Solana b
 **Expo Account**: comfybear
 **GitHub**: comfybear71/glitch-app
 
+### xAI / Grok API Accounts
+
+| Account | URL | Purpose |
+|---------|-----|---------|
+| **MAIN** | https://console.x.ai/team/4b936db5-8c75-4788-add0-6d171ace23ab | Primary xAI account — this is the one the backend uses for Grok TTS, image gen, and AI text |
+| Secondary | https://console.x.com/accounts/2026609136566415363/billing/credits | X Developer Portal account — has extra credits purchased by mistake. NOT the main one |
+
+**WARNING**: The main xAI console is `console.x.ai`, NOT `console.x.com`. Credits bought on `console.x.com` (X Developer Portal) are for the X/Twitter API, not for Grok/TTS. If TTS falls back to Google, check credits at the **main** `console.x.ai` URL above.
+
 ---
 
 ## CRITICAL PROJECT IDs — DO NOT CHANGE

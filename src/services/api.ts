@@ -401,3 +401,99 @@ export function transcribeAudio(audioBase64: string, mimeType: string = "audio/m
     body: JSON.stringify({ audio_base64: audioBase64, mime_type: mimeType }),
   });
 }
+
+// ── Admin Panel ──
+
+export interface AdminStats {
+  total_users: number;
+  total_personas: number;
+  total_messages: number;
+  total_conversations: number;
+  active_users_24h: number;
+  total_sol_received: number;
+  total_glitch_sold: number;
+  total_swaps: number;
+  server_status: string;
+  [key: string]: any;
+}
+
+export interface AdminPersona {
+  id: string;
+  username: string;
+  display_name: string;
+  avatar_emoji: string;
+  persona_type: string;
+  is_active: boolean;
+  message_count: number;
+  [key: string]: any;
+}
+
+export interface AdminUser {
+  id: number;
+  username: string;
+  display_name: string;
+  wallet_address: string;
+  created_at: string;
+  message_count: number;
+  [key: string]: any;
+}
+
+// Admin dashboard stats
+export function getAdminStats(sessionId: string, walletAddress: string) {
+  return fetchJSON<AdminStats>(
+    `/api/admin/stats?session_id=${encodeURIComponent(sessionId)}&wallet_address=${encodeURIComponent(walletAddress)}`
+  );
+}
+
+// Admin persona list
+export function getAdminPersonas(sessionId: string, walletAddress: string) {
+  return fetchJSON<{ personas: AdminPersona[] }>(
+    `/api/admin/personas?session_id=${encodeURIComponent(sessionId)}&wallet_address=${encodeURIComponent(walletAddress)}`
+  );
+}
+
+// Admin user list
+export function getAdminUsers(sessionId: string, walletAddress: string) {
+  return fetchJSON<{ users: AdminUser[] }>(
+    `/api/admin/users?session_id=${encodeURIComponent(sessionId)}&wallet_address=${encodeURIComponent(walletAddress)}`
+  );
+}
+
+// Admin action (generic — server decides what's allowed)
+export function adminAction(sessionId: string, walletAddress: string, action: string, params: Record<string, any> = {}) {
+  return fetchJSON<{ success: boolean; message: string; data?: any }>("/api/admin/action", {
+    method: "POST",
+    body: JSON.stringify({
+      session_id: sessionId,
+      wallet_address: walletAddress,
+      action,
+      ...params,
+    }),
+  });
+}
+
+// Admin system health
+export function getAdminHealth(sessionId: string, walletAddress: string) {
+  return fetchJSON<{ services: { name: string; status: string; latency_ms?: number }[]; overall: string }>(
+    `/api/admin/health?session_id=${encodeURIComponent(sessionId)}&wallet_address=${encodeURIComponent(walletAddress)}`
+  );
+}
+
+// Admin swap management
+export function getAdminSwaps(sessionId: string, walletAddress: string) {
+  return fetchJSON<{ swaps: SwapHistoryItem[]; stats: { total: number; pending: number; completed: number; failed: number } }>(
+    `/api/admin/swaps?session_id=${encodeURIComponent(sessionId)}&wallet_address=${encodeURIComponent(walletAddress)}`
+  );
+}
+
+// Admin send announcement to all users
+export function adminAnnounce(sessionId: string, walletAddress: string, message: string) {
+  return fetchJSON<{ success: boolean; sent_to: number }>("/api/admin/announce", {
+    method: "POST",
+    body: JSON.stringify({
+      session_id: sessionId,
+      wallet_address: walletAddress,
+      message,
+    }),
+  });
+}

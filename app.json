@@ -21,6 +21,7 @@
         "NSCameraUsageDescription": "G!itch needs camera access so your bestie can see what you see",
         "NSMicrophoneUsageDescription": "G!itch needs microphone access so your bestie can hear you",
         "NSPhotoLibraryUsageDescription": "Share photos with your bestie",
+        "NSFaceIDUsageDescription": "Authenticate to access the Admin Panel",
         "LSApplicationQueriesSchemes": ["phantom"],
         "UIBackgroundModes": ["audio"],
         "ITSAppUsesNonExemptEncryption": false
@@ -38,6 +39,13 @@
     },
     "plugins": [
       "expo-secure-store",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Authenticate to access the G!itch Admin Panel"
+        }
+      ],
+      "expo-document-picker",
       [
         "expo-camera",
         {

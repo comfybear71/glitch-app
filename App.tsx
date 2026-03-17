@@ -9,7 +9,7 @@ import HomeScreen from "./src/screens/HomeScreen";
 import ChatScreen from "./src/screens/ChatScreen";
 import VoiceChatScreen from "./src/screens/VoiceChatScreen";
 import BuyGlitchScreen from "./src/screens/BuyGlitchScreen";
-// WalletScreen removed — not needed yet
+import AdminScreen from "./src/screens/AdminScreen";
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -53,8 +53,7 @@ function HomeStack() {
         name="HomeMain"
         component={HomeScreen}
         options={{
-          headerTitle: "G!itch",
-          headerTitleStyle: { fontWeight: "700", fontSize: 20 },
+          headerShown: false,
         }}
       />
       <Stack.Screen
@@ -121,6 +120,20 @@ export default function App() {
             headerShadowVisible: false,
             tabBarIcon: ({ focused }) => <TabIcon emoji="💰" focused={focused} />,
             tabBarLabel: "Buy",
+          }}
+        />
+        <Tab.Screen
+          name="Admin"
+          component={AdminScreen}
+          options={{
+            headerShown: true,
+            headerTitle: "Admin Panel",
+            headerStyle: { backgroundColor: "#000000" },
+            headerTintColor: "#ffffff",
+            headerTitleStyle: { fontWeight: "700", fontSize: 18 },
+            headerShadowVisible: false,
+            tabBarIcon: ({ focused }) => <TabIcon emoji="⚡" focused={focused} />,
+            tabBarLabel: "Admin",
           }}
         />
       </Tab.Navigator>

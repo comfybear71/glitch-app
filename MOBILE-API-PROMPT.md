@@ -151,3 +151,100 @@ DB TABLES: If you need new database tables for content jobs or uploaded media, c
 Check if these tables already exist before creating migration SQL.
 
 TESTING: After creating all routes, verify each one responds with JSON (not HTML 404). A simple curl test for each GET endpoint should return valid JSON.
+
+---
+
+## SESSION 2 UPDATE — All 13 Routes Built + More
+
+Everything below was built and deployed on branch `claude/general-session-ja2Bc`.
+
+### What was built (total):
+- **13 new API route files** + **2 new DB tables** + **wallet auth on all 42 existing admin routes**
+
+### All new routes created:
+1. `/api/admin/health` — Service health pings
+2. `/api/admin/swaps` — OTC swap history
+3. `/api/admin/action` — 6 maintenance operations
+4. `/api/admin/announce` — Push notifications
+5. `/api/content/generate` — Image/video generation
+6. `/api/content/status` — Job polling
+7. `/api/content/library` — Content job listing
+8. `/api/content/upload` — File upload to Blob
+9. `/api/content/media` — Media management
+10. `/api/admin/spread` — Post to all social platforms
+11. `/api/admin/hatch-admin` — Admin persona hatching (no payment needed)
+12. `/api/admin/cron-control` — View/trigger all cron jobs
+13. `/api/admin/coins` — Coin economy dashboard + operations
+
+---
+
+## FUNCTIONS THE MOBILE APP NEEDS TO ADD TO api.ts
+
+The mobile app's `src/services/api.ts` already has functions for the first 9 endpoints. It needs new functions for these additional endpoints:
+
+```typescript
+// Social Media Spreading
+export const spreadPost = (walletAddress: string, postId: string) =>
+  fetchJSON('/api/admin/spread', { method: 'POST', body: JSON.stringify({ post_id: postId, wallet_address: walletAddress }) });
+
+export const spreadCustomContent = (walletAddress: string, text: string, mediaUrl?: string, mediaType?: string) =>
+  fetchJSON('/api/admin/spread', { method: 'POST', body: JSON.stringify({ text, media_url: mediaUrl, media_type: mediaType, wallet_address: walletAddress }) });
+
+export const getSpreadHistory = (walletAddress: string) =>
+  fetchJSON(`/api/admin/spread?wallet_address=${walletAddress}`);
+
+// Admin Hatching
+export const adminHatch = (walletAddress: string, mode: 'custom' | 'random', meatbagName: string, opts?: { display_name?: string; personality_hint?: string; persona_type?: string; avatar_emoji?: string }) =>
+  fetchJSON('/api/admin/hatch-admin', { method: 'POST', body: JSON.stringify({ mode, meatbag_name: meatbagName, wallet_address: walletAddress, ...opts }) });
+
+export const getHatchedPersonas = (walletAddress: string) =>
+  fetchJSON(`/api/admin/hatch-admin?wallet_address=${walletAddress}`);
+
+// Cron Control
+export const getCronStatus = (walletAddress: string) =>
+  fetchJSON(`/api/admin/cron-control?wallet_address=${walletAddress}`);
+
+export const triggerCron = (walletAddress: string, job: string) =>
+  fetchJSON('/api/admin/cron-control', { method: 'POST', body: JSON.stringify({ job, wallet_address: walletAddress }) });
+
+// Coin Economy
+export const getCoinEconomy = (walletAddress: string) =>
+  fetchJSON(`/api/admin/coins?wallet_address=${walletAddress}`);
+
+export const adminAwardCoins = (walletAddress: string, sessionId: string, amount: number) =>
+  fetchJSON('/api/admin/coins', { method: 'POST', body: JSON.stringify({ action: 'award', session_id: sessionId, amount, wallet_address: walletAddress }) });
+
+// Marketing/Posters
+export const generatePoster = (walletAddress: string) =>
+  fetchJSON('/api/admin/mktg', { method: 'POST', body: JSON.stringify({ action: 'generate_poster', wallet_address: walletAddress }) });
+
+export const generateHeroImage = (walletAddress: string) =>
+  fetchJSON('/api/admin/mktg', { method: 'POST', body: JSON.stringify({ action: 'generate_hero', wallet_address: walletAddress }) });
+
+export const getMarketingStats = (walletAddress: string) =>
+  fetchJSON(`/api/admin/mktg?action=stats&wallet_address=${walletAddress}`);
+
+// Director Movies
+export const triggerDirectorMovie = (walletAddress: string, opts?: { genre?: string; director?: string; concept?: string }) =>
+  fetchJSON('/api/generate-director-movie', { method: 'POST', body: JSON.stringify({ ...opts, wallet_address: walletAddress }) });
+
+// BUDJU Trading
+export const getBudjuDashboard = (walletAddress: string) =>
+  fetchJSON(`/api/admin/budju-trading?action=dashboard&wallet_address=${walletAddress}`);
+
+export const budjuAction = (walletAddress: string, action: string, params?: object) =>
+  fetchJSON('/api/admin/budju-trading', { method: 'POST', body: JSON.stringify({ action, wallet_address: walletAddress, ...params }) });
+
+// Persona Management
+export const generatePersonaAvatar = (walletAddress: string, personaId: string) =>
+  fetchJSON('/api/admin/persona-avatar', { method: 'POST', body: JSON.stringify({ persona_id: personaId, use_grok: true, wallet_address: walletAddress }) });
+
+export const animatePersona = (walletAddress: string, personaId: string) =>
+  fetchJSON('/api/admin/animate-persona', { method: 'POST', body: JSON.stringify({ persona_id: personaId, wallet_address: walletAddress }) });
+```
+
+### Important Note on wallet_address
+The `wallet_address` query parameter is sent both in the query string (for GET requests) and in the JSON body (for POST requests where applicable). The backend checks `request.url` searchParams, so for POST requests that send JSON bodies, also add `wallet_address` as a query parameter:
+```
+/api/admin/spread?wallet_address=AEWvE2x...
+```

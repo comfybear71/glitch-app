@@ -16,9 +16,7 @@ import {
   spreadPost, spreadCustomContent, getSpreadHistory,
   adminHatch, getHatchedPersonas,
   getCronStatus, triggerCron,
-  getCoinEconomy, adminAwardCoins,
   generatePoster, generateHeroImage, getMarketingStats,
-  getBudjuDashboard, budjuAction,
   generatePersonaAvatar, animatePersona,
 } from "../services/api";
 
@@ -27,7 +25,7 @@ const ADMIN_WALLET = "AEWvE2xXaHSGdGCaCArb2PWdKS7K9RwoCRV7CT2CJTWq";
 const ADMIN_WALLET_KEY = "aiglitch-admin-wallet";
 const ADMIN_PIN_KEY = "aiglitch-admin-pin";
 
-type Tab = "overview" | "personas" | "users" | "swaps" | "system" | "tools" | "secrets" | "spread" | "hatch" | "cron" | "coins" | "mktg" | "budju";
+type Tab = "overview" | "personas" | "users" | "swaps" | "system" | "tools" | "spread" | "hatch" | "cron" | "mktg";
 
 function StatCard({ label, value, color, sub }: { label: string; value: string | number; color?: string; sub?: string }) {
   return (
@@ -74,10 +72,6 @@ export default function AdminScreen() {
   const [announceSending, setAnnounceSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Secrets state
-  const [secrets, setSecrets] = useState<Record<string, string>>({});
-  const [newSecretKey, setNewSecretKey] = useState("");
-  const [newSecretValue, setNewSecretValue] = useState("");
 
   // Spread state
   const [spreadText, setSpreadText] = useState("");
@@ -99,19 +93,11 @@ export default function AdminScreen() {
   const [cronJobs, setCronJobs] = useState<any[]>([]);
   const [cronLoading, setCronLoading] = useState(false);
 
-  // Coins state
-  const [coinEconomy, setCoinEconomy] = useState<any>(null);
-  const [awardSessionId, setAwardSessionId] = useState("");
-  const [awardAmount, setAwardAmount] = useState("");
-  const [awarding, setAwarding] = useState(false);
 
   // Marketing state
   const [mktgStats, setMktgStats] = useState<any>(null);
   const [mktgGenerating, setMktgGenerating] = useState(false);
 
-  // BUDJU state
-  const [budjuDashboard, setBudjuDashboard] = useState<any>(null);
-  const [budjuLoading, setBudjuLoading] = useState(false);
 
   // Check if wallet is admin — must match the designated admin wallet
   useEffect(() => {
@@ -123,22 +109,6 @@ export default function AdminScreen() {
     }
     setIsAdmin(isAdminWallet);
   }, [walletAddress]);
-
-  // Load saved secrets
-  useEffect(() => {
-    (async () => {
-      try {
-        const stored = await SecureStore.getItemAsync("aiglitch-admin-secrets");
-        if (stored) setSecrets(JSON.parse(stored));
-      } catch (_) {}
-    })();
-  }, []);
-
-  // Save secrets
-  const saveSecrets = async (updated: Record<string, string>) => {
-    setSecrets(updated);
-    await SecureStore.setItemAsync("aiglitch-admin-secrets", JSON.stringify(updated));
-  };
 
   // Check biometric availability
   useEffect(() => {
@@ -266,21 +236,9 @@ export default function AdminScreen() {
           setCronLoading(false);
           break;
         }
-        case "coins": {
-          const data = await getCoinEconomy(walletAddress);
-          setCoinEconomy(data);
-          break;
-        }
         case "mktg": {
           const data = await getMarketingStats(walletAddress);
           setMktgStats((data as any).stats || data);
-          break;
-        }
-        case "budju": {
-          setBudjuLoading(true);
-          const data = await getBudjuDashboard(walletAddress);
-          setBudjuDashboard((data as any).dashboard || data);
-          setBudjuLoading(false);
           break;
         }
       }
@@ -648,10 +606,7 @@ export default function AdminScreen() {
     { key: "spread", emoji: "📡", label: "Spread" },
     { key: "hatch", emoji: "🥚", label: "Hatch" },
     { key: "cron", emoji: "⏰", label: "Cron" },
-    { key: "coins", emoji: "🪙", label: "Coins" },
     { key: "mktg", emoji: "🎨", label: "Marketing" },
-    { key: "budju", emoji: "💹", label: "BUDJU" },
-    { key: "secrets", emoji: "🔐", label: "Secrets" },
   ];
 
   return (
@@ -1105,66 +1060,6 @@ export default function AdminScreen() {
           </>
         )}
 
-        {/* Coins Tab */}
-        {activeTab === "coins" && (
-          <>
-            <Text style={styles.sectionTitle}>Coin Economy</Text>
-            {coinEconomy && (
-              <View style={styles.statsGrid}>
-                <StatCard label="Total Supply" value={coinEconomy.total_supply?.toLocaleString() || coinEconomy.economy?.total_supply?.toLocaleString() || "—"} color={colors.cyan} />
-                <StatCard label="Circulating" value={coinEconomy.circulating?.toLocaleString() || coinEconomy.economy?.circulating?.toLocaleString() || "—"} color={colors.green} />
-                <StatCard label="Awarded" value={coinEconomy.total_awarded?.toLocaleString() || coinEconomy.economy?.total_awarded?.toLocaleString() || "—"} color={colors.purpleLight} />
-                <StatCard label="Holders" value={coinEconomy.holders?.toLocaleString() || coinEconomy.economy?.holders?.toLocaleString() || "—"} color={colors.yellow} />
-              </View>
-            )}
-            {!coinEconomy && <Text style={styles.emptyText}>Loading economy data...</Text>}
-
-            <Text style={[styles.sectionTitle, { marginTop: 20 }]}>Award Coins</Text>
-            <View style={styles.toolCard}>
-              <Text style={styles.toolTitle}>🪙 Award Coins to User</Text>
-              <Text style={styles.toolDesc}>Grant coins to a user session</Text>
-              <TextInput
-                style={[styles.toolInput, { minHeight: 44, marginTop: 8 }]}
-                value={awardSessionId}
-                onChangeText={setAwardSessionId}
-                placeholder="User session ID..."
-                placeholderTextColor={colors.textMuted}
-                maxLength={100}
-              />
-              <TextInput
-                style={[styles.toolInput, { minHeight: 44, marginTop: 8 }]}
-                value={awardAmount}
-                onChangeText={setAwardAmount}
-                placeholder="Amount..."
-                placeholderTextColor={colors.textMuted}
-                keyboardType="numeric"
-                maxLength={10}
-              />
-              <TouchableOpacity
-                style={[styles.toolBtn, { marginTop: 12 }, (!awardSessionId.trim() || !awardAmount.trim() || awarding) && { opacity: 0.4 }]}
-                onPress={async () => {
-                  if (!awardSessionId.trim() || !awardAmount.trim() || awarding || !walletAddress) return;
-                  const amount = parseInt(awardAmount, 10);
-                  if (isNaN(amount) || amount <= 0) { Alert.alert("Invalid", "Enter a valid amount"); return; }
-                  setAwarding(true);
-                  try {
-                    const res = await adminAwardCoins(walletAddress, awardSessionId.trim(), amount);
-                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                    Alert.alert("Awarded!", res.message || `${amount} coins awarded`);
-                    setAwardSessionId(""); setAwardAmount("");
-                  } catch (e: any) {
-                    Alert.alert("Error", e?.message || "Award failed");
-                  }
-                  setAwarding(false);
-                }}
-                disabled={!awardSessionId.trim() || !awardAmount.trim() || awarding}
-              >
-                <Text style={styles.toolBtnText}>{awarding ? "Awarding..." : "Award Coins"}</Text>
-              </TouchableOpacity>
-            </View>
-          </>
-        )}
-
         {/* Marketing Tab */}
         {activeTab === "mktg" && (
           <>
@@ -1229,204 +1124,6 @@ export default function AdminScreen() {
           </>
         )}
 
-        {/* BUDJU Tab */}
-        {activeTab === "budju" && (
-          <>
-            <Text style={styles.sectionTitle}>BUDJU Trading Dashboard</Text>
-            {budjuLoading && <ActivityIndicator color={colors.purple} style={{ marginTop: 20 }} />}
-            {budjuDashboard && !budjuLoading && (
-              <View style={styles.statsGrid}>
-                <StatCard label="BUDJU Price" value={budjuDashboard.price ? `$${Number(budjuDashboard.price).toFixed(4)}` : "—"} color={colors.cyan} />
-                <StatCard label="Volume 24h" value={budjuDashboard.volume_24h?.toLocaleString() || "—"} color={colors.green} />
-                <StatCard label="Total Trades" value={budjuDashboard.total_trades?.toLocaleString() || "—"} color={colors.purpleLight} />
-                <StatCard label="Holders" value={budjuDashboard.holders?.toLocaleString() || "—"} color={colors.yellow} />
-              </View>
-            )}
-            {!budjuDashboard && !budjuLoading && <Text style={styles.emptyText}>Loading BUDJU data...</Text>}
-
-            <Text style={[styles.sectionTitle, { marginTop: 20 }]}>Quick Actions</Text>
-            {[
-              { action: "refresh_prices", label: "Refresh Prices", emoji: "🔄", desc: "Re-fetch live BUDJU pricing" },
-              { action: "sync_holders", label: "Sync Holders", emoji: "👥", desc: "Update holder count" },
-              { action: "run_market_maker", label: "Run Market Maker", emoji: "🤖", desc: "Trigger market making bot" },
-            ].map((a) => (
-              <TouchableOpacity
-                key={a.action}
-                style={styles.actionCard}
-                onPress={() => {
-                  Alert.alert("Confirm", `Run "${a.label}"?`, [
-                    { text: "Cancel", style: "cancel" },
-                    {
-                      text: "Run",
-                      onPress: async () => {
-                        try {
-                          const res = await budjuAction(walletAddress!, a.action);
-                          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                          Alert.alert("Done", res.message || "Action completed");
-                        } catch (e: any) {
-                          Alert.alert("Error", e?.message || "Action failed");
-                        }
-                      },
-                    },
-                  ]);
-                }}
-              >
-                <Text style={styles.actionEmoji}>{a.emoji}</Text>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.actionTitle}>{a.label}</Text>
-                  <Text style={styles.actionDesc}>{a.desc}</Text>
-                </View>
-                <Text style={styles.actionChevron}>›</Text>
-              </TouchableOpacity>
-            ))}
-          </>
-        )}
-
-        {/* Secrets Tab — secure variables & PIN */}
-        {activeTab === "secrets" && (
-          <>
-            <Text style={styles.sectionTitle}>Admin PIN</Text>
-            <View style={styles.toolCard}>
-              <Text style={styles.toolTitle}>🔐 Set / Change Admin PIN</Text>
-              <Text style={styles.toolDesc}>Extra layer of security on top of Face ID</Text>
-              <TextInput
-                style={[styles.toolInput, { minHeight: 44 }]}
-                value={pinInput}
-                onChangeText={setPinInput}
-                placeholder="Enter new PIN (4-8 digits)..."
-                placeholderTextColor={colors.textMuted}
-                secureTextEntry
-                keyboardType="number-pad"
-                maxLength={8}
-              />
-              <TouchableOpacity
-                style={[styles.toolBtn, !pinInput.trim() && { opacity: 0.4 }]}
-                onPress={async () => {
-                  if (pinInput.trim().length < 4) {
-                    Alert.alert("Too Short", "PIN must be at least 4 digits");
-                    return;
-                  }
-                  await SecureStore.setItemAsync(ADMIN_PIN_KEY, pinInput.trim());
-                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                  Alert.alert("PIN Set!", "Your admin PIN has been saved securely.");
-                  setPinInput("");
-                }}
-                disabled={!pinInput.trim()}
-              >
-                <Text style={styles.toolBtnText}>Save PIN</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.toolBtn, { backgroundColor: "rgba(239,68,68,0.15)", marginTop: 8 }]}
-                onPress={async () => {
-                  await SecureStore.deleteItemAsync(ADMIN_PIN_KEY);
-                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-                  Alert.alert("PIN Removed", "Admin PIN has been cleared.");
-                }}
-              >
-                <Text style={[styles.toolBtnText, { color: colors.red }]}>Remove PIN</Text>
-              </TouchableOpacity>
-            </View>
-
-            <Text style={[styles.sectionTitle, { marginTop: 20 }]}>Secret Variables</Text>
-            <Text style={styles.secretNote}>
-              Stored securely on-device with SecureStore (Keychain on iOS). These are NOT sent to the server unless you explicitly use them.
-            </Text>
-
-            {/* Existing secrets */}
-            {Object.entries(secrets).map(([key, value]) => (
-              <View key={key} style={styles.secretItem}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.secretKey}>{key}</Text>
-                  <Text style={styles.secretValue}>{"•".repeat(Math.min(value.length, 20))}</Text>
-                </View>
-                <TouchableOpacity
-                  onPress={() => {
-                    Alert.alert(key, `Value: ${value}`, [
-                      { text: "Copy", onPress: () => {
-                        const Clipboard = require("expo-clipboard");
-                        Clipboard.setStringAsync(value);
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      }},
-                      { text: "Delete", style: "destructive", onPress: () => {
-                        const updated = { ...secrets };
-                        delete updated[key];
-                        saveSecrets(updated);
-                      }},
-                      { text: "Cancel", style: "cancel" },
-                    ]);
-                  }}
-                  style={styles.secretBtn}
-                >
-                  <Text style={styles.secretBtnText}>👁</Text>
-                </TouchableOpacity>
-              </View>
-            ))}
-
-            {/* Add new secret */}
-            <View style={[styles.toolCard, { marginTop: 12 }]}>
-              <Text style={styles.toolTitle}>Add Secret Variable</Text>
-              <TextInput
-                style={[styles.toolInput, { minHeight: 44, marginTop: 8 }]}
-                value={newSecretKey}
-                onChangeText={setNewSecretKey}
-                placeholder="Key (e.g. API_KEY, PASSWORD, etc.)"
-                placeholderTextColor={colors.textMuted}
-                autoCapitalize="characters"
-                maxLength={50}
-              />
-              <TextInput
-                style={[styles.toolInput, { minHeight: 44, marginTop: 8 }]}
-                value={newSecretValue}
-                onChangeText={setNewSecretValue}
-                placeholder="Value (stored encrypted on device)"
-                placeholderTextColor={colors.textMuted}
-                secureTextEntry
-                maxLength={500}
-              />
-              <TouchableOpacity
-                style={[styles.toolBtn, { marginTop: 10 }, (!newSecretKey.trim() || !newSecretValue.trim()) && { opacity: 0.4 }]}
-                onPress={() => {
-                  if (!newSecretKey.trim() || !newSecretValue.trim()) return;
-                  const updated = { ...secrets, [newSecretKey.trim()]: newSecretValue.trim() };
-                  saveSecrets(updated);
-                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                  setNewSecretKey("");
-                  setNewSecretValue("");
-                  Alert.alert("Saved!", `Secret "${newSecretKey.trim()}" stored securely.`);
-                }}
-                disabled={!newSecretKey.trim() || !newSecretValue.trim()}
-              >
-                <Text style={styles.toolBtnText}>Save Secret</Text>
-              </TouchableOpacity>
-            </View>
-
-            <Text style={[styles.sectionTitle, { marginTop: 20 }]}>Admin Wallet</Text>
-            <View style={styles.toolCard}>
-              <Text style={styles.toolTitle}>🛡️ Admin Wallet Address</Text>
-              <Text style={styles.secretValue}>{walletAddress}</Text>
-              <Text style={styles.toolDesc}>Only this wallet can access admin features. Other users will see "Access Denied".</Text>
-              <TouchableOpacity
-                style={[styles.toolBtn, { backgroundColor: "rgba(239,68,68,0.15)", marginTop: 12 }]}
-                onPress={() => {
-                  Alert.alert(
-                    "Reset Admin Wallet",
-                    "This will clear the admin wallet. The next wallet to connect will become admin. Are you sure?",
-                    [
-                      { text: "Cancel", style: "cancel" },
-                      { text: "Reset", style: "destructive", onPress: async () => {
-                        await SecureStore.deleteItemAsync(ADMIN_WALLET_KEY);
-                        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-                        Alert.alert("Reset", "Admin wallet cleared. Reconnect to set a new admin.");
-                      }},
-                    ]
-                  );
-                }}
-              >
-                <Text style={[styles.toolBtnText, { color: colors.red }]}>Reset Admin Wallet</Text>
-              </TouchableOpacity>
-            </View>
-          </>
-        )}
 
         <View style={{ height: 40 }} />
       </ScrollView>
@@ -1457,18 +1154,6 @@ const styles = StyleSheet.create({
     fontSize: 20, textAlign: "center", letterSpacing: 8,
   },
   loadingText: { color: colors.textMuted, fontSize: 13, marginTop: 12 },
-
-  // Secrets
-  secretNote: { color: colors.textMuted, fontSize: 12, lineHeight: 18, marginBottom: 12 },
-  secretItem: {
-    flexDirection: "row", alignItems: "center", gap: 12,
-    backgroundColor: colors.surface, borderRadius: 14, padding: 14,
-    marginBottom: 8, borderWidth: 1, borderColor: colors.border,
-  },
-  secretKey: { color: colors.purpleLight, fontSize: 13, fontWeight: "700", fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace" },
-  secretValue: { color: colors.textMuted, fontSize: 12, marginTop: 4, fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace" },
-  secretBtn: { padding: 8 },
-  secretBtnText: { fontSize: 18 },
 
   // Header
   headerSection: { alignItems: "center", paddingVertical: 20 },

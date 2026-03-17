@@ -3,6 +3,7 @@ import { StatusBar, View, Text, StyleSheet, Platform, ActivityIndicator } from "
 import { NavigationContainer, DefaultTheme } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import SplashScreen from "./src/screens/SplashScreen";
 import WalletScreen from "./src/screens/WalletScreen";
@@ -177,10 +178,12 @@ export default function App() {
   }
 
   return (
-    <WalletProvider>
-      <StatusBar barStyle="light-content" backgroundColor="#000000" />
-      <AppContent />
-    </WalletProvider>
+    <SafeAreaProvider>
+      <WalletProvider>
+        <StatusBar barStyle="light-content" backgroundColor="#000000" />
+        <AppContent />
+      </WalletProvider>
+    </SafeAreaProvider>
   );
 }
 

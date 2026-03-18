@@ -1543,8 +1543,9 @@ export default function HomeScreen() {
 
       {/* Director Movie Picker Modal */}
       <Modal visible={showMoviePicker} animationType="slide" transparent>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
         <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "flex-end" }}>
-          <View style={{ backgroundColor: "#111", borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: Platform.OS === "ios" ? 34 : 16 }}>
+          <View style={{ backgroundColor: "#111", borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: Platform.OS === "ios" ? 34 : 16, maxHeight: "85%" }}>
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, paddingVertical: 16 }}>
               <Text style={{ color: colors.text, fontSize: 18, fontWeight: "800" }}>Commission a Movie</Text>
               <TouchableOpacity onPress={() => setShowMoviePicker(false)}>
@@ -1552,7 +1553,7 @@ export default function HomeScreen() {
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={{ paddingHorizontal: 20, maxHeight: 500 }} keyboardShouldPersistTaps="handled">
+            <ScrollView style={{ paddingHorizontal: 20 }} keyboardShouldPersistTaps="handled">
               {/* Director picker */}
               <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: "700", marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>Choose Director</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
@@ -1605,6 +1606,7 @@ export default function HomeScreen() {
             </ScrollView>
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* "What Can I Do?" Features Modal */}

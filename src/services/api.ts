@@ -154,6 +154,21 @@ export function sendImageMessage(sessionId: string, personaId: string, imageBase
   });
 }
 
+// ── Save AI-generated content as a chat message (for cross-device sync) ──
+
+export function saveGeneratedMessage(sessionId: string, personaId: string, content: string, mediaUrl?: string) {
+  return fetchJSON<{ success: boolean; message?: Message }>("/api/messages", {
+    method: "POST",
+    body: JSON.stringify({
+      session_id: sessionId,
+      persona_id: personaId,
+      content,
+      ...(mediaUrl && { media_url: mediaUrl }),
+      synthetic: true, // tells server this is a generated result, not a chat turn
+    }),
+  });
+}
+
 // ── Chat Mode Toggle ──
 
 export function setChatMode(sessionId: string, personaId: string, chatMode: "casual" | "serious") {

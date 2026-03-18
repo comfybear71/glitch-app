@@ -20,7 +20,7 @@ import { usePhantomWallet } from "../hooks/usePhantomWallet";
 import { usePushNotifications } from "../hooks/usePushNotifications";
 import {
   API_BASE, getBestie, walletLogin, linkWallet, unlinkWallet,
-  getOnChainBalances, getMessages, sendMessage, sendImageMessage,
+  getOnChainBalances, getMessages, sendMessage, sendImageMessage, saveGeneratedMessage,
   getBriefing, sendPostFeedback,
   Bestie, OnChainBalances, Message, TrendingPost, FeedbackAction,
 } from "../services/api";
@@ -299,13 +299,15 @@ export default function HomeScreen() {
   const [msgSocialLinks, setMsgSocialLinks] = useState<Record<string, SocialLink[]>>({});
 
   // When generation completes via context, add the result as a chat message with social links
+  // Also persist to server so the message shows on all devices
   useEffect(() => {
     if (genResult) {
       const msgId = `gen-result-${Date.now()}`;
+      const content = `${genResult.title}\n${genResult.message}`;
       const resultMsg: Message = {
         id: msgId,
         sender_type: "ai",
-        content: `${genResult.title}\n${genResult.message}`,
+        content,
         created_at: new Date().toISOString(),
         image_url: genResult.mediaUrl,
         is_video: genResult.isVideo,
@@ -313,6 +315,12 @@ export default function HomeScreen() {
       setMessages((prev) => [...prev, resultMsg]);
       if (genResult.socialLinks && genResult.socialLinks.length > 0) {
         setMsgSocialLinks((prev) => ({ ...prev, [msgId]: genResult.socialLinks! }));
+      }
+      // Persist to server for cross-device sync
+      if (sessionId && bestie) {
+        saveGeneratedMessage(sessionId, bestie.id, content, genResult.mediaUrl)
+          .then(() => { serverMsgCountRef.current += 1; })
+          .catch(() => {}); // best-effort, don't block UI
       }
       clearResult();
     }
@@ -1045,12 +1053,25 @@ export default function HomeScreen() {
             activeOpacity={0.8}
             onLongPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-              // Show options: React or Copy
-              Alert.alert("Message", undefined, [
-                { text: "Copy Text", onPress: () => copyMessageText(item.content) },
-                { text: "React", onPress: () => setReactionPickerFor(item.id) },
-                { text: "Cancel", style: "cancel" },
-              ]);
+              const options: { text: string; onPress?: () => void; style?: "cancel" | "destructive" }[] = [];
+              if (hasMedia && item.image_url) {
+                options.push({
+                  text: "Save / Share Media",
+                  onPress: async () => {
+                    try {
+                      await Share.share({ url: item.image_url!, message: item.content });
+                    } catch (err: any) {
+                      if (err?.message !== "User did not share") {
+                        Alert.alert("Share Failed", err?.message || "Could not share media");
+                      }
+                    }
+                  },
+                });
+              }
+              options.push({ text: "Copy Text", onPress: () => copyMessageText(item.content) });
+              options.push({ text: "React", onPress: () => setReactionPickerFor(item.id) });
+              options.push({ text: "Cancel", style: "cancel" });
+              Alert.alert("Message", undefined, options);
             }}
             style={[styles.msgBubble, isHuman ? styles.msgHuman : styles.msgAI, (hasMedia || hasYouTube) && styles.msgBubbleMedia]}
           >
@@ -2095,7 +2116,7 @@ const styles = StyleSheet.create({
   speakBtnActive: { opacity: 1 },
   speakBtnText: { fontSize: 14 },
   msgBubbleMedia: { maxWidth: "78%", paddingHorizontal: 6, paddingTop: 6, overflow: "hidden" },
-  msgImage: { width: "100%" as any, aspectRatio: 1, borderRadius: 12, marginBottom: 6, maxHeight: 250 },
+  msgImage: { width: Math.min(Dimensions.get("window").width * 0.78 - 12, 300), height: Math.min(Dimensions.get("window").width * 0.78 - 12, 300), borderRadius: 12, marginBottom: 6 },
   msgVideo: { width: Math.min(Dimensions.get("window").width * 0.78 - 12, 300), height: Math.min((Dimensions.get("window").width * 0.78 - 12) * 16 / 9, 400), borderRadius: 12, marginBottom: 6, backgroundColor: "#000" },
   linkText: { color: "#60a5fa", textDecorationLine: "underline" as const },
   ytContainer: { width: "100%" as any, aspectRatio: 16 / 9, borderRadius: 12, overflow: "hidden" as const, marginVertical: 6 },

@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import {
-  View, Text, TouchableOpacity, Image, FlatList, TextInput, Pressable,
+  View, Text, TouchableOpacity, Image, FlatList, TextInput, Pressable, Dimensions,
   StyleSheet, ActivityIndicator, Alert, Share, Platform, Linking,
   KeyboardAvoidingView, Keyboard, Modal, ScrollView, Animated, Easing,
 } from "react-native";
@@ -327,7 +327,7 @@ export default function HomeScreen() {
         const postMsg: Message = {
           id: `feed-${post.id}`,
           sender_type: "ai",
-          content: `Found this on the feed — ${post.display_name} (@${post.username}) posted:\n\n"${post.content}"\n\n${post.ai_like_count} likes · ${post.comment_count} comments\n\nhttps://aiglitch.app/feed?post=${post.id}`,
+          content: `Found this on the feed — ${post.display_name} (@${post.username}) posted:\n\n"${post.content}"\n\n${post.ai_like_count} likes · ${post.comment_count} comments${post.video_url ? "\n\n" + post.video_url : post.image_url ? "\n\n" + post.image_url : ""}`,
           created_at: new Date().toISOString(),
           image_url: post.image_url || post.video_url || undefined,
           is_video: !!post.video_url && !post.image_url,
@@ -2022,7 +2022,7 @@ const styles = StyleSheet.create({
   speakBtnText: { fontSize: 14 },
   msgBubbleMedia: { maxWidth: "78%", paddingHorizontal: 6, paddingTop: 6, overflow: "hidden" },
   msgImage: { width: "100%" as any, aspectRatio: 1, borderRadius: 12, marginBottom: 6, maxHeight: 250 },
-  msgVideo: { width: "100%" as any, aspectRatio: 9 / 16, borderRadius: 12, marginBottom: 6, backgroundColor: "#000", maxHeight: 320 },
+  msgVideo: { width: Math.min(Dimensions.get("window").width * 0.78 - 12, 300), height: Math.min((Dimensions.get("window").width * 0.78 - 12) * 16 / 9, 400), borderRadius: 12, marginBottom: 6, backgroundColor: "#000" },
   linkText: { color: "#60a5fa", textDecorationLine: "underline" as const },
   ytContainer: { width: "100%" as any, aspectRatio: 16 / 9, borderRadius: 12, overflow: "hidden" as const, marginVertical: 6 },
   ytPlayer: { flex: 1, backgroundColor: "#000" },

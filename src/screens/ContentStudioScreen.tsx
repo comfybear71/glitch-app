@@ -2,7 +2,6 @@ import React, { useEffect, useState, useCallback, useRef } from "react";
 import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet,
   ActivityIndicator, Alert, RefreshControl, TextInput, Image,
-  Platform, Animated, Easing,
 } from "react-native";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
@@ -17,9 +16,8 @@ import {
   ContentType, DirectorStyle, ContentJob, MediaLibraryItem,
 } from "../services/api";
 
+// These use the generateContent endpoint (select + configure)
 const CONTENT_TYPES: { key: ContentType; emoji: string; title: string; desc: string }[] = [
-  { key: "hero_poster", emoji: "🖼", title: "Hero Poster", desc: "Main banner for your platform landing page" },
-  { key: "promo_poster", emoji: "📢", title: "Promo Poster", desc: "Promotional poster for social media & marketing" },
   { key: "ad_image", emoji: "🎯", title: "Ad Image", desc: "Eye-catching advertisement image" },
   { key: "ad_video", emoji: "🎬", title: "Ad Video", desc: "Short promotional video for ads" },
   { key: "directors_movie", emoji: "🎥", title: "Director's Movie", desc: "AI-directed short film with cinematic style" },
@@ -35,16 +33,6 @@ const DIRECTOR_STYLES: { key: DirectorStyle; emoji: string; label: string }[] = 
 ];
 
 const RANDOM_PROMPTS: Record<string, string[]> = {
-  hero_poster: [
-    "Cyberpunk cityscape with glowing neon $GLITCH token floating in the sky",
-    "Futuristic AI brain made of purple and cyan energy particles",
-    "Cosmic portal between human and AI dimensions, dark theme",
-  ],
-  promo_poster: [
-    "Limited time $GLITCH token sale, urgency theme, purple gradient",
-    "Meet your AI Bestie, cute robot character with cosmic background",
-    "Hatch your AI, egg cracking with cosmic energy pouring out",
-  ],
   ad_image: [
     "Eye-catching $GLITCH token ad with price chart going up",
     "AI bestie waving hello, inviting and friendly, dark theme",
@@ -78,8 +66,7 @@ export default function ContentStudioScreen() {
 
   // Section expand state
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
-    marketing: true,
-    create: false,
+    create: true,
     library: false,
     uploads: false,
     movies: false,
@@ -90,14 +77,12 @@ export default function ContentStudioScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
-  // Marketing state
-  const [mktgGenerating, setMktgGenerating] = useState(false);
+  // Quick-generate state (working endpoints)
+  const [quickGenerating, setQuickGenerating] = useState(false);
 
   // Create state
   const [selectedType, setSelectedType] = useState<ContentType | null>(null);
   const [prompt, setPrompt] = useState("");
-  const [title, setTitle] = useState("");
-  const [subtitle, setSubtitle] = useState("");
   const [directorStyle, setDirectorStyle] = useState<DirectorStyle>("cinematic");
   const [generating, setGenerating] = useState(false);
   const [activeJob, setActiveJob] = useState<ContentJob | null>(null);
@@ -192,8 +177,6 @@ export default function ContentStudioScreen() {
     try {
       const result = await generateContent(sessionId, walletAddress, selectedType, {
         prompt: prompt.trim() || undefined,
-        title: title.trim() || undefined,
-        subtitle: subtitle.trim() || undefined,
         director_style: selectedType === "directors_movie" ? directorStyle : undefined,
       });
       if (result.success && result.job_id) {
@@ -289,60 +272,61 @@ export default function ContentStudioScreen() {
         contentContainerStyle={styles.scrollContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.purple} />}
       >
-        {/* ══════════════ MARKETING ══════════════ */}
-        <SectionHeader title="Marketing" emoji="📢" expanded={expandedSections.marketing} onToggle={() => toggleSection("marketing")} />
-        {expandedSections.marketing && (
+        {/* ══════════════ CREATE CONTENT ══════════════ */}
+        <SectionHeader title="Create Content" emoji="🎨" expanded={expandedSections.create} onToggle={() => toggleSection("create")} />
+        {expandedSections.create && (
           <View style={styles.sectionBody}>
+            {/* Working generate buttons (use dedicated endpoints) */}
             <TouchableOpacity
-              style={[styles.actionCard, mktgGenerating && { opacity: 0.5 }]}
+              style={[styles.actionCard, quickGenerating && { opacity: 0.5 }]}
               onPress={async () => {
-                if (mktgGenerating || !walletAddress) return;
-                setMktgGenerating(true);
+                if (quickGenerating || !walletAddress) return;
+                setQuickGenerating(true);
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
                 try {
                   const res = await generatePoster(walletAddress);
                   Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                   Alert.alert("Poster Generated!", res.message || (res.url ? `URL: ${res.url}` : "Done!"));
                 } catch (e: any) { Alert.alert("Error", e?.message || "Generation failed"); }
-                setMktgGenerating(false);
+                setQuickGenerating(false);
               }}
-              disabled={mktgGenerating}
+              disabled={quickGenerating}
             >
               <Text style={styles.actionEmoji}>📢</Text>
               <View style={{ flex: 1 }}>
-                <Text style={styles.actionTitle}>{mktgGenerating ? "Generating..." : "Generate Promo Poster"}</Text>
+                <Text style={styles.actionTitle}>{quickGenerating ? "Generating..." : "Generate Promo Poster"}</Text>
                 <Text style={styles.actionDesc}>AI-generated promotional poster</Text>
               </View>
               <Text style={styles.actionChevron}>›</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.actionCard, mktgGenerating && { opacity: 0.5 }]}
+              style={[styles.actionCard, quickGenerating && { opacity: 0.5 }]}
               onPress={async () => {
-                if (mktgGenerating || !walletAddress) return;
-                setMktgGenerating(true);
+                if (quickGenerating || !walletAddress) return;
+                setQuickGenerating(true);
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
                 try {
                   const res = await generateHeroImage(walletAddress);
                   Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                   Alert.alert("Hero Image Generated!", res.message || (res.url ? `URL: ${res.url}` : "Done!"));
                 } catch (e: any) { Alert.alert("Error", e?.message || "Generation failed"); }
-                setMktgGenerating(false);
+                setQuickGenerating(false);
               }}
-              disabled={mktgGenerating}
+              disabled={quickGenerating}
             >
               <Text style={styles.actionEmoji}>🖼</Text>
               <View style={{ flex: 1 }}>
-                <Text style={styles.actionTitle}>{mktgGenerating ? "Generating..." : "Generate Hero Image"}</Text>
+                <Text style={styles.actionTitle}>{quickGenerating ? "Generating..." : "Generate Hero Image"}</Text>
                 <Text style={styles.actionDesc}>Landing page hero banner</Text>
               </View>
               <Text style={styles.actionChevron}>›</Text>
             </TouchableOpacity>
-          </View>
-        )}
 
-        {/* ══════════════ CREATE CONTENT ══════════════ */}
-        <SectionHeader title="Create Content" emoji="🎨" expanded={expandedSections.create} onToggle={() => toggleSection("create")} />
-        {expandedSections.create && (
-          <View style={styles.sectionBody}>
+            {/* Divider */}
+            <View style={styles.divider} />
+
+            {/* Additional content types (use generateContent endpoint) */}
             {generating ? (
               <View style={styles.generatingCard}>
                 <ActivityIndicator color={colors.purple} size="large" />
@@ -380,17 +364,6 @@ export default function ContentStudioScreen() {
                     </View>
                     <TextInput style={styles.optionInput} value={prompt} onChangeText={setPrompt}
                       placeholder="Describe what you want... or tap 🎲" placeholderTextColor={colors.textMuted} multiline maxLength={500} />
-
-                    {(selectedType === "hero_poster" || selectedType === "promo_poster") && (
-                      <>
-                        <Text style={styles.optionLabel}>Title Text</Text>
-                        <TextInput style={styles.optionInputSmall} value={title} onChangeText={setTitle}
-                          placeholder="e.g. AI G!itch" placeholderTextColor={colors.textMuted} maxLength={50} />
-                        <Text style={styles.optionLabel}>Subtitle</Text>
-                        <TextInput style={styles.optionInputSmall} value={subtitle} onChangeText={setSubtitle}
-                          placeholder="e.g. Your Connection to the AI's Simulated Universe" placeholderTextColor={colors.textMuted} maxLength={100} />
-                      </>
-                    )}
 
                     {selectedType === "directors_movie" && (
                       <>
@@ -584,6 +557,7 @@ const styles = StyleSheet.create({
   sectionTitle: { color: colors.text, fontSize: 17, fontWeight: "800", flex: 1 },
   sectionChevron: { color: colors.textMuted, fontSize: 12 },
   sectionBody: { paddingTop: 12, paddingBottom: 8 },
+  divider: { height: 1, backgroundColor: colors.border, marginVertical: 12 },
 
   // Action cards (marketing buttons)
   actionCard: {

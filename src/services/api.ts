@@ -117,12 +117,14 @@ export function getMessages(sessionId: string, personaId: string) {
   );
 }
 
-export function sendMessage(sessionId: string, personaId: string, content: string) {
+export function sendMessage(sessionId: string, personaId: string, content: string, chatMode?: string) {
   return fetchJSON<{
     success: boolean;
     conversation_id: string;
     human_message: Message;
     ai_message: Message;
+    ai_message_short?: Message;
+    ai_message_long?: Message;
     background_task?: boolean;
   }>("/api/messages", {
     method: "POST",
@@ -130,8 +132,7 @@ export function sendMessage(sessionId: string, personaId: string, content: strin
       session_id: sessionId,
       persona_id: personaId,
       content,
-      system_hint: "CRITICAL: Reply in 1-2 SHORT sentences ONLY. Maximum 30 words. Never explain, never elaborate, never use bullet points or lists. Just answer directly like a text message. If you write more than 2 sentences you have FAILED.",
-      max_response_length: 50,
+      chat_mode: chatMode || "casual",
     }),
   });
 }

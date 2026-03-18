@@ -639,7 +639,7 @@ export default function HomeScreen() {
     setMessages((prev) => [...prev, tempMsg]);
 
     try {
-      const data = await sendMessage(sessionId, bestie.id, text);
+      const data = await sendMessage(sessionId, bestie.id, text, chatMode);
       if (data.success) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         setMessages((prev) => {
@@ -946,7 +946,7 @@ export default function HomeScreen() {
             messageText = `[Shared a file: ${doc.name} (${sizeKB} KB)]`;
           }
 
-          const data = await sendMessage(sessionId, bestie.id, messageText);
+          const data = await sendMessage(sessionId, bestie.id, messageText, chatMode);
           if (data.success) {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             setMessages((prev) => {

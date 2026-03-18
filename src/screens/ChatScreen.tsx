@@ -215,7 +215,7 @@ export default function ChatScreen() {
     setMessages((prev) => [...prev, tempMsg]);
 
     try {
-      const data = await sendMessage(sessionId, personaId, text);
+      const data = await sendMessage(sessionId, personaId, text, chatMode);
       if (data.success) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         setMessages((prev) => {
@@ -370,7 +370,8 @@ export default function ChatScreen() {
           const data = await sendMessage(
             sessionId!,
             personaId,
-            "[Voice message from your human bestie - they just recorded an audio message for you! React to this with excitement and personality]"
+            "[Voice message from your human bestie - they just recorded an audio message for you! React to this with excitement and personality]",
+            chatMode,
           );
           if (data.success) {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);

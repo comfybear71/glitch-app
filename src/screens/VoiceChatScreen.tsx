@@ -199,7 +199,7 @@ export default function VoiceChatScreen() {
         return;
       }
 
-      const data = await sendMessage(sessionId, personaId, userText);
+      const data = await sendMessage(sessionId, personaId, userText, "casual");
       if (!data.success) {
         setError("Failed to get response");
         setState("idle");

@@ -25,7 +25,7 @@ export interface GenResult {
   socialLinks?: SocialLink[];
 }
 
-// Map platform names to emojis and base URLs
+// Map platform names to emojis and fallback profile URLs
 const SOCIAL_URLS: Record<string, { emoji: string; url: string }> = {
   x: { emoji: "𝕏", url: "https://x.com/aiglitchapp" },
   twitter: { emoji: "𝕏", url: "https://x.com/aiglitchapp" },
@@ -36,26 +36,73 @@ const SOCIAL_URLS: Record<string, { emoji: string; url: string }> = {
   telegram: { emoji: "✈️", url: "https://t.me/aiglitch" },
 };
 
-function buildSocialLinks(spreading?: string[], postId?: string, mediaUrl?: string): SocialLink[] {
+// Extract real post URLs from backend response objects
+function extractPostUrls(postData?: any): Record<string, string> {
+  if (!postData || typeof postData !== "object") return {};
+  const urls: Record<string, string> = {};
+
+  // Common patterns the backend might return:
+  // post.url, post.post_url, post.tweet_url, post.link
+  if (postData.url && typeof postData.url === "string") urls._direct = postData.url;
+  if (postData.post_url) urls._direct = postData.post_url;
+  if (postData.tweet_url) urls.x = postData.tweet_url;
+  if (postData.tweet_id) urls.x = `https://x.com/i/status/${postData.tweet_id}`;
+
+  // Per-platform URLs: post.urls = { x: "...", tiktok: "...", ... }
+  if (postData.urls && typeof postData.urls === "object") {
+    Object.entries(postData.urls).forEach(([key, val]) => {
+      if (typeof val === "string" && val.startsWith("http")) urls[key.toLowerCase()] = val;
+    });
+  }
+
+  // Per-platform links: post.links = { x: "...", ... }
+  if (postData.links && typeof postData.links === "object") {
+    Object.entries(postData.links).forEach(([key, val]) => {
+      if (typeof val === "string" && val.startsWith("http")) urls[key.toLowerCase()] = val;
+    });
+  }
+
+  // Social post IDs: post.social_posts = [{ platform: "x", url: "..." }]
+  if (Array.isArray(postData.social_posts)) {
+    for (const sp of postData.social_posts) {
+      if (sp.url && sp.platform) urls[sp.platform.toLowerCase()] = sp.url;
+      if (sp.post_url && sp.platform) urls[sp.platform.toLowerCase()] = sp.post_url;
+    }
+  }
+
+  return urls;
+}
+
+function buildSocialLinks(spreading?: string[], postId?: string, mediaUrl?: string, postData?: any): SocialLink[] {
   const links: SocialLink[] = [];
+  const realUrls = extractPostUrls(postData);
+
   // Direct link to the media file if available (always viewable)
   if (mediaUrl) {
     links.push({ platform: "Watch Video", emoji: "▶️", url: mediaUrl });
   }
+
+  // Direct post URL if available
+  if (realUrls._direct) {
+    links.push({ platform: "View Post", emoji: "🔗", url: realUrls._direct });
+  }
+
   if (spreading) {
     for (const p of spreading) {
       const key = p.toLowerCase().trim();
       const info = SOCIAL_URLS[key];
       if (info) {
-        links.push({ platform: p, emoji: info.emoji, url: info.url });
+        // Use real URL if available, otherwise fall back to profile URL
+        const realUrl = realUrls[key] || realUrls[p];
+        links.push({ platform: p, emoji: info.emoji, url: realUrl || info.url });
       }
     }
   }
   // If no spreading info, add defaults
   if (links.length <= 1) {
     links.push(
-      { platform: "X", emoji: "𝕏", url: "https://x.com/aiglitchapp" },
-      { platform: "Telegram", emoji: "✈️", url: "https://t.me/aiglitch" },
+      { platform: "X", emoji: "𝕏", url: realUrls.x || realUrls.twitter || "https://x.com/aiglitchapp" },
+      { platform: "Telegram", emoji: "✈️", url: realUrls.telegram || "https://t.me/aiglitch" },
     );
   }
   return links;
@@ -236,12 +283,14 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
       let spreading: string[] | undefined;
       let postId: string | undefined;
       let finalCaption = adCaption;
+      let postData: any = undefined;
 
       try {
         const postRes = await postAd(walletAddress, videoUrl, adCaption, adStyleFinal);
         console.log("[AD] postAd response:", JSON.stringify(postRes, null, 2));
         spreading = postRes.spreading || postRes.post?.spreading;
         postId = postRes.post?.id;
+        postData = postRes.post || postRes; // capture full response for URL extraction
         if (postRes.post?.caption) finalCaption = postRes.post.caption;
       } catch (postErr: any) {
         console.log("[AD] postAd failed (video still available):", postErr?.message);
@@ -259,7 +308,7 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
         message: finalCaption,
         mediaUrl: videoUrl,
         isVideo: true,
-        socialLinks: buildSocialLinks(spreading, postId, videoUrl),
+        socialLinks: buildSocialLinks(spreading, postId, videoUrl, postData),
       });
 
     } catch (e: any) {
@@ -290,7 +339,7 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
         title: "Promo Poster Published",
         message: "Your promotional poster has been generated and published!",
         mediaUrl: res.url || undefined,
-        socialLinks: buildSocialLinks(undefined, undefined, res.url),
+        socialLinks: buildSocialLinks(res.spreading, res.post?.id, res.url, res.post || res),
       });
     } catch (e: any) {
       setGenStatusText(`Error: ${e?.message || "Poster generation failed"}`);
@@ -463,7 +512,7 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
         message: `By ${screenplay.directorName} · ${stitchRes.clipCount} clips · ${stitchRes.sizeMb}MB`,
         mediaUrl: stitchRes.finalVideoUrl || undefined,
         isVideo: true,
-        socialLinks: buildSocialLinks(stitchRes.spreading, stitchRes.feedPostId, stitchRes.finalVideoUrl),
+        socialLinks: buildSocialLinks(stitchRes.spreading, stitchRes.feedPostId, stitchRes.finalVideoUrl, stitchRes),
       });
 
     } catch (e: any) {
@@ -635,7 +684,7 @@ IMPORTANT: Every clip must maintain the futuristic neon cyberpunk Web3 aesthetic
         message: `AIG!itch News · ${stitchRes.clipCount} clips · ${stitchRes.sizeMb}MB`,
         mediaUrl: stitchRes.finalVideoUrl || undefined,
         isVideo: true,
-        socialLinks: buildSocialLinks(stitchRes.spreading, stitchRes.feedPostId, stitchRes.finalVideoUrl),
+        socialLinks: buildSocialLinks(stitchRes.spreading, stitchRes.feedPostId, stitchRes.finalVideoUrl, stitchRes),
       });
 
     } catch (e: any) {

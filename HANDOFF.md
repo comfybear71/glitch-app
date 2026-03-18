@@ -378,6 +378,41 @@ If "your local changes would be overwritten" appears, stash first (see above).
 
 ---
 
+## Recent Changes — Session 2026-03-18 (Session 5)
+
+### Director Movie Pipeline (FULL IMPLEMENTATION)
+
+Implemented the complete 5-step multi-scene movie generation pipeline matching the web admin panel at `/admin/directors`. This replaces the previous one-shot `triggerDirectorMovie` approach which had no real-time progress.
+
+**Pipeline Steps:**
+1. **Screenplay** — `POST /api/admin/screenplay` (genre, director, concept → title, scenes[], castList)
+2. **Submit Scenes** — `POST /api/test-grok-video` per scene (returns requestId)
+3. **Poll** — `GET /api/test-grok-video?id={requestId}&folder={folder}&skip_post=true` every 10s (max 90 polls / 15 min)
+4. **Stall Detection** — If 50%+ scenes done AND 60s no new completions → stitch early
+5. **Stitch** — `PUT /api/generate-director-movie` (sceneUrls map → finalVideoUrl, auto-posts + social spread)
+
+**New API functions added to `api.ts`:**
+- `generateScreenplay`, `submitScene`, `pollScene`, `stitchMovie`
+- `autoGenerateConcept`, `createConcept`, `listDirectorPrompts`, `deleteConcept`
+- `submitExtension`, `pollExtension`, `stitchExtension`
+- `forceStitch`
+- `GENRE_FOLDER_MAP` constant (maps genre → blob folder, e.g. `cooking_channel` → `premiere/cooking_show`)
+
+**ContentStudioScreen enhancements:**
+- Full real-time generation log matching web admin spec (emoji prefixes, color coding)
+- Progress bar with phase labels (Writing screenplay → Submitting scenes → Rendering clips → Stitching)
+- Per-scene status indicators (⏳ Submitted, 🔄 Rendering, ✅ Done, ❌ Failed)
+- Cancel button during generation
+- Movie result card showing title, director, genre, clip count, size, social spread platforms
+
+**Chat integration (HomeScreen):**
+- Director movie steps already in GEN_STEPS for purple card animation when triggered via chat
+- Keywords "movie", "director", "screenplay", "film", "premiere" trigger the director_movie generation card
+
+**Files changed:** `src/services/api.ts`, `src/screens/ContentStudioScreen.tsx`
+
+---
+
 ## Recent Changes — Session 2026-03-17 (Session 4)
 
 ### Two-Wallet Architecture

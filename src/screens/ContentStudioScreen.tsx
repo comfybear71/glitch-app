@@ -18,6 +18,9 @@ import {
   getCronStatus, getAdminHealth,
   getBlobStorage, getMediaLibrary, uploadMediaAdmin, uploadBlobVideo,
   importMedia, resyncBlobStorage, spreadMediaPosts,
+  generateScreenplay, submitScene, pollScene, stitchMovie,
+  autoGenerateConcept, listDirectorPrompts, submitExtension, pollExtension, stitchExtension,
+  GENRE_FOLDER_MAP, ScreenplayResponse, ScenePollResponse,
 } from "../services/api";
 
 // ── Directors from the web app ──
@@ -170,9 +173,13 @@ export default function ContentStudioScreen() {
   const [movieGenerating, setMovieGenerating] = useState(false);
   const [movieLog, setMovieLog] = useState<LogEntry[]>([]);
   const [movieResult, setMovieResult] = useState<any>(null);
+  const [moviePhase, setMoviePhase] = useState<string>("idle"); // idle, screenplay, submitting, polling, stitching, complete, failed
+  const [movieProgress, setMovieProgress] = useState({ current: 0, total: 0, pct: 0 });
+  const [sceneStatuses, setSceneStatuses] = useState<{ sceneNumber: number; title: string; status: string; sizeMb?: number; elapsed?: string }[]>([]);
+  const movieCancelRef = useRef(false);
 
   const addMovieLog = (emoji: string, text: string, type: LogEntry["type"] = "info") => {
-    setMovieLog((prev) => [...prev.slice(-80), { time: timestamp(), emoji, text, type }]);
+    setMovieLog((prev) => [...prev.slice(-120), { time: timestamp(), emoji, text, type }]);
   };
 
   // ── Library State ──
@@ -331,47 +338,239 @@ export default function ContentStudioScreen() {
     setQuickGenerating(false);
   };
 
-  // ── Director Movie: Full Pipeline ──
+  // ── Director Movie: Full Multi-Step Pipeline ──
   const handleDirectorMovie = async () => {
     if (movieGenerating || !walletAddress) return;
     setMovieGenerating(true);
     setMovieResult(null);
     setMovieLog([]);
+    setMoviePhase("screenplay");
+    setMovieProgress({ current: 0, total: 1, pct: 0 });
+    setSceneStatuses([]);
+    movieCancelRef.current = false;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
 
-    const director = selectedDirector ? DIRECTORS.find(d => d.id === selectedDirector) : null;
+    const directorObj = selectedDirector ? DIRECTORS.find(d => d.id === selectedDirector) : null;
     const genre = selectedGenre || undefined;
+    const startTime = Date.now();
 
-    addMovieLog("🎬", `Commissioning Director Movie...`, "info");
-    if (director) addMovieLog("🎭", `Director: ${director.emoji} ${director.name}`, "info");
-    if (genre) addMovieLog("🎭", `Genre: ${genre}`, "info");
-    if (movieConcept.trim()) addMovieLog("📖", `Concept: "${movieConcept.trim()}"`, "info");
+    const formatElapsed = (from: number) => {
+      const s = Math.floor((Date.now() - from) / 1000);
+      return `${Math.floor(s / 60)}m ${s % 60}s`;
+    };
+
+    addMovieLog("🎬", `Generating ${genre || "random"} movie...`, "info");
+    if (directorObj) addMovieLog("🎭", `Director: ${directorObj.emoji} ${directorObj.name}`, "info");
+    if (movieConcept.trim()) addMovieLog("📖", `Concept: "${movieConcept.trim().slice(0, 100)}"`, "info");
     addMovieLog("📜", `Writing screenplay...`, "waiting");
 
     try {
-      const opts: any = {};
-      if (director) opts.director = director.id;
-      if (genre) opts.genre = genre;
-      if (movieConcept.trim()) opts.concept = movieConcept.trim();
+      // ── STEP 2: Generate Screenplay ──
+      const screenplay = await generateScreenplay(walletAddress, {
+        genre: genre || undefined,
+        director: directorObj?.id || undefined,
+        concept: movieConcept.trim() || undefined,
+      });
 
-      const res = await triggerDirectorMovie(walletAddress, Object.keys(opts).length > 0 ? opts : undefined);
+      if (movieCancelRef.current) { setMovieGenerating(false); setMoviePhase("idle"); return; }
 
-      if (res.success) {
-        addMovieLog("✅", `Movie commissioned! ${res.message || ""}`, "success");
-        if (res.job_id) {
-          addMovieLog("📡", `Job ID: ${res.job_id}`, "info");
-          addMovieLog("⏳", `Scenes being generated... check back soon`, "waiting");
-          addMovieLog("🎉", `You'll be notified when the movie is ready`, "success");
+      const totalScenes = screenplay.scenes.length;
+      const folder = GENRE_FOLDER_MAP[screenplay.genre] || `premiere/${screenplay.genre}`;
+      setMovieProgress({ current: 1, total: 1, pct: 100 });
+
+      addMovieLog("✅", `"${screenplay.title}" — ${totalScenes} scenes by ${screenplay.directorName} (screenplay by ${screenplay.screenplayProvider})`, "success");
+      addMovieLog("📖", `${screenplay.synopsis?.slice(0, 200)}...`, "info");
+      addMovieLog("🎭", `Cast: ${screenplay.castList?.join(", ") || "N/A"}`, "info");
+
+      // Initialize scene statuses for UI
+      setSceneStatuses(screenplay.scenes.map(s => ({ sceneNumber: s.sceneNumber, title: s.title, status: "pending" })));
+
+      // ── STEP 3: Submit Each Scene ──
+      setMoviePhase("submitting");
+      setMovieProgress({ current: 0, total: totalScenes, pct: 0 });
+      addMovieLog("📡", `Submitting ${totalScenes} scenes to xAI...`, "info");
+
+      type SceneTracker = {
+        sceneNumber: number; title: string; requestId: string | null;
+        status: "submitted" | "done" | "failed";
+        blobUrl: string | null; sizeMb: number | null;
+        submittedAt: number;
+      };
+      const sceneTrackers: SceneTracker[] = [];
+
+      for (let i = 0; i < screenplay.scenes.length; i++) {
+        if (movieCancelRef.current) break;
+        const scene = screenplay.scenes[i];
+        addMovieLog("🎬", `[${i + 1}/${totalScenes}] ${scene.title}`, "info");
+        addMovieLog("📝", `"${scene.videoPrompt.slice(0, 80)}..."`, "info");
+
+        try {
+          const submitRes = await submitScene(walletAddress, scene.videoPrompt, 10, folder);
+          if (submitRes.success && submitRes.requestId) {
+            sceneTrackers.push({
+              sceneNumber: scene.sceneNumber, title: scene.title,
+              requestId: submitRes.requestId, status: "submitted",
+              blobUrl: null, sizeMb: null, submittedAt: Date.now(),
+            });
+            addMovieLog("✅", `Submitted: ${submitRes.requestId.slice(0, 20)}...`, "success");
+            setSceneStatuses(prev => prev.map(s => s.sceneNumber === scene.sceneNumber ? { ...s, status: "submitted" } : s));
+          } else {
+            addMovieLog("❌", `Failed to submit: ${submitRes.error || "Unknown error"}`, "error");
+            sceneTrackers.push({ sceneNumber: scene.sceneNumber, title: scene.title, requestId: null, status: "failed", blobUrl: null, sizeMb: null, submittedAt: Date.now() });
+            setSceneStatuses(prev => prev.map(s => s.sceneNumber === scene.sceneNumber ? { ...s, status: "failed" } : s));
+          }
+        } catch (err: any) {
+          addMovieLog("❌", `Failed to submit: ${err?.message || "Network error"}`, "error");
+          sceneTrackers.push({ sceneNumber: scene.sceneNumber, title: scene.title, requestId: null, status: "failed", blobUrl: null, sizeMb: null, submittedAt: Date.now() });
+          setSceneStatuses(prev => prev.map(s => s.sceneNumber === scene.sceneNumber ? { ...s, status: "failed" } : s));
         }
-        setMovieResult(res);
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      } else {
-        addMovieLog("❌", res.message || "Failed to commission", "error");
+        setMovieProgress({ current: i + 1, total: totalScenes, pct: Math.round(((i + 1) / totalScenes) * 100) });
       }
+
+      if (movieCancelRef.current) { setMovieGenerating(false); setMoviePhase("idle"); return; }
+
+      const submittedScenes = sceneTrackers.filter(s => s.status === "submitted");
+      if (submittedScenes.length === 0) {
+        addMovieLog("❌", "All scenes failed to submit. Please try again.", "error");
+        setMoviePhase("failed");
+        setMovieGenerating(false);
+        return;
+      }
+
+      // ── STEP 4: Poll Every 10 Seconds ──
+      setMoviePhase("polling");
+      const doneScenes = new Set<number>();
+      const failedScenes = new Set<number>();
+      const sceneUrls = new Map<number, string>();
+      let lastProgressTime = Date.now();
+      let pollCount = 0;
+      const pendingCount = () => submittedScenes.filter(s => !doneScenes.has(s.sceneNumber) && !failedScenes.has(s.sceneNumber)).length;
+
+      addMovieLog("⏳", `Polling ${submittedScenes.length} scenes every 10s (max 15 min)...`, "waiting");
+      setMovieProgress({ current: 0, total: totalScenes, pct: 0 });
+
+      // Pre-fill failed from submission into failedScenes
+      sceneTrackers.filter(s => s.status === "failed").forEach(s => failedScenes.add(s.sceneNumber));
+
+      while (pendingCount() > 0 && pollCount < 90 && !movieCancelRef.current) {
+        await new Promise(r => setTimeout(r, 10000)); // 10s wait
+        pollCount++;
+
+        for (const scene of submittedScenes) {
+          if (doneScenes.has(scene.sceneNumber) || failedScenes.has(scene.sceneNumber) || !scene.requestId) continue;
+
+          try {
+            const pollRes = await pollScene(walletAddress, scene.requestId, folder);
+
+            if (pollRes.status === "done" && pollRes.blobUrl) {
+              doneScenes.add(scene.sceneNumber);
+              sceneUrls.set(scene.sceneNumber, pollRes.blobUrl);
+              lastProgressTime = Date.now();
+              const elapsed = formatElapsed(scene.submittedAt);
+              addMovieLog("🎉", `Scene ${scene.sceneNumber} "${scene.title}" DONE (${elapsed}) — ${pollRes.sizeMb || "?"}MB`, "success");
+              setSceneStatuses(prev => prev.map(s => s.sceneNumber === scene.sceneNumber ? { ...s, status: "done", sizeMb: pollRes.sizeMb, elapsed } : s));
+            } else if (["failed", "moderation_failed", "expired"].includes(pollRes.status)) {
+              failedScenes.add(scene.sceneNumber);
+              addMovieLog("❌", `Scene ${scene.sceneNumber} "${scene.title}" FAILED: ${pollRes.status}`, "error");
+              setSceneStatuses(prev => prev.map(s => s.sceneNumber === scene.sceneNumber ? { ...s, status: "failed" } : s));
+            } else {
+              // Still rendering - update status to "rendering"
+              setSceneStatuses(prev => prev.map(s => s.sceneNumber === scene.sceneNumber && s.status === "submitted" ? { ...s, status: "rendering" } : s));
+            }
+          } catch (err: any) {
+            // Network error during poll — skip this cycle, try next
+            console.warn(`Poll error for scene ${scene.sceneNumber}:`, err?.message);
+          }
+        }
+
+        const done = doneScenes.size;
+        const failed = failedScenes.size;
+        const pct = Math.round((done / totalScenes) * 100);
+        setMovieProgress({ current: done, total: totalScenes, pct });
+
+        // Log progress every 3rd poll (every 30s)
+        if (pollCount % 3 === 0) {
+          addMovieLog("🔄", `${formatElapsed(startTime)}: ${done}/${totalScenes} done, ${failed} failed`, "info");
+        }
+
+        // Stall detection: 50%+ done AND 60s since last completion
+        if (done >= totalScenes * 0.5 && (Date.now() - lastProgressTime) > 60000) {
+          addMovieLog("⚠️", `Stall detected — stitching ${done}/${totalScenes} available clips`, "waiting");
+          break;
+        }
+      }
+
+      if (movieCancelRef.current) { setMovieGenerating(false); setMoviePhase("idle"); return; }
+
+      // Check if we have enough clips
+      if (doneScenes.size === 0) {
+        addMovieLog("❌", `All scenes failed to generate. Please try again.`, "error");
+        setMoviePhase("failed");
+        setMovieGenerating(false);
+        return;
+      }
+
+      if (doneScenes.size < totalScenes * 0.5 && pollCount >= 90) {
+        addMovieLog("❌", `Not enough clips completed. ${doneScenes.size}/${totalScenes} done.`, "error");
+        setMoviePhase("failed");
+        setMovieGenerating(false);
+        return;
+      }
+
+      // ── STEP 5: Stitch ──
+      setMoviePhase("stitching");
+      setMovieProgress({ current: 0, total: 1, pct: 0 });
+      addMovieLog("🏁", `"${screenplay.title}" — ${doneScenes.size}/${totalScenes} scenes completed, ${failedScenes.size} failed`, "info");
+      addMovieLog("🧩", `Stitching ${doneScenes.size} clips into one movie...`, "waiting");
+
+      const sceneUrlsObj: Record<string, string> = {};
+      sceneUrls.forEach((url, num) => { sceneUrlsObj[String(num)] = url; });
+
+      const stitchRes = await stitchMovie(walletAddress, {
+        sceneUrls: sceneUrlsObj,
+        title: screenplay.title,
+        genre: screenplay.genre,
+        directorUsername: screenplay.director,
+        directorId: screenplay.directorId,
+        synopsis: screenplay.synopsis,
+        tagline: screenplay.tagline,
+        castList: screenplay.castList,
+      });
+
+      setMovieProgress({ current: 1, total: 1, pct: 100 });
+      addMovieLog("✅", `MOVIE STITCHED! ${stitchRes.clipCount} clips → ${stitchRes.sizeMb}MB`, "success");
+      addMovieLog("🎬", `Feed post: ${stitchRes.feedPostId}`, "success");
+      if (stitchRes.spreading?.length) {
+        addMovieLog("✅", `Social media marketing done → ${stitchRes.spreading.join(", ")}`, "success");
+      }
+      addMovieLog("🙏", `Thank you Architect`, "success");
+
+      setMovieResult({
+        success: true,
+        title: screenplay.title,
+        director: screenplay.directorName,
+        genre: screenplay.genre,
+        finalVideoUrl: stitchRes.finalVideoUrl,
+        feedPostId: stitchRes.feedPostId,
+        directorMovieId: stitchRes.directorMovieId,
+        clipCount: stitchRes.clipCount,
+        sizeMb: stitchRes.sizeMb,
+        spreading: stitchRes.spreading,
+      });
+      setMoviePhase("complete");
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
     } catch (e: any) {
       addMovieLog("❌", e?.message || "Movie generation failed", "error");
+      setMoviePhase("failed");
     }
     setMovieGenerating(false);
+  };
+
+  // Cancel movie generation
+  const handleCancelMovie = () => {
+    movieCancelRef.current = true;
+    addMovieLog("⚠️", "Cancelling generation...", "waiting");
   };
 
   // ── Upload handlers ──
@@ -592,23 +791,73 @@ export default function ContentStudioScreen() {
               placeholder="Describe your movie idea... or leave blank for AI surprise"
               placeholderTextColor={colors.textMuted} multiline maxLength={500} />
 
-            <TouchableOpacity
-              style={[styles.movieGenBtn, movieGenerating && { opacity: 0.5 }]}
-              onPress={handleDirectorMovie} disabled={movieGenerating}>
-              <Text style={styles.movieGenBtnText}>
-                {movieGenerating ? "🎬 Commissioning..." : "🎥 Commission Director Movie"}
-              </Text>
-            </TouchableOpacity>
+            {/* Generate / Cancel buttons */}
+            <View style={{ flexDirection: "row", gap: 10 }}>
+              <TouchableOpacity
+                style={[styles.movieGenBtn, { flex: 1 }, movieGenerating && { opacity: 0.5 }]}
+                onPress={handleDirectorMovie} disabled={movieGenerating}>
+                <Text style={styles.movieGenBtnText}>
+                  {movieGenerating ? `🎬 ${moviePhase === "screenplay" ? "Writing screenplay..." : moviePhase === "submitting" ? "Submitting scenes..." : moviePhase === "polling" ? "Rendering clips..." : moviePhase === "stitching" ? "Stitching movie..." : "Generating..."}` : "🎥 Generate Director Movie"}
+                </Text>
+              </TouchableOpacity>
+              {movieGenerating && (
+                <TouchableOpacity style={[styles.movieGenBtn, { backgroundColor: "rgba(239,68,68,0.2)", borderColor: colors.red, flex: 0, paddingHorizontal: 16 }]}
+                  onPress={handleCancelMovie}>
+                  <Text style={[styles.movieGenBtnText, { color: colors.red }]}>Cancel</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Progress bar during generation */}
+            {movieGenerating && moviePhase !== "idle" && (
+              <View style={{ marginTop: 12, marginBottom: 8 }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+                  <Text style={{ color: colors.text, fontFamily: "monospace", fontSize: 12 }}>
+                    {moviePhase === "screenplay" ? "📜 Writing screenplay..." : moviePhase === "submitting" ? `📡 Submitting scenes... ${movieProgress.current}/${movieProgress.total}` : moviePhase === "polling" ? `🎬 Rendering clips... ${movieProgress.current}/${movieProgress.total} (${movieProgress.pct}%)` : moviePhase === "stitching" ? "🧩 Stitching movie..." : moviePhase === "complete" ? "✅ Movie complete!" : ""}
+                  </Text>
+                </View>
+                <ProgressBar progress={movieProgress.pct} color={moviePhase === "complete" ? colors.green : colors.amber} />
+                {moviePhase === "polling" && movieProgress.current === 0 && (
+                  <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 4, fontFamily: "monospace" }}>Waiting for clips to render...</Text>
+                )}
+                {moviePhase === "polling" && movieProgress.current > 0 && movieProgress.current < movieProgress.total && (
+                  <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 4, fontFamily: "monospace" }}>
+                    {movieProgress.pct}% complete — {movieProgress.total - movieProgress.current} clips remaining
+                  </Text>
+                )}
+              </View>
+            )}
+
+            {/* Per-scene status indicators */}
+            {sceneStatuses.length > 0 && (movieGenerating || moviePhase === "complete" || moviePhase === "failed") && (
+              <View style={{ backgroundColor: "rgba(3,7,18,0.8)", borderRadius: 8, padding: 10, marginTop: 8, marginBottom: 8 }}>
+                <Text style={{ color: colors.text, fontFamily: "monospace", fontSize: 11, fontWeight: "bold", marginBottom: 6 }}>Scene Status</Text>
+                {sceneStatuses.map(s => (
+                  <Text key={s.sceneNumber} style={{
+                    fontFamily: "monospace", fontSize: 11, marginBottom: 3,
+                    color: s.status === "done" ? "#4ade80" : s.status === "failed" ? "#f87171" : s.status === "rendering" ? "#94a3b8" : s.status === "submitted" ? "#facc15" : colors.textMuted,
+                  }}>
+                    {s.status === "done" ? "✅" : s.status === "failed" ? "❌" : s.status === "rendering" ? "🔄" : s.status === "submitted" ? "⏳" : "⏳"} Scene {s.sceneNumber}: {s.title}
+                    {s.status === "done" && s.elapsed ? ` (${s.elapsed})` : ""}
+                    {s.status === "done" && s.sizeMb ? ` — ${s.sizeMb}MB` : ""}
+                    {s.status === "rendering" ? " Rendering..." : s.status === "submitted" ? " Submitted" : ""}
+                  </Text>
+                ))}
+              </View>
+            )}
 
             {/* Movie generation log */}
-            {movieLog.length > 0 && <GenerationLog entries={movieLog} onClear={() => setMovieLog([])} />}
+            {movieLog.length > 0 && <GenerationLog entries={movieLog} onClear={() => { setMovieLog([]); if (!movieGenerating) { setMoviePhase("idle"); setSceneStatuses([]); } }} />}
 
             {/* Movie result */}
-            {movieResult && (
+            {movieResult && moviePhase === "complete" && (
               <View style={styles.movieResultCard}>
-                <Text style={styles.movieResultTitle}>🎬 Movie Commissioned!</Text>
-                {movieResult.job_id && <Text style={styles.movieResultMeta}>Job: {movieResult.job_id}</Text>}
-                {movieResult.message && <Text style={styles.movieResultMeta}>{movieResult.message}</Text>}
+                <Text style={styles.movieResultTitle}>🎬 {movieResult.title || "Movie Complete!"}</Text>
+                {movieResult.director && <Text style={styles.movieResultMeta}>Director: {movieResult.director}</Text>}
+                {movieResult.genre && <Text style={styles.movieResultMeta}>Genre: {movieResult.genre}</Text>}
+                {movieResult.clipCount && <Text style={styles.movieResultMeta}>Clips: {movieResult.clipCount} · {movieResult.sizeMb}MB</Text>}
+                {movieResult.spreading?.length > 0 && <Text style={[styles.movieResultMeta, { color: colors.green }]}>Spread to: {movieResult.spreading.join(", ")}</Text>}
+                {movieResult.feedPostId && <Text style={styles.movieResultMeta}>Post ID: {movieResult.feedPostId}</Text>}
               </View>
             )}
           </View>

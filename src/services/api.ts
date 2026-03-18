@@ -812,8 +812,22 @@ export function getAdStatus(walletAddress: string) {
 
 // ── Director Movies ──
 
+// Genre → blob folder mapping (cooking_channel maps to cooking_show)
+export const GENRE_FOLDER_MAP: Record<string, string> = {
+  action: "premiere/action",
+  scifi: "premiere/scifi",
+  horror: "premiere/horror",
+  comedy: "premiere/comedy",
+  drama: "premiere/drama",
+  romance: "premiere/romance",
+  family: "premiere/family",
+  documentary: "premiere/documentary",
+  cooking_channel: "premiere/cooking_show",
+};
+
+// One-shot generation (server-side orchestration, no real-time progress)
 export function triggerDirectorMovie(walletAddress: string, opts?: { genre?: string; director?: string; concept?: string }) {
-  return fetchJSON<{ success: boolean; job_id?: string; message?: string }>(`/api/generate-director-movie?wallet_address=${encodeURIComponent(walletAddress)}`, {
+  return fetchJSON<{ success: boolean; job_id?: string; message?: string; action?: string; director?: string; directorName?: string; genre?: string; title?: string; tagline?: string; clipCount?: number; totalDuration?: number; cast?: string[]; jobId?: string }>(`/api/generate-director-movie?wallet_address=${encodeURIComponent(walletAddress)}`, {
     method: "POST",
     body: JSON.stringify({ ...opts, wallet_address: walletAddress }),
   });
@@ -828,6 +842,196 @@ export function getMovies(walletAddress: string, genre?: string, director?: stri
   if (genre) url += `&genre=${encodeURIComponent(genre)}`;
   if (director) url += `&director=${encodeURIComponent(director)}`;
   return fetchJSON<{ movies: any[] }>(url);
+}
+
+// ── Director Movie Pipeline (multi-step client-side flow) ──
+
+// Step 1a: Create a manual concept
+export function createConcept(walletAddress: string, title: string, concept: string, genre: string) {
+  return fetchJSON<{ success: boolean; id: string; title: string; concept: string; genre: string }>("/api/admin/director-prompts", {
+    method: "POST",
+    headers: { "X-Wallet-Address": walletAddress },
+    body: JSON.stringify({ title, concept, genre }),
+  });
+}
+
+// Step 1b: Auto-generate a random concept
+export function autoGenerateConcept(walletAddress: string, genre?: string, director?: string) {
+  let url = `/api/admin/director-prompts?preview=1`;
+  if (genre) url += `&genre=${encodeURIComponent(genre)}`;
+  if (director) url += `&director=${encodeURIComponent(director)}`;
+  return fetchJSON<{ success: boolean; title: string; concept: string; genre: string; preview?: boolean }>(url, {
+    method: "PUT",
+    headers: { "X-Wallet-Address": walletAddress },
+  });
+}
+
+// List saved concepts and recent movies
+export function listDirectorPrompts(walletAddress: string) {
+  return fetchJSON<{ prompts: any[]; recentMovies: any[] }>(`/api/admin/director-prompts`, {
+    headers: { "X-Wallet-Address": walletAddress },
+  });
+}
+
+// Delete a concept or movie
+export function deleteConcept(walletAddress: string, id: string, type?: "movie") {
+  return fetchJSON<{ success: boolean; deleted: string }>("/api/admin/director-prompts", {
+    method: "DELETE",
+    headers: { "X-Wallet-Address": walletAddress },
+    body: JSON.stringify({ id, ...(type ? { type } : {}) }),
+  });
+}
+
+// Step 2: Generate screenplay
+export interface ScreenplayScene {
+  sceneNumber: number;
+  title: string;
+  description: string;
+  videoPrompt: string;
+  duration: number;
+}
+
+export interface ScreenplayResponse {
+  title: string;
+  tagline: string;
+  synopsis: string;
+  genre: string;
+  director: string;
+  directorName: string;
+  directorId: string;
+  castList: string[];
+  screenplayProvider: "grok" | "claude";
+  scenes: ScreenplayScene[];
+}
+
+export function generateScreenplay(walletAddress: string, opts?: { genre?: string; director?: string; concept?: string }) {
+  return fetchJSON<ScreenplayResponse>("/api/admin/screenplay", {
+    method: "POST",
+    headers: { "X-Wallet-Address": walletAddress },
+    body: JSON.stringify({ ...opts }),
+  });
+}
+
+// Step 3: Submit a single scene to Grok video
+export interface SceneSubmitResponse {
+  success: boolean;
+  requestId?: string;
+  error?: string;
+}
+
+export function submitScene(walletAddress: string, prompt: string, duration: number, folder: string) {
+  return fetchJSON<SceneSubmitResponse>("/api/test-grok-video", {
+    method: "POST",
+    headers: { "X-Wallet-Address": walletAddress },
+    body: JSON.stringify({ prompt, duration, folder }),
+  });
+}
+
+// Step 4: Poll a scene's status
+export interface ScenePollResponse {
+  phase: "done" | "pending";
+  success: boolean;
+  status: "done" | "pending" | "failed" | "moderation_failed" | "expired";
+  blobUrl?: string;
+  videoUrl?: string;
+  sizeMb?: number;
+}
+
+export function pollScene(walletAddress: string, requestId: string, folder: string) {
+  return fetchJSON<ScenePollResponse>(`/api/test-grok-video?id=${encodeURIComponent(requestId)}&folder=${encodeURIComponent(folder)}&skip_post=true`, {
+    headers: { "X-Wallet-Address": walletAddress },
+  });
+}
+
+// Step 5: Stitch completed clips into one movie
+export interface StitchResponse {
+  action: string;
+  feedPostId: string;
+  premierePostId: string;
+  directorMovieId: string;
+  finalVideoUrl: string;
+  sizeMb: string;
+  clipCount: number;
+  downloadErrors?: string[];
+  spreading?: string[];
+}
+
+export function stitchMovie(walletAddress: string, data: {
+  sceneUrls: Record<string, string>;
+  title: string;
+  genre: string;
+  directorUsername: string;
+  directorId: string;
+  synopsis?: string;
+  tagline?: string;
+  castList?: string[];
+}) {
+  return fetchJSON<StitchResponse>("/api/generate-director-movie", {
+    method: "PUT",
+    headers: { "X-Wallet-Address": walletAddress },
+    body: JSON.stringify(data),
+  });
+}
+
+// Force-stitch an existing job
+export function forceStitch(walletAddress: string, jobId: string) {
+  return fetchJSON<{ action: string; feedPostId?: string; spreading?: string[] }>("/api/generate-director-movie", {
+    method: "PATCH",
+    headers: { "X-Wallet-Address": walletAddress },
+    body: JSON.stringify({ jobId }),
+  });
+}
+
+// ── Extension System ──
+
+// Phase 1: Submit extension
+export function submitExtension(walletAddress: string, movieId: string, extensionClips?: number, continuationHint?: string) {
+  return fetchJSON<{
+    success: boolean;
+    movieId: string;
+    movieTitle: string;
+    originalVideoUrl: string;
+    lastFrameGenerated: boolean;
+    clipCount: number;
+    scenes: { number: number; title: string }[];
+    extensionJobs: { sceneNumber: number; title: string; requestId: string | null; videoUrl: string | null; error: string | null }[];
+  }>("/api/admin/extend-video", {
+    method: "POST",
+    headers: { "X-Wallet-Address": walletAddress },
+    body: JSON.stringify({ movieId, extensionClips, continuationHint }),
+  });
+}
+
+// Phase 2: Poll extension clip
+export function pollExtension(walletAddress: string, requestId: string) {
+  return fetchJSON<{
+    status: "done" | "pending" | "failed" | "expired" | "moderation_failed" | "error";
+    videoUrl?: string;
+    grokUrl?: string;
+    sizeMb?: string;
+    persisted?: boolean;
+    error?: string;
+  }>(`/api/admin/extend-video?requestId=${encodeURIComponent(requestId)}`, {
+    headers: { "X-Wallet-Address": walletAddress },
+  });
+}
+
+// Phase 3: Stitch extensions onto original
+export function stitchExtension(walletAddress: string, movieId: string, originalVideoUrl: string, extensionVideoUrls: string[]) {
+  return fetchJSON<{
+    success: boolean;
+    extendedVideoUrl: string;
+    sizeMb: string;
+    totalClips: number;
+    originalClips: number;
+    extensionClips: number;
+    postUpdated: boolean;
+    downloadErrors?: string[];
+  }>("/api/admin/extend-video", {
+    method: "PUT",
+    headers: { "X-Wallet-Address": walletAddress },
+    body: JSON.stringify({ movieId, originalVideoUrl, extensionVideoUrls }),
+  });
 }
 
 // ── BUDJU Trading ──

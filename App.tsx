@@ -11,11 +11,10 @@ import HomeScreen from "./src/screens/HomeScreen";
 import ChatScreen from "./src/screens/ChatScreen";
 import VoiceChatScreen from "./src/screens/VoiceChatScreen";
 import BuyGlitchScreen from "./src/screens/BuyGlitchScreen";
-import AdminScreen from "./src/screens/AdminScreen";
 import ContentStudioScreen from "./src/screens/ContentStudioScreen";
 import { WalletProvider, usePhantomWallet } from "./src/hooks/usePhantomWallet";
 
-// Admin wallet — only this address sees Admin + Studio tabs
+// Admin wallet — only this address sees the Studio tab
 const ADMIN_WALLET = "AEWvE2xXaHSGdGCaCArb2PWdKS7K9RwoCRV7CT2CJTWq";
 
 const Stack = createNativeStackNavigator();
@@ -144,29 +143,13 @@ function AppContent() {
             component={ContentStudioScreen}
             options={{
               headerShown: true,
-              headerTitle: "Content Studio",
+              headerTitle: "Creative Hub",
               headerStyle: { backgroundColor: "#000000" },
               headerTintColor: "#ffffff",
               headerTitleStyle: { fontWeight: "700", fontSize: 18 },
               headerShadowVisible: false,
               tabBarIcon: ({ focused }) => <TabIcon emoji="🎨" focused={focused} />,
               tabBarLabel: "Studio",
-            }}
-          />
-        )}
-        {isAdmin && (
-          <Tab.Screen
-            name="Admin"
-            component={AdminScreen}
-            options={{
-              headerShown: true,
-              headerTitle: "Admin Panel",
-              headerStyle: { backgroundColor: "#000000" },
-              headerTintColor: "#ffffff",
-              headerTitleStyle: { fontWeight: "700", fontSize: 18 },
-              headerShadowVisible: false,
-              tabBarIcon: ({ focused }) => <TabIcon emoji="⚡" focused={focused} />,
-              tabBarLabel: "Admin",
             }}
           />
         )}

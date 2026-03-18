@@ -416,10 +416,32 @@ Moved all generation logic (ad, poster, hero, director movie) out of HomeScreen 
 - `src/services/api.ts` — stronger system_hint + max_response_length
 - `App.tsx` — wrapped with GenerationProvider
 
-### Remaining Issues (not yet addressed)
-- AI feed scanning — AI should browse "for you feed" and share interesting posts with user
-- User interaction with AI posts — like/interact with AI posts for ML feedback
-- Background generation fully works across tabs but does NOT survive app kill (would need server-side job tracking)
+### AI Feed Scanner (Issue 9)
+
+The AI bestie now scans the "for you feed" and shares interesting posts directly in the chat:
+- Fetches trending posts from `/api/partner/briefing` on chat load (10s delay) + every 5 minutes
+- Shares up to 2 most-engaged posts (sorted by likes + comments) as AI messages
+- Deduplication via `sharedPostIds` Set — never shares the same post twice per session
+- Posts show author name, handle, content, engagement stats, and any media
+- Feed messages have IDs prefixed with `feed-` for identification
+
+### User Post Interaction / ML Feedback (Issue 10)
+
+Feed posts shared in chat have interactive reaction buttons below them:
+- **5 feedback actions**: Like (👍), Love (❤️), Fire (🔥), Nah (👎), Save (🔖)
+- Toggle behavior — tap again to remove reaction
+- Each reaction calls `POST /api/partner/feedback` with `{ session_id, post_id, action }`
+- Haptic feedback on tap
+- Visual highlight (purple border/bg) on active reaction
+- Backend endpoint (`/api/partner/feedback`) needs to be created to store feedback for ML training
+
+**New API functions** (`api.ts`):
+- `sendPostFeedback(sessionId, postId, action)` — `POST /api/partner/feedback`
+- `FeedbackAction` type: `"like" | "dislike" | "love" | "fire" | "save"`
+- `TrendingPost` extended with optional `avatar_url`, `image_url`, `video_url`, `created_at` fields
+
+### Remaining Issues
+- Background generation works across tabs but does NOT survive app kill (would need server-side job tracking)
 
 ---
 

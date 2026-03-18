@@ -21,7 +21,8 @@ import { usePushNotifications } from "../hooks/usePushNotifications";
 import {
   API_BASE, getBestie, walletLogin, linkWallet, unlinkWallet,
   getOnChainBalances, getMessages, sendMessage, sendImageMessage,
-  Bestie, OnChainBalances, Message,
+  getBriefing, sendPostFeedback,
+  Bestie, OnChainBalances, Message, TrendingPost, FeedbackAction,
 } from "../services/api";
 import CosmicVisualizer from "../components/CosmicVisualizer";
 import { useGeneration } from "../hooks/GenerationContext";
@@ -279,6 +280,89 @@ export default function HomeScreen() {
       clearResult();
     }
   }, [genResult, clearResult]);
+
+  // ── AI Feed Scanner — shares interesting posts from the "for you" feed ──
+  const [sharedPostIds, setSharedPostIds] = useState<Set<string>>(new Set());
+  const [postReactions, setPostReactions] = useState<Record<string, FeedbackAction>>({});
+  const feedScanTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastFeedScanRef = useRef(0);
+
+  const scanFeedAndShare = useCallback(async () => {
+    if (!sessionId || !bestie) return;
+    try {
+      const briefing = await getBriefing(sessionId);
+      if (!briefing.trending || briefing.trending.length === 0) return;
+
+      // Pick posts not yet shared, sorted by engagement
+      const unseen = briefing.trending
+        .filter((p) => !sharedPostIds.has(p.id))
+        .sort((a, b) => (b.ai_like_count + b.comment_count) - (a.ai_like_count + a.comment_count));
+
+      if (unseen.length === 0) return;
+
+      // Share up to 2 interesting posts
+      const toShare = unseen.slice(0, 2);
+      const newIds = new Set(sharedPostIds);
+
+      for (const post of toShare) {
+        newIds.add(post.id);
+        const postMsg: Message = {
+          id: `feed-${post.id}`,
+          sender_type: "ai",
+          content: `Found this on the feed — ${post.display_name} (@${post.username}) posted:\n\n"${post.content}"\n\n${post.ai_like_count} likes · ${post.comment_count} comments`,
+          created_at: new Date().toISOString(),
+          image_url: post.image_url || post.video_url || undefined,
+        };
+        setMessages((prev) => [...prev, postMsg]);
+      }
+      setSharedPostIds(newIds);
+    } catch (e) {
+      console.warn("Feed scan error:", e);
+    }
+  }, [sessionId, bestie?.id, sharedPostIds]);
+
+  // Scan feed on first chat load + every 5 minutes
+  useEffect(() => {
+    if (!sessionId || !bestie) return;
+    // Initial scan after 10s delay (let chat load first)
+    const initialTimer = setTimeout(() => {
+      if (Date.now() - lastFeedScanRef.current > 60000) {
+        lastFeedScanRef.current = Date.now();
+        scanFeedAndShare();
+      }
+    }, 10000);
+
+    // Periodic scan every 5 minutes
+    feedScanTimerRef.current = setInterval(() => {
+      lastFeedScanRef.current = Date.now();
+      scanFeedAndShare();
+    }, 5 * 60 * 1000);
+
+    return () => {
+      clearTimeout(initialTimer);
+      if (feedScanTimerRef.current) { clearInterval(feedScanTimerRef.current); feedScanTimerRef.current = null; }
+    };
+  }, [sessionId, bestie?.id, scanFeedAndShare]);
+
+  // Handle post reaction (like/dislike/love/fire/save)
+  const handlePostReaction = useCallback(async (postId: string, action: FeedbackAction) => {
+    if (!sessionId) return;
+    // Toggle: if same action, remove it
+    setPostReactions((prev) => {
+      if (prev[postId] === action) {
+        const next = { ...prev };
+        delete next[postId];
+        return next;
+      }
+      return { ...prev, [postId]: action };
+    });
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    try {
+      await sendPostFeedback(sessionId, postId, action);
+    } catch (e) {
+      console.warn("Feedback error:", e);
+    }
+  }, [sessionId]);
 
   // Generation story steps — keeps the meatbag entertained while we cook
   const GEN_STEPS: Record<string, string[]> = {
@@ -899,6 +983,15 @@ export default function HomeScreen() {
     return <Text selectable style={[styles.msgText, isHuman ? styles.msgTextHuman : styles.msgTextAI]}>{elements}</Text>;
   }, []);
 
+  // Feedback reaction buttons for feed posts
+  const FEED_REACTIONS: { action: FeedbackAction; emoji: string; label: string }[] = [
+    { action: "like", emoji: "👍", label: "Like" },
+    { action: "love", emoji: "❤️", label: "Love" },
+    { action: "fire", emoji: "🔥", label: "Fire" },
+    { action: "dislike", emoji: "👎", label: "Nah" },
+    { action: "save", emoji: "🔖", label: "Save" },
+  ];
+
   const renderMessage = ({ item }: { item: Message }) => {
     const isHuman = item.sender_type === "human";
     const isSpeaking = speakingMsgId === item.id;
@@ -906,6 +999,9 @@ export default function HomeScreen() {
     const showPicker = reactionPickerFor === item.id;
     const hasMedia = !!item.image_url;
     const hasYouTube = !isHuman && getYouTubeId(item.content);
+    const isFeedPost = item.id.startsWith("feed-");
+    const feedPostId = isFeedPost ? item.id.replace("feed-", "") : null;
+    const currentFeedReaction = feedPostId ? postReactions[feedPostId] : null;
     // Hide placeholder text like "[Photo]" or "[Video]" when media is displayed
     const isMediaPlaceholder = hasMedia && /^\[(Photo|Video|Shared a photo)\]$/i.test(item.content.trim());
     return (
@@ -957,6 +1053,26 @@ export default function HomeScreen() {
               </TouchableOpacity>
             )}
           </TouchableOpacity>
+
+          {/* Feed post reaction bar — like/love/fire/dislike/save for ML feedback */}
+          {isFeedPost && feedPostId && (
+            <View style={styles.feedReactionBar}>
+              {FEED_REACTIONS.map(({ action, emoji, label }) => {
+                const isActive = currentFeedReaction === action;
+                return (
+                  <TouchableOpacity
+                    key={action}
+                    style={[styles.feedReactionBtn, isActive && styles.feedReactionBtnActive]}
+                    onPress={() => handlePostReaction(feedPostId, action)}
+                  >
+                    <Text style={styles.feedReactionEmoji}>{emoji}</Text>
+                    <Text style={[styles.feedReactionLabel, isActive && styles.feedReactionLabelActive]}>{label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
+
           {/* Reaction picker — below the bubble */}
           {showPicker && (
             <View style={[styles.reactionPicker, isHuman ? styles.reactionPickerRight : styles.reactionPickerLeft]}>
@@ -1931,6 +2047,33 @@ const styles = StyleSheet.create({
   reactionBubbleLeft: { alignSelf: "flex-start" },
   reactionBubbleRight: { alignSelf: "flex-end" },
   reactionBubbleText: { fontSize: 16 },
+
+  // Feed post reaction bar (ML feedback)
+  feedReactionBar: {
+    flexDirection: "row",
+    gap: 4,
+    marginTop: 6,
+    paddingHorizontal: 4,
+  },
+  feedReactionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: "rgba(30,30,30,0.6)",
+  },
+  feedReactionBtnActive: {
+    borderColor: colors.purple,
+    backgroundColor: "rgba(124, 58, 237, 0.15)",
+  },
+  feedReactionEmoji: { fontSize: 13 },
+  feedReactionLabel: { color: colors.textMuted, fontSize: 10, fontWeight: "600" },
+  feedReactionLabelActive: { color: colors.purple },
+
   tapToStop: { color: "rgba(255,255,255,0.4)", fontSize: 10, textAlign: "center", marginTop: -4, marginBottom: 2 },
   loadingOlder: { alignItems: "center", paddingVertical: 12, gap: 4 },
   loadingOlderText: { color: colors.textMuted, fontSize: 11 },

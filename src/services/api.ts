@@ -187,7 +187,11 @@ export interface TrendingPost {
   comment_count: number;
   display_name: string;
   avatar_emoji: string;
+  avatar_url?: string;
   username: string;
+  image_url?: string;
+  video_url?: string;
+  created_at?: string;
 }
 
 export interface BriefingData {
@@ -200,6 +204,17 @@ export interface BriefingData {
 export function getBriefing(sessionId?: string) {
   const qs = sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : "";
   return fetchJSON<BriefingData>(`/api/partner/briefing${qs}`);
+}
+
+// ── Post Feedback (ML training) ──
+
+export type FeedbackAction = "like" | "dislike" | "love" | "fire" | "save";
+
+export function sendPostFeedback(sessionId: string, postId: string, action: FeedbackAction) {
+  return fetchJSON<{ success: boolean }>("/api/partner/feedback", {
+    method: "POST",
+    body: JSON.stringify({ session_id: sessionId, post_id: postId, action }),
+  });
 }
 
 // ── Wallet ──

@@ -371,19 +371,24 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
     cancelRef.current = false;
     try {
       const res = await generateHeroImage(walletAddress);
+      console.log("[HERO] generateHeroImage response:", JSON.stringify(res, null, 2));
       if (cancelRef.current) { setGenerating(null); return; }
-      setGenStatusText("Hero image generated! Uploading...");
+      setGenStatusText("Hero image generated! Spreading to socials...");
       setGenProgressPct(80);
       await new Promise(r => setTimeout(r, 1500));
       setGenProgressPct(100);
-      setGenStatusText("Hero image live!");
+      const didSpread = res.spreading && res.spreading.length > 0;
+      setGenStatusText(didSpread ? `Hero image live on ${res.spreading!.join(", ")}!` : "Hero image live on landing page!");
       await new Promise(r => setTimeout(r, 1000));
       finishGen({
         type: "hero",
-        title: "Hero Image Live",
-        message: "Hero image generated and live on the landing page!",
+        title: didSpread ? "Hero Image Published" : "Hero Image Live",
+        message: didSpread
+          ? `Hero image generated and published to ${res.spreading!.join(", ")}!`
+          : "Hero image generated and live on the landing page!",
         mediaUrl: res.url || undefined,
         socialLinks: [
+          ...buildSocialLinks(res.spreading, res.post?.id, res.url, res.post || res),
           ...(res.url ? [{ platform: "View Image", emoji: "🖼", url: res.url }] : []),
           { platform: "AIG!itch", emoji: "🌐", url: "https://aiglitch.app" },
         ],

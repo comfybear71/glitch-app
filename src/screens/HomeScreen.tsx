@@ -26,6 +26,7 @@ import {
 } from "../services/api";
 import CosmicVisualizer from "../components/CosmicVisualizer";
 import { useGeneration, SocialLink } from "../hooks/GenerationContext";
+import { getRandomMarketplaceItem, getRandomMarketplaceItems, formatItemForAd, MarketplaceItem } from "../data/marketplaceItems";
 const APP_VERSION = "1.0.2";
 
 function HealthBar({ health }: { health: number }) {
@@ -144,6 +145,8 @@ export default function HomeScreen() {
   const [showAdPicker, setShowAdPicker] = useState(false);
   const [adStyle, setAdStyle] = useState("auto");
   const [adConcept, setAdConcept] = useState("");
+  const [selectedProduct, setSelectedProduct] = useState<MarketplaceItem | null>(null);
+  const [productChoices, setProductChoices] = useState<MarketplaceItem[]>([]);
 
   // Inline news picker state
   const [showNewsPicker, setShowNewsPicker] = useState(false);
@@ -1768,18 +1771,90 @@ export default function HomeScreen() {
                 ))}
               </ScrollView>
 
+              {/* Marketplace Product Pick */}
+              <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: "700", marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>Marketplace Product Ad</Text>
+              <TouchableOpacity
+                style={{ backgroundColor: "#1a1a2e", borderWidth: 1.5, borderColor: selectedProduct ? colors.cyan : "#374151", borderRadius: 12, padding: 12, marginBottom: 8, flexDirection: "row", alignItems: "center" }}
+                onPress={() => {
+                  const items = getRandomMarketplaceItems(5);
+                  setProductChoices(items);
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                }}>
+                {selectedProduct ? (
+                  <>
+                    <Text style={{ fontSize: 28, marginRight: 10 }}>{selectedProduct.emoji}</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: colors.text, fontSize: 14, fontWeight: "800" }}>{selectedProduct.name}</Text>
+                      <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 2 }} numberOfLines={2}>{selectedProduct.description}</Text>
+                      <View style={{ flexDirection: "row", marginTop: 4, gap: 8 }}>
+                        <Text style={{ color: colors.cyan, fontSize: 11, fontWeight: "700" }}>{selectedProduct.price} GLITCH</Text>
+                        <Text style={{ color: selectedProduct.rarity === "legendary" ? "#fbbf24" : selectedProduct.rarity === "epic" ? "#a78bfa" : selectedProduct.rarity === "rare" ? "#60a5fa" : colors.textMuted, fontSize: 11, fontWeight: "700", textTransform: "uppercase" }}>{selectedProduct.rarity}</Text>
+                      </View>
+                    </View>
+                    <TouchableOpacity onPress={() => { setSelectedProduct(null); setAdConcept(""); }} style={{ padding: 4 }}>
+                      <Text style={{ color: colors.textMuted, fontSize: 18 }}>x</Text>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <>
+                    <Text style={{ fontSize: 22, marginRight: 10 }}>🛒</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: colors.text, fontSize: 14, fontWeight: "700" }}>Pick a Product</Text>
+                      <Text style={{ color: colors.textMuted, fontSize: 11 }}>Random item from AIG!itch Marketplace</Text>
+                    </View>
+                    <Text style={{ color: colors.cyan, fontSize: 12, fontWeight: "700" }}>ROLL</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+
+              {/* Product choices (shown after tapping Roll) */}
+              {productChoices.length > 0 && !selectedProduct && (
+                <View style={{ marginBottom: 8 }}>
+                  {productChoices.map(item => (
+                    <TouchableOpacity
+                      key={item.id}
+                      style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#111827", borderRadius: 10, padding: 10, marginBottom: 6, borderWidth: 1, borderColor: "#1f2937" }}
+                      onPress={() => {
+                        setSelectedProduct(item);
+                        setAdConcept(formatItemForAd(item));
+                        setProductChoices([]);
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      }}>
+                      <Text style={{ fontSize: 22, marginRight: 8 }}>{item.emoji}</Text>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: colors.text, fontSize: 13, fontWeight: "700" }}>{item.name}</Text>
+                        <Text style={{ color: colors.textMuted, fontSize: 10 }} numberOfLines={1}>{item.description}</Text>
+                      </View>
+                      <Text style={{ color: colors.cyan, fontSize: 11, fontWeight: "700" }}>{item.price} G</Text>
+                    </TouchableOpacity>
+                  ))}
+                  <TouchableOpacity
+                    style={{ alignItems: "center", paddingVertical: 6 }}
+                    onPress={() => { setProductChoices(getRandomMarketplaceItems(5)); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}>
+                    <Text style={{ color: colors.pink, fontSize: 12, fontWeight: "700" }}>Reroll Products</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {/* Divider */}
+              <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 12, marginTop: 4 }}>
+                <View style={{ flex: 1, height: 1, backgroundColor: "#1f2937" }} />
+                <Text style={{ color: colors.textMuted, fontSize: 11, marginHorizontal: 10 }}>or custom concept</Text>
+                <View style={{ flex: 1, height: 1, backgroundColor: "#1f2937" }} />
+              </View>
+
               {/* Concept */}
               <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: "700", marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>What's the Ad About?</Text>
               <TextInput
-                style={{ backgroundColor: "#1f2937", borderWidth: 1, borderColor: "#374151", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, color: colors.text, fontSize: 14, minHeight: 70, textAlignVertical: "top", marginBottom: 16 }}
-                value={adConcept} onChangeText={setAdConcept}
+                style={{ backgroundColor: "#1f2937", borderWidth: 1, borderColor: selectedProduct ? colors.cyan : "#374151", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, color: colors.text, fontSize: 14, minHeight: 70, textAlignVertical: "top", marginBottom: 16 }}
+                value={adConcept} onChangeText={(t) => { setAdConcept(t); if (selectedProduct && t !== formatItemForAd(selectedProduct)) setSelectedProduct(null); }}
                 placeholder="Describe your ad campaign... or leave blank for AI surprise"
                 placeholderTextColor={colors.textMuted} multiline maxLength={500}
               />
 
               {/* Generate button */}
               <TouchableOpacity
-                style={{ backgroundColor: colors.purple, borderRadius: 12, paddingVertical: 16, alignItems: "center", borderWidth: 1, borderColor: colors.pink, marginBottom: 16 }}
+                style={{ backgroundColor: selectedProduct ? "#0e7490" : colors.purple, borderRadius: 12, paddingVertical: 16, alignItems: "center", borderWidth: 1, borderColor: selectedProduct ? colors.cyan : colors.pink, marginBottom: 16 }}
                 onPress={() => {
                   Keyboard.dismiss();
                   setShowAdPicker(false);
@@ -1788,8 +1863,12 @@ export default function HomeScreen() {
                     adStyle !== "auto" ? adStyle : undefined,
                     adConcept.trim() || undefined,
                   );
+                  setSelectedProduct(null);
+                  setProductChoices([]);
                 }}>
-                <Text style={{ color: colors.text, fontSize: 16, fontWeight: "800" }}>Launch Campaign</Text>
+                <Text style={{ color: colors.text, fontSize: 16, fontWeight: "800" }}>
+                  {selectedProduct ? `Advertise ${selectedProduct.name}` : "Launch Campaign"}
+                </Text>
               </TouchableOpacity>
             </ScrollView>
           </View>

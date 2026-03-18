@@ -798,14 +798,14 @@ export function adminAwardCoins(walletAddress: string, sessionId: string, amount
 // ── Marketing / Posters ──
 
 export function generatePoster(walletAddress: string) {
-  return fetchJSON<{ success: boolean; url?: string; message?: string }>(`/api/admin/mktg?wallet_address=${encodeURIComponent(walletAddress)}`, {
+  return fetchJSON<{ success: boolean; url?: string; message?: string; spreading?: string[]; post?: any }>(`/api/admin/mktg?wallet_address=${encodeURIComponent(walletAddress)}`, {
     method: "POST",
     body: JSON.stringify({ action: "generate_poster", wallet_address: walletAddress }),
   });
 }
 
 export function generateHeroImage(walletAddress: string) {
-  return fetchJSON<{ success: boolean; url?: string; message?: string }>(`/api/admin/mktg?wallet_address=${encodeURIComponent(walletAddress)}`, {
+  return fetchJSON<{ success: boolean; url?: string; message?: string; spreading?: string[]; post?: any }>(`/api/admin/mktg?wallet_address=${encodeURIComponent(walletAddress)}`, {
     method: "POST",
     body: JSON.stringify({ action: "generate_hero", wallet_address: walletAddress }),
   });

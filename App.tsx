@@ -13,6 +13,7 @@ import VoiceChatScreen from "./src/screens/VoiceChatScreen";
 import BuyGlitchScreen from "./src/screens/BuyGlitchScreen";
 import ContentStudioScreen from "./src/screens/ContentStudioScreen";
 import { WalletProvider, usePhantomWallet } from "./src/hooks/usePhantomWallet";
+import { GenerationProvider } from "./src/hooks/GenerationContext";
 
 // Admin wallet — only this address sees the Studio tab
 const ADMIN_WALLET = "AEWvE2xXaHSGdGCaCArb2PWdKS7K9RwoCRV7CT2CJTWq";
@@ -173,8 +174,10 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <WalletProvider>
-        <StatusBar barStyle="light-content" backgroundColor="#000000" />
-        <AppContent />
+        <GenerationProvider>
+          <StatusBar barStyle="light-content" backgroundColor="#000000" />
+          <AppContent />
+        </GenerationProvider>
       </WalletProvider>
     </SafeAreaProvider>
   );

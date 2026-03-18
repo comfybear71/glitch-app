@@ -129,7 +129,8 @@ export function sendMessage(sessionId: string, personaId: string, content: strin
       session_id: sessionId,
       persona_id: personaId,
       content,
-      system_hint: "Reply in 1-2 short sentences max. Be brief and direct. No waffle.",
+      system_hint: "CRITICAL: Reply in 1-2 SHORT sentences ONLY. Maximum 30 words. Never explain, never elaborate, never use bullet points or lists. Just answer directly like a text message. If you write more than 2 sentences you have FAILED.",
+      max_response_length: 50,
     }),
   });
 }

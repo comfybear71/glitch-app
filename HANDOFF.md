@@ -1,6 +1,6 @@
 # HANDOFF.md — AI G!itch App Project Status
 
-Last updated: 2026-03-17 (Session 4 — 3 bugs fixed, xAI accounts documented, iPhone registered, new preview build)
+Last updated: 2026-03-18 (Session 6 — GenerationContext, keyboard fixes, AI brevity, chat result messages, local push notifications)
 
 ## Project Overview
 
@@ -375,6 +375,51 @@ If "your local changes would be overwritten" appears, stash first (see above).
 - **Fix**: Check xAI credit balance at console.xai.com and top up. This is a backend issue, not an app issue
 - **Note**: The app code just calls `/api/voice` and plays whatever MP3 comes back — it doesn't know which TTS engine was used
 - **Where to check credits**: console.xai.com → API Keys → Usage
+
+---
+
+## Recent Changes — Session 2026-03-18 (Session 6)
+
+### GenerationContext — Background-Safe Generation
+
+Moved all generation logic (ad, poster, hero, director movie) out of HomeScreen local state into a shared `GenerationContext` (`src/hooks/GenerationContext.tsx`). This means:
+- **Generation persists when navigating between tabs** — no longer tied to HomeScreen's component lifecycle
+- **Local push notifications** on completion via `expo-notifications` (`scheduleNotificationAsync` with `trigger: null` for immediate)
+- **Results appear as chat messages** — after any generation completes, a synthetic AI message is added to the chat with the result text and media URL
+- **Cancel support** via `cancelGeneration()` from context
+
+**Provider hierarchy** (App.tsx): `SafeAreaProvider → WalletProvider → GenerationProvider → AppContent`
+
+**Context API:**
+- `generating` — current generation type string or null
+- `genStatusText` / `genProgressPct` — real-time progress from API pipelines
+- `genResult` — completed result (type, title, message, mediaUrl, isVideo)
+- `clearResult()` / `cancelGeneration()`
+- `runAdGeneration(wallet)`, `runPosterGeneration(wallet)`, `runHeroGeneration(wallet)`, `runMovieGeneration(wallet, director?, genre?, concept?)`
+
+**HomeScreen changes:**
+- Uses `useGeneration()` hook instead of local state
+- `cosmeticGen` local state for polling-based background_task generation (images, etc.)
+- `generating = ctxGenerating || cosmeticGen` — unified display
+- `useEffect` watches `genResult` and injects result messages into chat
+
+### Bug Fixes (Session 6)
+
+1. **Keyboard dismiss during generation** — Added `Keyboard.dismiss()` calls when movie picker opens, when generate button is pressed, and before each generation type starts
+2. **Hero/Poster label mismatch** — Reordered detection logic so "hero image/banner/photo" is checked BEFORE "poster/promo" (previously "promo" in AI response would false-match hero requests)
+3. **AI response brevity** — Strengthened `system_hint` in `api.ts` sendMessage: now includes "CRITICAL: Reply in 1-2 SHORT sentences ONLY. Maximum 30 words." + added `max_response_length: 50` parameter
+4. **Ad social feedback** — Ad generation now shows which platforms the ad was spread to (reads from API response `spreading` field), and displays the ad caption in the chat result message
+
+### Files Changed (Session 6)
+- `src/hooks/GenerationContext.tsx` (NEW) — shared generation context with push notifications
+- `src/screens/HomeScreen.tsx` — refactored to use GenerationContext, keyboard fixes, detection order fix
+- `src/services/api.ts` — stronger system_hint + max_response_length
+- `App.tsx` — wrapped with GenerationProvider
+
+### Remaining Issues (not yet addressed)
+- AI feed scanning — AI should browse "for you feed" and share interesting posts with user
+- User interaction with AI posts — like/interact with AI posts for ML feedback
+- Background generation fully works across tabs but does NOT survive app kill (would need server-side job tracking)
 
 ---
 

@@ -22,11 +22,9 @@ import {
   API_BASE, getBestie, walletLogin, linkWallet, unlinkWallet,
   getOnChainBalances, getMessages, sendMessage, sendImageMessage,
   Bestie, OnChainBalances, Message,
-  generateScreenplay, submitScene, pollScene, stitchMovie,
-  generateAd, generatePoster, generateHeroImage,
-  GENRE_FOLDER_MAP, ScreenplayResponse,
 } from "../services/api";
 import CosmicVisualizer from "../components/CosmicVisualizer";
+import { useGeneration } from "../hooks/GenerationContext";
 const APP_VERSION = "1.0.2";
 
 function HealthBar({ health }: { health: number }) {
@@ -112,11 +110,14 @@ export default function HomeScreen() {
   const [sending, setSending] = useState(false);
   const [chatLoading, setChatLoading] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
-  const [generating, setGenerating] = useState<string | null>(null); // active generation type
-  const [genStep, setGenStep] = useState(0); // current step in generation story
-  const [genStatusText, setGenStatusText] = useState<string>(""); // real-time status text from API
-  const [genProgressPct, setGenProgressPct] = useState(0); // real progress percentage
-  const genCancelRef = useRef(false);
+  const {
+    generating: ctxGenerating, genStatusText, genProgressPct, genResult, clearResult, cancelGeneration,
+    runAdGeneration: ctxRunAd, runPosterGeneration: ctxRunPoster,
+    runHeroGeneration: ctxRunHero, runMovieGeneration: ctxRunMovie,
+  } = useGeneration();
+  const [cosmeticGen, setCosmeticGen] = useState<string | null>(null); // cosmetic gen type for polling-based tasks
+  const generating = ctxGenerating || cosmeticGen; // unified: context takes priority
+  const [genStep, setGenStep] = useState(0); // current step in generation story (cosmetic fallback)
 
   // Inline movie picker state
   const [showMoviePicker, setShowMoviePicker] = useState(false);
@@ -235,13 +236,13 @@ export default function HomeScreen() {
   // Poll for new messages (background tasks like image gen, content gen)
   const startPolling = useCallback((genType?: string) => {
     if (pollTimerRef.current || !sessionId || !bestie) return;
-    if (genType) setGenerating(genType);
+    if (genType) setCosmeticGen(genType);
     let pollCount = 0;
     pollTimerRef.current = setInterval(async () => {
       pollCount++;
       if (pollCount > 40) { // stop after ~2min (40 * 3s)
         if (pollTimerRef.current) { clearInterval(pollTimerRef.current); pollTimerRef.current = null; }
-        setGenerating(null);
+        setCosmeticGen(null);
         return;
       }
       try {
@@ -250,7 +251,7 @@ export default function HomeScreen() {
         if (newMsgs.length > messageCountRef.current) {
           // New messages arrived from background task!
           setMessages(newMsgs);
-          setGenerating(null);
+          setCosmeticGen(null);
           if (pollTimerRef.current) { clearInterval(pollTimerRef.current); pollTimerRef.current = null; }
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           // Auto-speak the latest AI message
@@ -263,222 +264,21 @@ export default function HomeScreen() {
     }, 3000);
   }, [sessionId, bestie?.id]);
 
-  // ── Real generation from chat — runs actual API pipelines ──
-
-  const runAdGeneration = useCallback(async () => {
-    if (!walletAddress) return;
-    setGenerating("ad");
-    setGenStatusText("Submitting ad to /api/generate-ads...");
-    setGenProgressPct(10);
-    genCancelRef.current = false;
-    try {
-      const res = await generateAd(walletAddress);
-      if (genCancelRef.current) { setGenerating(null); return; }
-      if (res.success) {
-        setGenStatusText("Ad generated! Spreading to socials...");
-        setGenProgressPct(90);
-        await new Promise(r => setTimeout(r, 2000));
-        setGenStatusText("Ad campaign launched!");
-        setGenProgressPct(100);
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        await new Promise(r => setTimeout(r, 2000));
-      } else {
-        setGenStatusText(`Failed: ${res.message || "Unknown error"}`);
-        await new Promise(r => setTimeout(r, 3000));
-      }
-    } catch (e: any) {
-      setGenStatusText(`Error: ${e?.message || "Ad generation failed"}`);
-      await new Promise(r => setTimeout(r, 3000));
+  // ── Generation results → chat messages ──
+  // When generation completes via context, add the result as a chat message
+  useEffect(() => {
+    if (genResult) {
+      const resultMsg: Message = {
+        id: `gen-result-${Date.now()}`,
+        sender_type: "ai",
+        content: `${genResult.title}\n${genResult.message}`,
+        created_at: new Date().toISOString(),
+        image_url: genResult.mediaUrl,
+      };
+      setMessages((prev) => [...prev, resultMsg]);
+      clearResult();
     }
-    setGenerating(null);
-    setGenProgressPct(0);
-  }, [walletAddress]);
-
-  const runPosterGeneration = useCallback(async () => {
-    if (!walletAddress) return;
-    setGenerating("poster");
-    setGenStatusText("Generating promo poster...");
-    setGenProgressPct(20);
-    genCancelRef.current = false;
-    try {
-      const res = await generatePoster(walletAddress);
-      if (genCancelRef.current) { setGenerating(null); return; }
-      setGenStatusText("Poster generated! Uploading...");
-      setGenProgressPct(80);
-      await new Promise(r => setTimeout(r, 1500));
-      setGenStatusText("Poster published!");
-      setGenProgressPct(100);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      await new Promise(r => setTimeout(r, 2000));
-    } catch (e: any) {
-      setGenStatusText(`Error: ${e?.message || "Poster generation failed"}`);
-      await new Promise(r => setTimeout(r, 3000));
-    }
-    setGenerating(null);
-    setGenProgressPct(0);
-  }, [walletAddress]);
-
-  const runHeroGeneration = useCallback(async () => {
-    if (!walletAddress) return;
-    setGenerating("hero");
-    setGenStatusText("Generating hero image...");
-    setGenProgressPct(20);
-    genCancelRef.current = false;
-    try {
-      const res = await generateHeroImage(walletAddress);
-      if (genCancelRef.current) { setGenerating(null); return; }
-      setGenStatusText("Hero image generated! Uploading...");
-      setGenProgressPct(80);
-      await new Promise(r => setTimeout(r, 1500));
-      setGenStatusText("Hero image live!");
-      setGenProgressPct(100);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      await new Promise(r => setTimeout(r, 2000));
-    } catch (e: any) {
-      setGenStatusText(`Error: ${e?.message || "Hero generation failed"}`);
-      await new Promise(r => setTimeout(r, 3000));
-    }
-    setGenerating(null);
-    setGenProgressPct(0);
-  }, [walletAddress]);
-
-  const runMovieGeneration = useCallback(async (director?: string, genre?: string, concept?: string) => {
-    if (!walletAddress) return;
-    setGenerating("director_movie");
-    setGenProgressPct(0);
-    genCancelRef.current = false;
-    const startTime = Date.now();
-    const formatElapsed = (from: number) => {
-      const s = Math.floor((Date.now() - from) / 1000);
-      return `${Math.floor(s / 60)}m ${s % 60}s`;
-    };
-
-    try {
-      // Step 1: Screenplay
-      setGenStatusText("Writing screenplay...");
-      setGenProgressPct(5);
-      const screenplay = await generateScreenplay(walletAddress, {
-        genre: genre && genre !== "any" ? genre : undefined,
-        director: director && director !== "auto" ? director : undefined,
-        concept: concept || undefined,
-      });
-      if (genCancelRef.current) { setGenerating(null); return; }
-
-      const totalScenes = screenplay.scenes.length;
-      const folder = GENRE_FOLDER_MAP[screenplay.genre] || `premiere/${screenplay.genre}`;
-      setGenStatusText(`"${screenplay.title}" — ${totalScenes} scenes by ${screenplay.directorName}`);
-      setGenProgressPct(15);
-      await new Promise(r => setTimeout(r, 2000));
-
-      // Step 2: Submit scenes
-      type SceneTrack = { sceneNumber: number; title: string; requestId: string | null; submittedAt: number };
-      const sceneTrackers: SceneTrack[] = [];
-
-      for (let i = 0; i < screenplay.scenes.length; i++) {
-        if (genCancelRef.current) { setGenerating(null); return; }
-        const scene = screenplay.scenes[i];
-        setGenStatusText(`Submitting scene ${i + 1}/${totalScenes}: ${scene.title}`);
-        setGenProgressPct(15 + Math.round((i / totalScenes) * 15));
-        try {
-          const submitRes = await submitScene(walletAddress, scene.videoPrompt, 10, folder);
-          if (submitRes.success && submitRes.requestId) {
-            sceneTrackers.push({ sceneNumber: scene.sceneNumber, title: scene.title, requestId: submitRes.requestId, submittedAt: Date.now() });
-          }
-        } catch { /* skip failed scenes */ }
-      }
-
-      if (sceneTrackers.length === 0) {
-        setGenStatusText("All scenes failed to submit. Try again.");
-        await new Promise(r => setTimeout(r, 3000));
-        setGenerating(null);
-        setGenProgressPct(0);
-        return;
-      }
-
-      // Step 3: Poll
-      const doneScenes = new Set<number>();
-      const failedScenes = new Set<number>();
-      const sceneUrls = new Map<number, string>();
-      let lastProgressTime = Date.now();
-      let pollCount = 0;
-
-      setGenStatusText(`Rendering ${sceneTrackers.length} clips... (0/${totalScenes})`);
-      setGenProgressPct(30);
-
-      while (pollCount < 90 && !genCancelRef.current) {
-        const pending = sceneTrackers.filter(s => !doneScenes.has(s.sceneNumber) && !failedScenes.has(s.sceneNumber));
-        if (pending.length === 0) break;
-
-        await new Promise(r => setTimeout(r, 10000));
-        pollCount++;
-
-        for (const scene of pending) {
-          if (!scene.requestId) continue;
-          try {
-            const pollRes = await pollScene(walletAddress, scene.requestId, folder);
-            if (pollRes.status === "done" && pollRes.blobUrl) {
-              doneScenes.add(scene.sceneNumber);
-              sceneUrls.set(scene.sceneNumber, pollRes.blobUrl);
-              lastProgressTime = Date.now();
-            } else if (["failed", "moderation_failed", "expired"].includes(pollRes.status)) {
-              failedScenes.add(scene.sceneNumber);
-            }
-          } catch { /* skip poll errors */ }
-        }
-
-        const done = doneScenes.size;
-        const pct = 30 + Math.round((done / totalScenes) * 50);
-        setGenProgressPct(pct);
-        setGenStatusText(`Rendering clips... ${done}/${totalScenes} done (${formatElapsed(startTime)})`);
-
-        // Stall detection
-        if (done >= totalScenes * 0.5 && (Date.now() - lastProgressTime) > 60000) {
-          setGenStatusText(`Stall detected — stitching ${done}/${totalScenes} clips`);
-          break;
-        }
-      }
-
-      if (genCancelRef.current) { setGenerating(null); return; }
-
-      if (doneScenes.size === 0) {
-        setGenStatusText("All clips failed. Try again.");
-        await new Promise(r => setTimeout(r, 3000));
-        setGenerating(null);
-        setGenProgressPct(0);
-        return;
-      }
-
-      // Step 4: Stitch
-      setGenStatusText(`Stitching ${doneScenes.size} clips into movie...`);
-      setGenProgressPct(85);
-
-      const sceneUrlsObj: Record<string, string> = {};
-      sceneUrls.forEach((url, num) => { sceneUrlsObj[String(num)] = url; });
-
-      const stitchRes = await stitchMovie(walletAddress, {
-        sceneUrls: sceneUrlsObj,
-        title: screenplay.title,
-        genre: screenplay.genre,
-        directorUsername: screenplay.director,
-        directorId: screenplay.directorId,
-        synopsis: screenplay.synopsis,
-        tagline: screenplay.tagline,
-        castList: screenplay.castList,
-      });
-
-      setGenProgressPct(100);
-      const platforms = stitchRes.spreading?.join(", ") || "all socials";
-      setGenStatusText(`"${screenplay.title}" premiere! ${stitchRes.clipCount} clips · ${stitchRes.sizeMb}MB · Spread to ${platforms}`);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      await new Promise(r => setTimeout(r, 5000));
-
-    } catch (e: any) {
-      setGenStatusText(`Error: ${e?.message || "Movie generation failed"}`);
-      await new Promise(r => setTimeout(r, 3000));
-    }
-    setGenerating(null);
-    setGenProgressPct(0);
-  }, [walletAddress]);
+  }, [genResult, clearResult]);
 
   // Generation story steps — keeps the meatbag entertained while we cook
   const GEN_STEPS: Record<string, string[]> = {
@@ -596,9 +396,6 @@ export default function HomeScreen() {
       };
     } else {
       setGenStep(0);
-      setGenStatusText("");
-      setGenProgressPct(0);
-      genCancelRef.current = false;
       if (genStepTimerRef.current) { clearInterval(genStepTimerRef.current); genStepTimerRef.current = null; }
     }
   }, [generating]);
@@ -747,16 +544,21 @@ export default function HomeScreen() {
         const combined = reply + " " + prompt;
 
         // Check for real generation triggers (run actual APIs)
+        // Order matters: check more specific patterns first to avoid false matches
         if (combined.includes("movie") || combined.includes("director") || combined.includes("screenplay") || combined.includes("film") || combined.includes("premiere")) {
           // Show movie picker so user can choose director/genre
+          Keyboard.dismiss();
           setShowMoviePicker(true);
           setPickerConcept(text); // pre-fill with user's prompt as concept
+        } else if (combined.includes("hero image") || combined.includes("hero banner") || combined.includes("hero photo") || combined.includes("landing page")) {
+          Keyboard.dismiss();
+          if (walletAddress) ctxRunHero(walletAddress);
         } else if (combined.includes("ad ") || combined.includes("advertis") || combined.includes("infomercial") || combined.includes("generate an ad") || combined.includes("make an ad")) {
-          runAdGeneration();
+          Keyboard.dismiss();
+          if (walletAddress) ctxRunAd(walletAddress);
         } else if (combined.includes("poster") || combined.includes("promo")) {
-          runPosterGeneration();
-        } else if (combined.includes("hero image") || combined.includes("hero banner") || combined.includes("landing page")) {
-          runHeroGeneration();
+          Keyboard.dismiss();
+          if (walletAddress) ctxRunPoster(walletAddress);
         } else if (data.background_task) {
           // Fallback to cosmetic polling for other background tasks (image gen, etc)
           const genType =
@@ -1706,8 +1508,10 @@ export default function HomeScreen() {
               <TouchableOpacity
                 style={{ backgroundColor: colors.purple, borderRadius: 12, paddingVertical: 16, alignItems: "center", borderWidth: 1, borderColor: colors.pink, marginBottom: 16 }}
                 onPress={() => {
+                  Keyboard.dismiss();
                   setShowMoviePicker(false);
-                  runMovieGeneration(
+                  if (walletAddress) ctxRunMovie(
+                    walletAddress,
                     pickerDirector !== "auto" ? pickerDirector : undefined,
                     pickerGenre !== "any" ? pickerGenre : undefined,
                     pickerConcept.trim() || undefined,

@@ -289,7 +289,6 @@ export default function HomeScreen() {
 
   // ── AI Feed Scanner — shares interesting posts from the "for you" feed ──
   const [sharedPostIds, setSharedPostIds] = useState<Set<string>>(new Set());
-  const [postReactions, setPostReactions] = useState<Record<string, FeedbackAction>>({});
   const feedScanTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastFeedScanRef = useRef(0);
 
@@ -349,26 +348,6 @@ export default function HomeScreen() {
       if (feedScanTimerRef.current) { clearInterval(feedScanTimerRef.current); feedScanTimerRef.current = null; }
     };
   }, [sessionId, bestie?.id, scanFeedAndShare]);
-
-  // Handle post reaction (like/dislike/love/fire/save)
-  const handlePostReaction = useCallback(async (postId: string, action: FeedbackAction) => {
-    if (!sessionId) return;
-    // Toggle: if same action, remove it
-    setPostReactions((prev) => {
-      if (prev[postId] === action) {
-        const next = { ...prev };
-        delete next[postId];
-        return next;
-      }
-      return { ...prev, [postId]: action };
-    });
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    try {
-      await sendPostFeedback(sessionId, postId, action);
-    } catch (e) {
-      console.warn("Feedback error:", e);
-    }
-  }, [sessionId]);
 
   // Generation story steps — keeps the meatbag entertained while we cook
   const GEN_STEPS: Record<string, string[]> = {
@@ -797,10 +776,26 @@ export default function HomeScreen() {
 
   const REACTION_EMOJIS = ["❤️", "😂", "😮", "😢", "🔥", "👍"];
 
+  // Map emoji reactions to ML feedback actions for feed posts
+  const EMOJI_TO_FEEDBACK: Record<string, FeedbackAction> = {
+    "❤️": "love", "🔥": "fire", "👍": "like", "😂": "like", "😮": "save", "😢": "dislike",
+  };
+
   const handleReaction = (msgId: string, emoji: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setReactions((prev) => ({ ...prev, [msgId]: prev[msgId] === emoji ? "" : emoji }));
     setReactionPickerFor(null);
+
+    // Send ML feedback when reacting to a feed post
+    if (msgId.startsWith("feed-") && sessionId) {
+      const postId = msgId.replace("feed-", "");
+      const action = EMOJI_TO_FEEDBACK[emoji];
+      if (action) {
+        sendPostFeedback(sessionId, postId, action).catch((e) =>
+          console.warn("Feedback error:", e)
+        );
+      }
+    }
   };
 
   // Submit feature suggestion
@@ -989,15 +984,6 @@ export default function HomeScreen() {
     return <Text selectable style={[styles.msgText, isHuman ? styles.msgTextHuman : styles.msgTextAI]}>{elements}</Text>;
   }, []);
 
-  // Feedback reaction buttons for feed posts
-  const FEED_REACTIONS: { action: FeedbackAction; emoji: string; label: string }[] = [
-    { action: "like", emoji: "👍", label: "Like" },
-    { action: "love", emoji: "❤️", label: "Love" },
-    { action: "fire", emoji: "🔥", label: "Fire" },
-    { action: "dislike", emoji: "👎", label: "Nah" },
-    { action: "save", emoji: "🔖", label: "Save" },
-  ];
-
   const renderMessage = ({ item }: { item: Message }) => {
     const isHuman = item.sender_type === "human";
     const isSpeaking = speakingMsgId === item.id;
@@ -1005,9 +991,6 @@ export default function HomeScreen() {
     const showPicker = reactionPickerFor === item.id;
     const hasMedia = !!item.image_url;
     const hasYouTube = !isHuman && getYouTubeId(item.content);
-    const isFeedPost = item.id.startsWith("feed-");
-    const feedPostId = isFeedPost ? item.id.replace("feed-", "") : null;
-    const currentFeedReaction = feedPostId ? postReactions[feedPostId] : null;
     const isGenResult = item.id.startsWith("gen-result-");
     const socialLinks = msgSocialLinks[item.id];
     // Hide placeholder text like "[Photo]" or "[Video]" when media is displayed
@@ -1076,25 +1059,6 @@ export default function HomeScreen() {
                   <Text style={styles.socialLinkText}>{link.platform}</Text>
                 </TouchableOpacity>
               ))}
-            </View>
-          )}
-
-          {/* Feed post reaction bar — like/love/fire/dislike/save for ML feedback */}
-          {isFeedPost && feedPostId && (
-            <View style={styles.feedReactionBar}>
-              {FEED_REACTIONS.map(({ action, emoji, label }) => {
-                const isActive = currentFeedReaction === action;
-                return (
-                  <TouchableOpacity
-                    key={action}
-                    style={[styles.feedReactionBtn, isActive && styles.feedReactionBtnActive]}
-                    onPress={() => handlePostReaction(feedPostId, action)}
-                  >
-                    <Text style={styles.feedReactionEmoji}>{emoji}</Text>
-                    <Text style={[styles.feedReactionLabel, isActive && styles.feedReactionLabelActive]}>{label}</Text>
-                  </TouchableOpacity>
-                );
-              })}
             </View>
           )}
 
@@ -2106,32 +2070,6 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     textDecorationLine: "underline",
   },
-
-  // Feed post reaction bar (ML feedback)
-  feedReactionBar: {
-    flexDirection: "row",
-    gap: 4,
-    marginTop: 6,
-    paddingHorizontal: 4,
-  },
-  feedReactionBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 3,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: "rgba(30,30,30,0.6)",
-  },
-  feedReactionBtnActive: {
-    borderColor: colors.purple,
-    backgroundColor: "rgba(124, 58, 237, 0.15)",
-  },
-  feedReactionEmoji: { fontSize: 13 },
-  feedReactionLabel: { color: colors.textMuted, fontSize: 10, fontWeight: "600" },
-  feedReactionLabelActive: { color: colors.purple },
 
   tapToStop: { color: "rgba(255,255,255,0.4)", fontSize: 10, textAlign: "center", marginTop: -4, marginBottom: 2 },
   loadingOlder: { alignItems: "center", paddingVertical: 12, gap: 4 },

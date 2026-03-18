@@ -13,7 +13,6 @@ import {
   API_BASE, getAdminStats, getAdminPersonas, getAdminUsers,
   adminAction, adminAnnounce,
   AdminStats, AdminPersona, AdminUser,
-  generatePoster, generateHeroImage, getMarketingStats,
   generatePersonaAvatar, animatePersona,
 } from "../services/api";
 
@@ -22,7 +21,7 @@ const ADMIN_WALLET = "AEWvE2xXaHSGdGCaCArb2PWdKS7K9RwoCRV7CT2CJTWq";
 const ADMIN_WALLET_KEY = "aiglitch-admin-wallet";
 const ADMIN_PIN_KEY = "aiglitch-admin-pin";
 
-type Tab = "overview" | "personas" | "users" | "tools" | "mktg";
+type Tab = "overview" | "personas" | "users" | "tools";
 
 function StatCard({ label, value, color, sub }: { label: string; value: string | number; color?: string; sub?: string }) {
   return (
@@ -56,9 +55,6 @@ export default function AdminScreen() {
   const [error, setError] = useState<string | null>(null);
 
 
-  // Marketing state
-  const [mktgStats, setMktgStats] = useState<any>(null);
-  const [mktgGenerating, setMktgGenerating] = useState(false);
 
 
   // Check if wallet is admin — must match the designated admin wallet
@@ -168,11 +164,6 @@ export default function AdminScreen() {
         case "users": {
           const data = await getAdminUsers(sessionId, walletAddress);
           setUsers(data.users || []);
-          break;
-        }
-        case "mktg": {
-          const data = await getMarketingStats(walletAddress);
-          setMktgStats((data as any).stats || data);
           break;
         }
       }
@@ -535,7 +526,6 @@ export default function AdminScreen() {
     { key: "personas", emoji: "🤖", label: "Personas" },
     { key: "users", emoji: "👥", label: "Users" },
     { key: "tools", emoji: "🛠", label: "Tools" },
-    { key: "mktg", emoji: "🎨", label: "Marketing" },
   ];
 
   return (
@@ -703,70 +693,6 @@ export default function AdminScreen() {
                 <Text style={styles.actionChevron}>›</Text>
               </TouchableOpacity>
             ))}
-          </>
-        )}
-
-        {/* Marketing Tab */}
-        {activeTab === "mktg" && (
-          <>
-            <Text style={styles.sectionTitle}>Marketing</Text>
-
-            {mktgStats && (
-              <View style={styles.statsGrid}>
-                <StatCard label="Posters" value={mktgStats.posters_generated || mktgStats.total_posters || "—"} color={colors.purpleLight} />
-                <StatCard label="Hero Images" value={mktgStats.heroes_generated || mktgStats.total_heroes || "—"} color={colors.cyan} />
-              </View>
-            )}
-
-            <Text style={[styles.sectionTitle, { marginTop: 20 }]}>Generate</Text>
-
-            <TouchableOpacity
-              style={[styles.actionCard, mktgGenerating && { opacity: 0.5 }]}
-              onPress={async () => {
-                if (mktgGenerating || !walletAddress) return;
-                setMktgGenerating(true);
-                try {
-                  const res = await generatePoster(walletAddress);
-                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                  Alert.alert("Poster Generated!", res.message || (res.url ? `URL: ${res.url}` : "Done!"));
-                } catch (e: any) {
-                  Alert.alert("Error", e?.message || "Generation failed");
-                }
-                setMktgGenerating(false);
-              }}
-              disabled={mktgGenerating}
-            >
-              <Text style={styles.actionEmoji}>📢</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.actionTitle}>{mktgGenerating ? "Generating..." : "Generate Promo Poster"}</Text>
-                <Text style={styles.actionDesc}>AI-generated promotional poster</Text>
-              </View>
-              <Text style={styles.actionChevron}>›</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.actionCard, mktgGenerating && { opacity: 0.5 }]}
-              onPress={async () => {
-                if (mktgGenerating || !walletAddress) return;
-                setMktgGenerating(true);
-                try {
-                  const res = await generateHeroImage(walletAddress);
-                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                  Alert.alert("Hero Image Generated!", res.message || (res.url ? `URL: ${res.url}` : "Done!"));
-                } catch (e: any) {
-                  Alert.alert("Error", e?.message || "Generation failed");
-                }
-                setMktgGenerating(false);
-              }}
-              disabled={mktgGenerating}
-            >
-              <Text style={styles.actionEmoji}>🖼</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.actionTitle}>{mktgGenerating ? "Generating..." : "Generate Hero Image"}</Text>
-                <Text style={styles.actionDesc}>Landing page hero banner</Text>
-              </View>
-              <Text style={styles.actionChevron}>›</Text>
-            </TouchableOpacity>
           </>
         )}
 

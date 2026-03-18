@@ -22,6 +22,9 @@ import {
   API_BASE, getBestie, walletLogin, linkWallet, unlinkWallet,
   getOnChainBalances, getMessages, sendMessage, sendImageMessage,
   Bestie, OnChainBalances, Message,
+  generateScreenplay, submitScene, pollScene, stitchMovie,
+  generateAd, generatePoster, generateHeroImage,
+  GENRE_FOLDER_MAP, ScreenplayResponse,
 } from "../services/api";
 import CosmicVisualizer from "../components/CosmicVisualizer";
 const APP_VERSION = "1.0.2";
@@ -65,6 +68,22 @@ function getYouTubeId(url: string): string | null {
   return match ? match[1] : null;
 }
 
+// Directors for inline movie picker
+const CHAT_DIRECTORS = [
+  { id: "auto", name: "Auto (Random)", emoji: "🎲" },
+  { id: "steven_spielbot", name: "Steven Spielbot", emoji: "🎬" },
+  { id: "stanley_kubrick_ai", name: "Stanley Kubrick AI", emoji: "🎭" },
+  { id: "george_lucasfilm", name: "George LucasFilm", emoji: "🌌" },
+  { id: "quentin_airantino", name: "Quentin AI-rantino", emoji: "🔫" },
+  { id: "alfred_glitchcock", name: "Alfred Glitchcock", emoji: "🦅" },
+  { id: "nolan_christopher", name: "Nolan Christopher", emoji: "⏰" },
+  { id: "wes_analog", name: "Wes Analog", emoji: "🎨" },
+  { id: "ridley_scott_ai", name: "Ridley Scott AI", emoji: "🗡" },
+  { id: "chef_ramsay_ai", name: "Chef Ramsay AI", emoji: "👨‍🍳" },
+  { id: "david_attenborough_ai", name: "David Attenborough AI", emoji: "🦁" },
+];
+const CHAT_GENRES = ["any", "action", "scifi", "horror", "comedy", "drama", "romance", "family", "documentary", "cooking_channel"];
+
 // Chat mode types
 type ChatMode = "casual" | "serious" | "scientific" | "whimsical";
 const CHAT_MODES: { key: ChatMode; emoji: string; label: string; color: string; bg: string }[] = [
@@ -95,6 +114,15 @@ export default function HomeScreen() {
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [generating, setGenerating] = useState<string | null>(null); // active generation type
   const [genStep, setGenStep] = useState(0); // current step in generation story
+  const [genStatusText, setGenStatusText] = useState<string>(""); // real-time status text from API
+  const [genProgressPct, setGenProgressPct] = useState(0); // real progress percentage
+  const genCancelRef = useRef(false);
+
+  // Inline movie picker state
+  const [showMoviePicker, setShowMoviePicker] = useState(false);
+  const [pickerDirector, setPickerDirector] = useState("auto");
+  const [pickerGenre, setPickerGenre] = useState("any");
+  const [pickerConcept, setPickerConcept] = useState("");
   const [hasMore, setHasMore] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [speakingMsgId, setSpeakingMsgId] = useState<string | null>(null);
@@ -235,6 +263,223 @@ export default function HomeScreen() {
     }, 3000);
   }, [sessionId, bestie?.id]);
 
+  // ── Real generation from chat — runs actual API pipelines ──
+
+  const runAdGeneration = useCallback(async () => {
+    if (!walletAddress) return;
+    setGenerating("ad");
+    setGenStatusText("Submitting ad to /api/generate-ads...");
+    setGenProgressPct(10);
+    genCancelRef.current = false;
+    try {
+      const res = await generateAd(walletAddress);
+      if (genCancelRef.current) { setGenerating(null); return; }
+      if (res.success) {
+        setGenStatusText("Ad generated! Spreading to socials...");
+        setGenProgressPct(90);
+        await new Promise(r => setTimeout(r, 2000));
+        setGenStatusText("Ad campaign launched!");
+        setGenProgressPct(100);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        await new Promise(r => setTimeout(r, 2000));
+      } else {
+        setGenStatusText(`Failed: ${res.message || "Unknown error"}`);
+        await new Promise(r => setTimeout(r, 3000));
+      }
+    } catch (e: any) {
+      setGenStatusText(`Error: ${e?.message || "Ad generation failed"}`);
+      await new Promise(r => setTimeout(r, 3000));
+    }
+    setGenerating(null);
+    setGenProgressPct(0);
+  }, [walletAddress]);
+
+  const runPosterGeneration = useCallback(async () => {
+    if (!walletAddress) return;
+    setGenerating("poster");
+    setGenStatusText("Generating promo poster...");
+    setGenProgressPct(20);
+    genCancelRef.current = false;
+    try {
+      const res = await generatePoster(walletAddress);
+      if (genCancelRef.current) { setGenerating(null); return; }
+      setGenStatusText("Poster generated! Uploading...");
+      setGenProgressPct(80);
+      await new Promise(r => setTimeout(r, 1500));
+      setGenStatusText("Poster published!");
+      setGenProgressPct(100);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      await new Promise(r => setTimeout(r, 2000));
+    } catch (e: any) {
+      setGenStatusText(`Error: ${e?.message || "Poster generation failed"}`);
+      await new Promise(r => setTimeout(r, 3000));
+    }
+    setGenerating(null);
+    setGenProgressPct(0);
+  }, [walletAddress]);
+
+  const runHeroGeneration = useCallback(async () => {
+    if (!walletAddress) return;
+    setGenerating("hero");
+    setGenStatusText("Generating hero image...");
+    setGenProgressPct(20);
+    genCancelRef.current = false;
+    try {
+      const res = await generateHeroImage(walletAddress);
+      if (genCancelRef.current) { setGenerating(null); return; }
+      setGenStatusText("Hero image generated! Uploading...");
+      setGenProgressPct(80);
+      await new Promise(r => setTimeout(r, 1500));
+      setGenStatusText("Hero image live!");
+      setGenProgressPct(100);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      await new Promise(r => setTimeout(r, 2000));
+    } catch (e: any) {
+      setGenStatusText(`Error: ${e?.message || "Hero generation failed"}`);
+      await new Promise(r => setTimeout(r, 3000));
+    }
+    setGenerating(null);
+    setGenProgressPct(0);
+  }, [walletAddress]);
+
+  const runMovieGeneration = useCallback(async (director?: string, genre?: string, concept?: string) => {
+    if (!walletAddress) return;
+    setGenerating("director_movie");
+    setGenProgressPct(0);
+    genCancelRef.current = false;
+    const startTime = Date.now();
+    const formatElapsed = (from: number) => {
+      const s = Math.floor((Date.now() - from) / 1000);
+      return `${Math.floor(s / 60)}m ${s % 60}s`;
+    };
+
+    try {
+      // Step 1: Screenplay
+      setGenStatusText("Writing screenplay...");
+      setGenProgressPct(5);
+      const screenplay = await generateScreenplay(walletAddress, {
+        genre: genre && genre !== "any" ? genre : undefined,
+        director: director && director !== "auto" ? director : undefined,
+        concept: concept || undefined,
+      });
+      if (genCancelRef.current) { setGenerating(null); return; }
+
+      const totalScenes = screenplay.scenes.length;
+      const folder = GENRE_FOLDER_MAP[screenplay.genre] || `premiere/${screenplay.genre}`;
+      setGenStatusText(`"${screenplay.title}" — ${totalScenes} scenes by ${screenplay.directorName}`);
+      setGenProgressPct(15);
+      await new Promise(r => setTimeout(r, 2000));
+
+      // Step 2: Submit scenes
+      type SceneTrack = { sceneNumber: number; title: string; requestId: string | null; submittedAt: number };
+      const sceneTrackers: SceneTrack[] = [];
+
+      for (let i = 0; i < screenplay.scenes.length; i++) {
+        if (genCancelRef.current) { setGenerating(null); return; }
+        const scene = screenplay.scenes[i];
+        setGenStatusText(`Submitting scene ${i + 1}/${totalScenes}: ${scene.title}`);
+        setGenProgressPct(15 + Math.round((i / totalScenes) * 15));
+        try {
+          const submitRes = await submitScene(walletAddress, scene.videoPrompt, 10, folder);
+          if (submitRes.success && submitRes.requestId) {
+            sceneTrackers.push({ sceneNumber: scene.sceneNumber, title: scene.title, requestId: submitRes.requestId, submittedAt: Date.now() });
+          }
+        } catch { /* skip failed scenes */ }
+      }
+
+      if (sceneTrackers.length === 0) {
+        setGenStatusText("All scenes failed to submit. Try again.");
+        await new Promise(r => setTimeout(r, 3000));
+        setGenerating(null);
+        setGenProgressPct(0);
+        return;
+      }
+
+      // Step 3: Poll
+      const doneScenes = new Set<number>();
+      const failedScenes = new Set<number>();
+      const sceneUrls = new Map<number, string>();
+      let lastProgressTime = Date.now();
+      let pollCount = 0;
+
+      setGenStatusText(`Rendering ${sceneTrackers.length} clips... (0/${totalScenes})`);
+      setGenProgressPct(30);
+
+      while (pollCount < 90 && !genCancelRef.current) {
+        const pending = sceneTrackers.filter(s => !doneScenes.has(s.sceneNumber) && !failedScenes.has(s.sceneNumber));
+        if (pending.length === 0) break;
+
+        await new Promise(r => setTimeout(r, 10000));
+        pollCount++;
+
+        for (const scene of pending) {
+          if (!scene.requestId) continue;
+          try {
+            const pollRes = await pollScene(walletAddress, scene.requestId, folder);
+            if (pollRes.status === "done" && pollRes.blobUrl) {
+              doneScenes.add(scene.sceneNumber);
+              sceneUrls.set(scene.sceneNumber, pollRes.blobUrl);
+              lastProgressTime = Date.now();
+            } else if (["failed", "moderation_failed", "expired"].includes(pollRes.status)) {
+              failedScenes.add(scene.sceneNumber);
+            }
+          } catch { /* skip poll errors */ }
+        }
+
+        const done = doneScenes.size;
+        const pct = 30 + Math.round((done / totalScenes) * 50);
+        setGenProgressPct(pct);
+        setGenStatusText(`Rendering clips... ${done}/${totalScenes} done (${formatElapsed(startTime)})`);
+
+        // Stall detection
+        if (done >= totalScenes * 0.5 && (Date.now() - lastProgressTime) > 60000) {
+          setGenStatusText(`Stall detected — stitching ${done}/${totalScenes} clips`);
+          break;
+        }
+      }
+
+      if (genCancelRef.current) { setGenerating(null); return; }
+
+      if (doneScenes.size === 0) {
+        setGenStatusText("All clips failed. Try again.");
+        await new Promise(r => setTimeout(r, 3000));
+        setGenerating(null);
+        setGenProgressPct(0);
+        return;
+      }
+
+      // Step 4: Stitch
+      setGenStatusText(`Stitching ${doneScenes.size} clips into movie...`);
+      setGenProgressPct(85);
+
+      const sceneUrlsObj: Record<string, string> = {};
+      sceneUrls.forEach((url, num) => { sceneUrlsObj[String(num)] = url; });
+
+      const stitchRes = await stitchMovie(walletAddress, {
+        sceneUrls: sceneUrlsObj,
+        title: screenplay.title,
+        genre: screenplay.genre,
+        directorUsername: screenplay.director,
+        directorId: screenplay.directorId,
+        synopsis: screenplay.synopsis,
+        tagline: screenplay.tagline,
+        castList: screenplay.castList,
+      });
+
+      setGenProgressPct(100);
+      const platforms = stitchRes.spreading?.join(", ") || "all socials";
+      setGenStatusText(`"${screenplay.title}" premiere! ${stitchRes.clipCount} clips · ${stitchRes.sizeMb}MB · Spread to ${platforms}`);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      await new Promise(r => setTimeout(r, 5000));
+
+    } catch (e: any) {
+      setGenStatusText(`Error: ${e?.message || "Movie generation failed"}`);
+      await new Promise(r => setTimeout(r, 3000));
+    }
+    setGenerating(null);
+    setGenProgressPct(0);
+  }, [walletAddress]);
+
   // Generation story steps — keeps the meatbag entertained while we cook
   const GEN_STEPS: Record<string, string[]> = {
     image: [
@@ -351,6 +596,9 @@ export default function HomeScreen() {
       };
     } else {
       setGenStep(0);
+      setGenStatusText("");
+      setGenProgressPct(0);
+      genCancelRef.current = false;
       if (genStepTimerRef.current) { clearInterval(genStepTimerRef.current); genStepTimerRef.current = null; }
     }
   }, [generating]);
@@ -493,18 +741,26 @@ export default function HomeScreen() {
           return [...filtered, data.human_message, data.ai_message];
         });
         speakReply(data.ai_message.content, data.ai_message.id);
-        // If a background task is running (image gen, content gen etc), poll for the result
-        if (data.background_task) {
-          // Detect generation type from the AI reply + original prompt
-          const reply = (data.ai_message.content || "").toLowerCase();
-          const prompt = text.toLowerCase();
-          const combined = reply + " " + prompt;
+        // Detect generation intent from the AI reply + original prompt
+        const reply = (data.ai_message.content || "").toLowerCase();
+        const prompt = text.toLowerCase();
+        const combined = reply + " " + prompt;
+
+        // Check for real generation triggers (run actual APIs)
+        if (combined.includes("movie") || combined.includes("director") || combined.includes("screenplay") || combined.includes("film") || combined.includes("premiere")) {
+          // Show movie picker so user can choose director/genre
+          setShowMoviePicker(true);
+          setPickerConcept(text); // pre-fill with user's prompt as concept
+        } else if (combined.includes("ad ") || combined.includes("advertis") || combined.includes("infomercial") || combined.includes("generate an ad") || combined.includes("make an ad")) {
+          runAdGeneration();
+        } else if (combined.includes("poster") || combined.includes("promo")) {
+          runPosterGeneration();
+        } else if (combined.includes("hero image") || combined.includes("hero banner") || combined.includes("landing page")) {
+          runHeroGeneration();
+        } else if (data.background_task) {
+          // Fallback to cosmetic polling for other background tasks (image gen, etc)
           const genType =
-            combined.includes("ad ") || combined.includes("advertis") || combined.includes("infomercial") ? "ad"
-            : combined.includes("poster") || combined.includes("promo") ? "poster"
-            : combined.includes("hero image") || combined.includes("hero banner") || combined.includes("landing page") ? "hero"
-            : combined.includes("movie") || combined.includes("director") || combined.includes("screenplay") || combined.includes("film") || combined.includes("premiere") ? "director_movie"
-            : reply.includes("image") || reply.includes("cook up") || reply.includes("picture") || reply.includes("photo") ? "image"
+            reply.includes("image") || reply.includes("cook up") || reply.includes("picture") || reply.includes("photo") ? "image"
             : reply.includes("video") || reply.includes("clip") ? "video"
             : reply.includes("hatch") ? "hatching"
             : reply.includes("content") ? "content"
@@ -1197,9 +1453,11 @@ export default function HomeScreen() {
           }
           ListHeaderComponent={
             generating ? (() => {
+              // Use real status text if available (from actual API calls), otherwise cosmetic steps
+              const isRealGen = !!genStatusText;
               const steps = GEN_STEPS[generating] || GEN_STEPS.generating;
-              const currentStep = steps[Math.min(genStep, steps.length - 1)];
-              const progress = Math.min((genStep + 1) / steps.length, 1);
+              const currentStep = isRealGen ? genStatusText : steps[Math.min(genStep, steps.length - 1)];
+              const progress = isRealGen ? genProgressPct / 100 : Math.min((genStep + 1) / steps.length, 1);
               const glowOpacity = genPulse.interpolate({ inputRange: [0, 1], outputRange: [0.3, 0.8] });
               return (
                 <View style={styles.generatingRow}>
@@ -1223,27 +1481,33 @@ export default function HomeScreen() {
                        "Working On It"}
                     </Text>
 
-                    {/* Current step text — the storytelling part */}
+                    {/* Current step text — real API status or storytelling */}
                     <Text style={styles.generatingStep}>{currentStep}</Text>
 
-                    {/* Progress bar */}
+                    {/* Progress bar — real percentage or cosmetic */}
                     <View style={styles.genProgressBg}>
-                      <Animated.View style={[styles.genProgressFill, { width: `${progress * 100}%` }]} />
+                      <Animated.View style={[styles.genProgressFill, { width: `${progress * 100}%`, backgroundColor: isRealGen && genProgressPct >= 100 ? colors.green : colors.purple }]} />
                     </View>
 
-                    {/* Step dots */}
-                    <View style={styles.genDots}>
-                      {steps.map((_, i) => (
-                        <View
-                          key={i}
-                          style={[
-                            styles.genDot,
-                            i <= genStep && styles.genDotActive,
-                            i === genStep && styles.genDotCurrent,
-                          ]}
-                        />
-                      ))}
-                    </View>
+                    {/* Step dots only for cosmetic mode / percentage for real mode */}
+                    {isRealGen ? (
+                      <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 8, fontFamily: "monospace" }}>
+                        {genProgressPct}% complete
+                      </Text>
+                    ) : (
+                      <View style={styles.genDots}>
+                        {steps.map((_, i) => (
+                          <View
+                            key={i}
+                            style={[
+                              styles.genDot,
+                              i <= genStep && styles.genDotActive,
+                              i === genStep && styles.genDotCurrent,
+                            ]}
+                          />
+                        ))}
+                      </View>
+                    )}
 
                     {/* Bestie name */}
                     <Text style={styles.generatingBestie}>
@@ -1391,6 +1655,70 @@ export default function HomeScreen() {
           <Text style={styles.sendBtnText}>↑</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Director Movie Picker Modal */}
+      <Modal visible={showMoviePicker} animationType="slide" transparent>
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "flex-end" }}>
+          <View style={{ backgroundColor: "#111", borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: Platform.OS === "ios" ? 34 : 16 }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, paddingVertical: 16 }}>
+              <Text style={{ color: colors.text, fontSize: 18, fontWeight: "800" }}>Commission a Movie</Text>
+              <TouchableOpacity onPress={() => setShowMoviePicker(false)}>
+                <Text style={{ color: colors.textMuted, fontSize: 24 }}>x</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ paddingHorizontal: 20, maxHeight: 500 }} keyboardShouldPersistTaps="handled">
+              {/* Director picker */}
+              <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: "700", marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>Choose Director</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
+                {CHAT_DIRECTORS.map(d => (
+                  <TouchableOpacity key={d.id}
+                    style={{ alignItems: "center", padding: 10, marginRight: 8, borderRadius: 12, borderWidth: 1.5, borderColor: pickerDirector === d.id ? colors.pink : "#1f2937", backgroundColor: pickerDirector === d.id ? "rgba(236,72,153,0.08)" : "#111827", minWidth: 72 }}
+                    onPress={() => { setPickerDirector(d.id); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}>
+                    <Text style={{ fontSize: 24 }}>{d.emoji}</Text>
+                    <Text style={{ color: colors.text, fontSize: 10, fontWeight: "700", marginTop: 4, textAlign: "center" }} numberOfLines={1}>{d.id === "auto" ? "Auto" : d.name.split(" ").pop()}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              {/* Genre picker */}
+              <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: "700", marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>Genre</Text>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
+                {CHAT_GENRES.map(g => (
+                  <TouchableOpacity key={g}
+                    style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: pickerGenre === g ? colors.pink : "#374151", backgroundColor: pickerGenre === g ? "rgba(236,72,153,0.15)" : "#111827" }}
+                    onPress={() => setPickerGenre(g)}>
+                    <Text style={{ color: pickerGenre === g ? colors.pink : colors.textMuted, fontSize: 12, fontWeight: "600", textTransform: "capitalize" }}>{g.replace(/_/g, " ")}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* Concept */}
+              <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: "700", marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>Movie Concept</Text>
+              <TextInput
+                style={{ backgroundColor: "#1f2937", borderWidth: 1, borderColor: "#374151", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, color: colors.text, fontSize: 14, minHeight: 70, textAlignVertical: "top", marginBottom: 16 }}
+                value={pickerConcept} onChangeText={setPickerConcept}
+                placeholder="Describe your movie idea... or leave blank for AI surprise"
+                placeholderTextColor={colors.textMuted} multiline maxLength={500}
+              />
+
+              {/* Generate button */}
+              <TouchableOpacity
+                style={{ backgroundColor: colors.purple, borderRadius: 12, paddingVertical: 16, alignItems: "center", borderWidth: 1, borderColor: colors.pink, marginBottom: 16 }}
+                onPress={() => {
+                  setShowMoviePicker(false);
+                  runMovieGeneration(
+                    pickerDirector !== "auto" ? pickerDirector : undefined,
+                    pickerGenre !== "any" ? pickerGenre : undefined,
+                    pickerConcept.trim() || undefined,
+                  );
+                }}>
+                <Text style={{ color: colors.text, fontSize: 16, fontWeight: "800" }}>Generate Director Movie</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
 
       {/* "What Can I Do?" Features Modal */}
       <Modal visible={showFeatures} animationType="slide" transparent>

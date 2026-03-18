@@ -276,6 +276,57 @@ export default function HomeScreen() {
       "Running vibe check...",
       "Finalizing the masterpiece...",
     ],
+    ad: [
+      "Selecting product to advertise...",
+      "Picking the perfect AI influencer...",
+      "Writing punchy ad copy...",
+      "Submitting video to Grok...",
+      "Rendering Rick & Morty-style infomercial...",
+      "Adding product shots...",
+      "Encoding the ad video...",
+      "Creating the post...",
+      "Spreading to X, TikTok, Instagram...",
+      "Spreading to Facebook, YouTube...",
+      "Ad campaign launched!",
+    ],
+    poster: [
+      "Choosing the perfect AI personas...",
+      "Generating Sgt. Pepper-style group shot...",
+      "Trying image providers (cheapest first)...",
+      "Rendering promotional layout...",
+      "Adding AIG!itch branding...",
+      "Uploading to Vercel Blob...",
+      "Creating the post...",
+      "Spreading to all socials...",
+      "Poster published!",
+    ],
+    hero: [
+      "Assembling all active AI personas...",
+      "Generating epic hero group photo...",
+      "Trying image providers...",
+      "Composing the landing page banner...",
+      "Adding watermark and branding...",
+      "Uploading to CDN...",
+      "Creating the hero post...",
+      "Spreading to socials...",
+      "Hero image live!",
+    ],
+    director_movie: [
+      "Picking a director for this masterpiece...",
+      "Choosing the perfect genre...",
+      "Writing the screenplay with AI...",
+      "Building the character bible...",
+      "Submitting scenes to Grok video...",
+      "Scene 1 rendering...",
+      "Scene 2 rendering...",
+      "Scenes 3-8 rendering in parallel...",
+      "Waiting for all clips to complete...",
+      "Stitching clips into final movie...",
+      "Uploading the premiere cut...",
+      "Creating premiere post...",
+      "Spreading to all socials...",
+      "Movie premiere!",
+    ],
     generating: [
       "Processing your request...",
       "Your bestie is on it...",
@@ -436,10 +487,17 @@ export default function HomeScreen() {
         speakReply(data.ai_message.content, data.ai_message.id);
         // If a background task is running (image gen, content gen etc), poll for the result
         if (data.background_task) {
-          // Detect generation type from the immediate reply
+          // Detect generation type from the AI reply + original prompt
           const reply = (data.ai_message.content || "").toLowerCase();
-          const genType = reply.includes("image") || reply.includes("cook up") ? "image"
-            : reply.includes("video") || reply.includes("movie") ? "video"
+          const prompt = text.toLowerCase();
+          const combined = reply + " " + prompt;
+          const genType =
+            combined.includes("ad ") || combined.includes("advertis") || combined.includes("infomercial") ? "ad"
+            : combined.includes("poster") || combined.includes("promo") ? "poster"
+            : combined.includes("hero image") || combined.includes("hero banner") || combined.includes("landing page") ? "hero"
+            : combined.includes("movie") || combined.includes("director") || combined.includes("screenplay") || combined.includes("film") || combined.includes("premiere") ? "director_movie"
+            : reply.includes("image") || reply.includes("cook up") || reply.includes("picture") || reply.includes("photo") ? "image"
+            : reply.includes("video") || reply.includes("clip") ? "video"
             : reply.includes("hatch") ? "hatching"
             : reply.includes("content") ? "content"
             : "generating";
@@ -1107,6 +1165,8 @@ export default function HomeScreen() {
           renderItem={renderMessage}
           contentContainerStyle={styles.messageList}
           inverted={true}
+          keyboardDismissMode="on-drag"
+          keyboardShouldPersistTaps="handled"
           onEndReached={loadOlderMessages}
           onEndReachedThreshold={0.3}
           ListEmptyComponent={
@@ -1146,6 +1206,10 @@ export default function HomeScreen() {
                        generating === "video" ? "Creating Video" :
                        generating === "hatching" ? "Hatching Persona" :
                        generating === "content" ? "Creating Content" :
+                       generating === "ad" ? "Generating Ad" :
+                       generating === "poster" ? "Generating Poster" :
+                       generating === "hero" ? "Generating Hero Image" :
+                       generating === "director_movie" ? "Commissioning Movie" :
                        "Working On It"}
                     </Text>
 

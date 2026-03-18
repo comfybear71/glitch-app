@@ -16,7 +16,10 @@ async function fetchJSON<T>(path: string, init?: RequestInit): Promise<T> {
     });
   } catch (e: any) {
     if (e?.message?.includes("Network request failed") || e?.message?.includes("Failed to fetch")) {
-      throw new Error("No internet connection. Please check your network and try again.");
+      throw new Error("Request failed — the server may be busy or the connection timed out. Try again.");
+    }
+    if (e?.message?.includes("timeout") || e?.message?.includes("aborted")) {
+      throw new Error("Request timed out — the server is taking too long. Try again.");
     }
     throw new Error(`Connection failed: ${e?.message || "Unknown network error"}`);
   }

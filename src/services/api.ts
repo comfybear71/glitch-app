@@ -583,31 +583,44 @@ export function getContentLibrary(sessionId: string, walletAddress: string) {
   );
 }
 
-// Upload media to blob storage
-export async function uploadMedia(
-  sessionId: string,
+// ── Blob Storage & Media Library (Admin) ──
+
+// List all blob videos grouped by folder
+export function getBlobStorage(walletAddress: string) {
+  return fetchJSON<{ folders: Record<string, { count: number; totalSize: number; videos: any[] }>; total: number; validFolders: string[] }>(
+    `/api/admin/blob-upload?wallet_address=${encodeURIComponent(walletAddress)}`
+  );
+}
+
+// Get media library listing with optional video stats
+export function getMediaLibrary(walletAddress: string, includeStats?: boolean) {
+  const params = `wallet_address=${encodeURIComponent(walletAddress)}${includeStats ? "&stats=1" : ""}`;
+  return fetchJSON<{ media: any[]; video_stats?: any }>(
+    `/api/admin/media?${params}`
+  );
+}
+
+// Upload media files (FormData with files, media_type, persona_id, tags, description)
+export async function uploadMediaAdmin(
   walletAddress: string,
   fileUri: string,
   fileName: string,
   mimeType: string,
-  category?: string,
-): Promise<UploadResult> {
+  mediaType: string,
+  opts?: { persona_id?: string; tags?: string; description?: string }
+): Promise<any> {
   const formData = new FormData();
-  formData.append("file", {
-    uri: fileUri,
-    name: fileName,
-    type: mimeType,
-  } as any);
-  formData.append("session_id", sessionId);
+  formData.append("files", { uri: fileUri, name: fileName, type: mimeType } as any);
+  formData.append("media_type", mediaType);
   formData.append("wallet_address", walletAddress);
-  if (category) formData.append("category", category);
+  if (opts?.persona_id) formData.append("persona_id", opts.persona_id);
+  if (opts?.tags) formData.append("tags", opts.tags);
+  if (opts?.description) formData.append("description", opts.description);
 
-  const res = await fetch(`${API_BASE}/api/content/upload`, {
+  const res = await fetch(`${API_BASE}/api/admin/media?wallet_address=${encodeURIComponent(walletAddress)}`, {
     method: "POST",
     body: formData,
-    // Don't set Content-Type — let fetch set multipart/form-data with boundary
   });
-
   if (!res.ok) {
     let detail = "";
     try { const body = await res.json(); detail = body.error || body.message || ""; } catch (_) {}
@@ -616,22 +629,60 @@ export async function uploadMedia(
   return res.json();
 }
 
-// Get uploaded media library
-export function getMediaLibrary(sessionId: string, walletAddress: string) {
-  return fetchJSON<{ items: MediaLibraryItem[] }>(
-    `/api/content/media?session_id=${encodeURIComponent(sessionId)}&wallet_address=${encodeURIComponent(walletAddress)}`
-  );
+// Upload to blob storage folder (premiere/action, news, etc.)
+export async function uploadBlobVideo(
+  walletAddress: string,
+  fileUri: string,
+  fileName: string,
+  mimeType: string,
+  folder: string
+): Promise<any> {
+  const formData = new FormData();
+  formData.append("files", { uri: fileUri, name: fileName, type: mimeType } as any);
+  formData.append("folder", folder);
+  formData.append("wallet_address", walletAddress);
+
+  const res = await fetch(`${API_BASE}/api/admin/blob-upload?wallet_address=${encodeURIComponent(walletAddress)}`, {
+    method: "POST",
+    body: formData,
+  });
+  if (!res.ok) {
+    let detail = "";
+    try { const body = await res.json(); detail = body.error || body.message || ""; } catch (_) {}
+    throw new Error(detail || `Upload failed (${res.status})`);
+  }
+  return res.json();
 }
 
-// Delete uploaded media
-export function deleteMedia(sessionId: string, walletAddress: string, blobKey: string) {
-  return fetchJSON<{ success: boolean }>("/api/content/media", {
+// Import media from external URLs
+export function importMedia(walletAddress: string, urls: string[], mediaType: string, opts?: { persona_id?: string; tags?: string; description?: string }) {
+  return fetchJSON<{ success: boolean; imported: number; failed: number; results: any[] }>(`/api/admin/media/import?wallet_address=${encodeURIComponent(walletAddress)}`, {
+    method: "POST",
+    body: JSON.stringify({ urls, media_type: mediaType, wallet_address: walletAddress, ...opts }),
+  });
+}
+
+// Resync blob storage with database (recover lost records)
+export function resyncBlobStorage(walletAddress: string) {
+  return fetchJSON<{ success: boolean; synced: number; skipped: number; errors: number; already_in_db: number; counts: any }>(`/api/admin/media/resync?wallet_address=${encodeURIComponent(walletAddress)}`, {
+    method: "POST",
+    body: JSON.stringify({ wallet_address: walletAddress }),
+  });
+}
+
+// Delete media (from DB + blob)
+export function deleteMedia(walletAddress: string, mediaId: string) {
+  return fetchJSON<{ success: boolean }>(`/api/admin/media?wallet_address=${encodeURIComponent(walletAddress)}`, {
     method: "DELETE",
-    body: JSON.stringify({
-      session_id: sessionId,
-      wallet_address: walletAddress,
-      blob_key: blobKey,
-    }),
+    body: JSON.stringify({ id: mediaId, wallet_address: walletAddress }),
+  });
+}
+
+// Spread media posts to social platforms
+export function spreadMediaPosts(walletAddress: string, postIds?: string[]) {
+  return fetchJSON<{ success: boolean }>(`/api/admin/media/spread?wallet_address=${encodeURIComponent(walletAddress)}`, {
+    method: "POST",
+    body: JSON.stringify({ post_ids: postIds, wallet_address: walletAddress }),
   });
 }
 

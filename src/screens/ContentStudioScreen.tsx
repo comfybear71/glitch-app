@@ -10,14 +10,14 @@ import { colors } from "../theme/colors";
 import { useSession } from "../hooks/useSession";
 import { usePhantomWallet } from "../hooks/usePhantomWallet";
 import {
-  uploadMedia, deleteMedia, triggerDirectorMovie,
+  deleteMedia, triggerDirectorMovie,
   generatePoster, generateHeroImage, getMarketingStats,
-  getMarketingPosts, getMarketingAccounts, getMarketingMetrics,
+  getMarketingPosts, getMarketingAccounts,
   generateAd, getAdStatus, getDirectorMovieStatus, getMovies,
   spreadCustomContent, getSpreadHistory,
   getCronStatus, getAdminHealth,
-  getMediaLibrary,
-  MediaLibraryItem,
+  getBlobStorage, getMediaLibrary, uploadMediaAdmin, uploadBlobVideo,
+  importMedia, resyncBlobStorage, spreadMediaPosts,
 } from "../services/api";
 
 // ── Directors from the web app ──
@@ -180,11 +180,16 @@ export default function ContentStudioScreen() {
   const [libraryLoading, setLibraryLoading] = useState(false);
   const [moviesList, setMoviesList] = useState<any[]>([]);
 
-  // ── Uploads State ──
-  const [uploads, setUploads] = useState<MediaLibraryItem[]>([]);
-  const [uploadsLoading, setUploadsLoading] = useState(false);
+  // ── Blob Storage State ──
+  const [blobFolders, setBlobFolders] = useState<Record<string, { count: number; totalSize: number; videos: any[] }>>({});
+  const [blobTotal, setBlobTotal] = useState(0);
+  const [mediaLibrary, setMediaLibrary] = useState<any[]>([]);
+  const [videoStats, setVideoStats] = useState<any>(null);
+  const [blobLoading, setBlobLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [uploadCategory, setUploadCategory] = useState("general");
+  const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
+  const [importUrl, setImportUrl] = useState("");
+  const [resyncing, setResyncing] = useState(false);
 
   // ── Social State ──
   const [spreadHistory, setSpreadHistory] = useState<any[]>([]);
@@ -218,15 +223,21 @@ export default function ContentStudioScreen() {
     setLibraryLoading(false);
   }, [walletAddress]);
 
-  const loadUploads = useCallback(async () => {
-    if (!sessionId || !walletAddress) return;
-    setUploadsLoading(true);
+  const loadBlobStorage = useCallback(async () => {
+    if (!walletAddress) return;
+    setBlobLoading(true);
     try {
-      const data = await getMediaLibrary(sessionId, walletAddress).catch(() => ({ items: [] }));
-      setUploads(data.items || []);
-    } catch (e: any) { console.warn("Uploads:", e?.message); }
-    setUploadsLoading(false);
-  }, [sessionId, walletAddress]);
+      const [blobRes, mediaRes] = await Promise.all([
+        getBlobStorage(walletAddress).catch(() => ({ folders: {}, total: 0, validFolders: [] })),
+        getMediaLibrary(walletAddress, true).catch(() => ({ media: [], video_stats: null })),
+      ]);
+      setBlobFolders(blobRes.folders || {});
+      setBlobTotal(blobRes.total || 0);
+      setMediaLibrary(mediaRes.media || []);
+      setVideoStats(mediaRes.video_stats || null);
+    } catch (e: any) { console.warn("Blob:", e?.message); }
+    setBlobLoading(false);
+  }, [walletAddress]);
 
   const loadSocial = useCallback(async () => {
     if (!walletAddress) return;
@@ -271,7 +282,7 @@ export default function ContentStudioScreen() {
 
   // Auto-load on expand
   useEffect(() => { if (expandedSections.library) loadLibrary(); }, [expandedSections.library]);
-  useEffect(() => { if (expandedSections.uploads) loadUploads(); }, [expandedSections.uploads]);
+  useEffect(() => { if (expandedSections.uploads) loadBlobStorage(); }, [expandedSections.uploads]);
   useEffect(() => { if (expandedSections.social) loadSocial(); }, [expandedSections.social]);
   useEffect(() => { if (expandedSections.monitor) loadMonitor(); }, [expandedSections.monitor]);
 
@@ -365,15 +376,27 @@ export default function ContentStudioScreen() {
 
   // ── Upload handlers ──
   const doUpload = async (uri: string, fileName: string, mimeType: string) => {
-    if (!sessionId || !walletAddress || uploading) return;
+    if (!walletAddress || uploading) return;
     setUploading(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const mediaType = mimeType.startsWith("video/") ? "video" : "image";
     try {
-      const result = await uploadMedia(sessionId, walletAddress, uri, fileName, mimeType, uploadCategory);
-      if (result.success) {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        Alert.alert("Uploaded!", `${fileName} uploaded.\n\nURL: ${result.url}`);
-        loadUploads();
+      if (selectedFolder) {
+        // Upload to specific blob folder (premiere/action, news, etc.)
+        const result = await uploadBlobVideo(walletAddress, uri, fileName, mimeType, selectedFolder);
+        if (result.success) {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          Alert.alert("Uploaded!", `${result.uploaded || 1} file(s) uploaded to ${selectedFolder}`);
+          loadBlobStorage();
+        }
+      } else {
+        // Upload to media library
+        const result = await uploadMediaAdmin(walletAddress, uri, fileName, mimeType, mediaType);
+        if (result.success) {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          Alert.alert("Uploaded!", `${fileName} uploaded to media library`);
+          loadBlobStorage();
+        }
       }
     } catch (e: any) {
       Alert.alert("Upload Failed", e?.message || "Error");
@@ -382,7 +405,7 @@ export default function ContentStudioScreen() {
   };
 
   const showUploadOptions = () => {
-    Alert.alert("Upload to Blob Storage", "Choose source:", [
+    Alert.alert("Upload to Blob Storage", `Destination: ${selectedFolder || "Media Library"}`, [
       { text: "Photo/Video Library", onPress: async () => {
         const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.All, quality: 0.9 });
         if (!result.canceled && result.assets[0]) {
@@ -409,9 +432,40 @@ export default function ContentStudioScreen() {
     ]);
   };
 
+  // ── Import from URL ──
+  const handleImportUrl = async () => {
+    if (!walletAddress || !importUrl.trim()) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    try {
+      const res = await importMedia(walletAddress, [importUrl.trim()], "video");
+      if (res.success) {
+        Alert.alert("Imported!", `${res.imported} file(s) imported`);
+        setImportUrl("");
+        loadBlobStorage();
+      }
+    } catch (e: any) {
+      Alert.alert("Import Failed", e?.message || "Error");
+    }
+  };
+
+  // ── Resync ──
+  const handleResync = async () => {
+    if (!walletAddress || resyncing) return;
+    setResyncing(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    try {
+      const res = await resyncBlobStorage(walletAddress);
+      Alert.alert("Resync Complete", `Synced: ${res.synced}\nSkipped: ${res.skipped}\nAlready in DB: ${res.already_in_db}\nErrors: ${res.errors}`);
+      loadBlobStorage();
+    } catch (e: any) {
+      Alert.alert("Resync Failed", e?.message || "Error");
+    }
+    setResyncing(false);
+  };
+
   const onRefresh = () => {
     setRefreshing(true);
-    loadLibrary(); loadUploads();
+    loadLibrary(); loadBlobStorage();
     setTimeout(() => setRefreshing(false), 1000);
   };
 
@@ -619,56 +673,136 @@ export default function ContentStudioScreen() {
         )}
 
         {/* ══════════════ BLOB STORAGE ══════════════ */}
-        <SectionHeader title={`Blob Storage (${uploads.length})`} emoji="☁️" expanded={expandedSections.uploads} onToggle={() => toggleSection("uploads")} accent={colors.cyan} />
+        <SectionHeader title={`Blob Storage (${blobTotal})`} emoji="☁️" expanded={expandedSections.uploads} onToggle={() => toggleSection("uploads")} accent={colors.cyan} />
         {expandedSections.uploads && (
           <View style={styles.sectionBody}>
-            <View style={styles.catPicker}>
-              {["promo", "hero", "ad", "social", "general"].map((c) => (
-                <TouchableOpacity key={c} style={[styles.catChip, uploadCategory === c && styles.catChipActive]} onPress={() => setUploadCategory(c)}>
-                  <Text style={[styles.catChipText, uploadCategory === c && styles.catChipTextActive]}>{c.charAt(0).toUpperCase() + c.slice(1)}</Text>
+            {blobLoading && <ActivityIndicator color={colors.cyan} style={{ marginVertical: 16 }} />}
+
+            {/* Video stats summary */}
+            {videoStats && (
+              <View style={styles.statsGrid}>
+                <StatCard emoji="📹" value={videoStats.total || 0} label="Total Media" color={colors.cyan} />
+                <StatCard emoji="🎬" value={videoStats.by_source?.["director-movie"] || 0} label="Movies" color={colors.pink} />
+                <StatCard emoji="📰" value={videoStats.by_source?.news || 0} label="News" color={colors.amber} />
+                <StatCard emoji="🎯" value={videoStats.by_source?.ads || 0} label="Ads" color={colors.orange} />
+              </View>
+            )}
+
+            {/* Folder browser */}
+            <Text style={[styles.subsectionLabel, { marginTop: 16 }]}>Storage Folders</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+              <TouchableOpacity style={[styles.catChip, !selectedFolder && styles.catChipActive]}
+                onPress={() => setSelectedFolder(null)}>
+                <Text style={[styles.catChipText, !selectedFolder && styles.catChipTextActive]}>All</Text>
+              </TouchableOpacity>
+              {Object.keys(blobFolders).sort().map(folder => (
+                <TouchableOpacity key={folder}
+                  style={[styles.catChip, selectedFolder === folder && styles.catChipActive, { marginLeft: 6 }]}
+                  onPress={() => setSelectedFolder(selectedFolder === folder ? null : folder)}>
+                  <Text style={[styles.catChipText, selectedFolder === folder && styles.catChipTextActive]}>
+                    {folder.replace("premiere/", "").replace(/\//g, "")} ({blobFolders[folder].count})
+                  </Text>
                 </TouchableOpacity>
               ))}
-            </View>
+            </ScrollView>
 
+            {/* Selected folder details */}
+            {selectedFolder && blobFolders[selectedFolder] && (
+              <View style={styles.folderDetail}>
+                <Text style={styles.folderName}>📁 {selectedFolder}</Text>
+                <Text style={styles.folderMeta}>
+                  {blobFolders[selectedFolder].count} files · {(blobFolders[selectedFolder].totalSize / 1048576).toFixed(0)} MB
+                </Text>
+                {blobFolders[selectedFolder].videos?.slice(0, 5).map((v: any, i: number) => (
+                  <View key={i} style={styles.blobFileItem}>
+                    <Text style={{ fontSize: 16 }}>🎬</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.uploadName} numberOfLines={1}>{v.pathname?.split("/").pop() || "video"}</Text>
+                      <Text style={styles.uploadMeta}>{(v.size / 1048576).toFixed(1)} MB · {v.uploadedAt ? new Date(v.uploadedAt).toLocaleDateString() : ""}</Text>
+                    </View>
+                  </View>
+                ))}
+                {blobFolders[selectedFolder].videos?.length > 5 && (
+                  <Text style={styles.moreText}>+{blobFolders[selectedFolder].videos.length - 5} more files</Text>
+                )}
+              </View>
+            )}
+
+            {/* Media library items */}
+            {!selectedFolder && mediaLibrary.length > 0 && (
+              <>
+                <Text style={[styles.subsectionLabel, { marginTop: 12 }]}>Media Library ({mediaLibrary.length})</Text>
+                {mediaLibrary.slice(0, 15).map((item: any, i: number) => (
+                  <View key={item.id || i} style={styles.uploadItem}>
+                    {item.media_type === "image" || item.url?.match(/\.(png|jpg|jpeg|webp|gif)$/i) ? (
+                      <Image source={{ uri: item.url }} style={styles.uploadThumb} />
+                    ) : (
+                      <View style={styles.uploadFileBadge}><Text style={{ fontSize: 24 }}>{item.media_type === "video" ? "🎬" : "📄"}</Text></View>
+                    )}
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.uploadName} numberOfLines={1}>{item.url?.split("/").pop() || "media"}</Text>
+                      <Text style={styles.uploadMeta}>
+                        {item.media_type || "unknown"} {item.persona_username ? `· ${item.persona_emoji || ""} ${item.persona_username}` : ""} {item.tags ? `· ${item.tags}` : ""}
+                      </Text>
+                    </View>
+                    <TouchableOpacity onPress={() => {
+                      Alert.alert("Delete?", `Remove this ${item.media_type || "media"}?`, [
+                        { text: "Cancel", style: "cancel" },
+                        { text: "Delete", style: "destructive", onPress: async () => {
+                          if (!walletAddress) return;
+                          try { await deleteMedia(walletAddress, item.id); setMediaLibrary(prev => prev.filter(m => m.id !== item.id)); } catch (e: any) { Alert.alert("Error", e?.message); }
+                        }},
+                      ]);
+                    }} style={styles.deleteBtn}>
+                      <Text style={{ fontSize: 18 }}>🗑</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </>
+            )}
+
+            {/* Empty state */}
+            {Object.keys(blobFolders).length === 0 && mediaLibrary.length === 0 && !blobLoading && (
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyEmoji}>☁️</Text>
+                <Text style={styles.emptyTitle}>Blob storage is empty</Text>
+                <Text style={styles.emptySub}>Upload media or resync to discover files</Text>
+              </View>
+            )}
+
+            {/* Upload button */}
             <TouchableOpacity style={[styles.uploadBtn, uploading && { opacity: 0.5 }]} onPress={showUploadOptions} disabled={uploading}>
               <Text style={styles.uploadBtnEmoji}>☁️</Text>
               <View>
-                <Text style={styles.uploadBtnText}>{uploading ? "Uploading..." : "Upload to Blob Storage"}</Text>
-                <Text style={styles.uploadBtnSub}>Photo, video, or any file</Text>
+                <Text style={styles.uploadBtnText}>{uploading ? "Uploading..." : "Upload Media"}</Text>
+                <Text style={styles.uploadBtnSub}>{selectedFolder ? `To: ${selectedFolder}` : "To media library"}</Text>
               </View>
             </TouchableOpacity>
 
-            {uploadsLoading && <ActivityIndicator color={colors.cyan} style={{ marginVertical: 16 }} />}
-            {uploads.length === 0 && !uploadsLoading && (
-              <View style={styles.emptyState}>
-                <Text style={styles.emptyEmoji}>☁️</Text>
-                <Text style={styles.emptyTitle}>No uploads yet</Text>
-              </View>
-            )}
-            {uploads.map((item) => (
-              <View key={item.id} style={styles.uploadItem}>
-                {item.content_type?.startsWith("image/") ? (
-                  <Image source={{ uri: item.url }} style={styles.uploadThumb} />
-                ) : (
-                  <View style={styles.uploadFileBadge}><Text style={{ fontSize: 24 }}>📄</Text></View>
-                )}
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.uploadName} numberOfLines={1}>{item.filename}</Text>
-                  <Text style={styles.uploadMeta}>{item.category || "general"} · {(item.size_bytes / 1024).toFixed(0)} KB</Text>
-                </View>
-                <TouchableOpacity onPress={() => {
-                  Alert.alert("Delete?", `Remove "${item.filename}"?`, [
-                    { text: "Cancel", style: "cancel" },
-                    { text: "Delete", style: "destructive", onPress: async () => {
-                      if (!sessionId || !walletAddress) return;
-                      try { await deleteMedia(sessionId, walletAddress, item.blob_key); setUploads(prev => prev.filter(u => u.id !== item.id)); } catch (e: any) { Alert.alert("Error", e?.message); }
-                    }},
-                  ]);
-                }} style={styles.deleteBtn}>
-                  <Text style={{ fontSize: 18 }}>🗑</Text>
-                </TouchableOpacity>
-              </View>
-            ))}
+            {/* Import from URL */}
+            <Text style={[styles.subsectionLabel, { marginTop: 16 }]}>Import from URL</Text>
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              <TextInput style={[styles.optionInput, { flex: 1, minHeight: 42 }]}
+                value={importUrl} onChangeText={setImportUrl}
+                placeholder="https://example.com/video.mp4"
+                placeholderTextColor={colors.textMuted}
+                autoCapitalize="none" autoCorrect={false} />
+              <TouchableOpacity style={[styles.importBtn, !importUrl.trim() && { opacity: 0.3 }]}
+                onPress={handleImportUrl} disabled={!importUrl.trim()}>
+                <Text style={styles.importBtnText}>Import</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Admin actions */}
+            <View style={styles.adminActions}>
+              <TouchableOpacity style={[styles.adminBtn, resyncing && { opacity: 0.5 }]}
+                onPress={handleResync} disabled={resyncing}>
+                <Text style={styles.adminBtnText}>{resyncing ? "Resyncing..." : "🔄 Resync DB"}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.adminBtn} onPress={loadBlobStorage}>
+                <Text style={styles.adminBtnText}>🔃 Refresh</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         )}
 
@@ -972,6 +1106,36 @@ const styles = StyleSheet.create({
   uploadName: { color: colors.text, fontSize: 13, fontWeight: "600" },
   uploadMeta: { color: colors.textMuted, fontSize: 11, marginTop: 2 },
   deleteBtn: { padding: 8 },
+
+  // Blob folder details
+  folderDetail: {
+    backgroundColor: "rgba(6,182,212,0.06)", borderRadius: 12, padding: 14, marginBottom: 12,
+    borderWidth: 1, borderColor: "rgba(6,182,212,0.2)",
+  },
+  folderName: { color: colors.cyan, fontSize: 14, fontWeight: "800" },
+  folderMeta: { color: colors.textSecondary, fontSize: 12, marginTop: 2, marginBottom: 8 },
+  blobFileItem: {
+    flexDirection: "row", alignItems: "center", gap: 10,
+    paddingVertical: 6, borderTopWidth: 1, borderTopColor: "rgba(6,182,212,0.1)",
+  },
+  moreText: { color: colors.textMuted, fontSize: 11, fontStyle: "italic", marginTop: 6 },
+
+  // Import
+  importBtn: {
+    backgroundColor: colors.cyan, borderRadius: 10, paddingHorizontal: 16,
+    justifyContent: "center", alignItems: "center",
+  },
+  importBtnText: { color: "#000", fontSize: 13, fontWeight: "800" },
+
+  // Admin actions row
+  adminActions: {
+    flexDirection: "row", gap: 10, marginTop: 16,
+  },
+  adminBtn: {
+    flex: 1, borderWidth: 1, borderColor: colors.cyan, borderRadius: 10,
+    paddingVertical: 12, alignItems: "center",
+  },
+  adminBtnText: { color: colors.cyan, fontSize: 13, fontWeight: "700" },
 
   // Platforms
   platformGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },

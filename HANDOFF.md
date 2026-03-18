@@ -160,13 +160,16 @@ App.tsx
 
 **AI AGENTS: READ THIS EVERY TIME.** You will be given a branch name like `claude/some-feature-xxxxx`. That is your branch. Use it for ALL git operations. If you start working on `main` you are wasting the user's time and they will have to repeat this instruction AGAIN.
 
-### THE GOLDEN RULE: Always run these 3 commands in order after pulling new code
+### THE GOLDEN RULE: Always run these 4 commands in order after pulling new code
 ```bash
 git pull origin <your-assigned-branch>
 npm install
+npx expo export --platform ios
 eas build --profile preview --platform ios
 ```
 Replace `<your-assigned-branch>` with the branch from your session instructions (e.g. `claude/review-handoff-docs-5vpeq`).
+
+**Step 3 (`npx expo export`) is a FREE local bundle test.** It catches JS errors (syntax errors, bad imports, merge conflicts) before you pay $2 for an EAS build. Only proceed to step 4 after step 3 says "Bundled" with NO errors. If step 3 fails, fix the error and re-run step 3 until it passes.
 
 Wait for build. Scan QR code on your device. Done.
 
@@ -216,6 +219,7 @@ If "your local changes would be overwritten" appears, stash first (see above).
 | `Invalid UUID appId` | The `projectId` in app.json is wrong. Must be `418c0a46-e73f-42b1-b388-cb801ca7d798` |
 | `You don't have permission to create a new project` | The `owner` in app.json is wrong. Must be `comfybear` (not `comfybear71`) |
 | App shows old version after install | Build was queued before code push. Pull latest, `npm install`, build again |
+| `<<<<<<< HEAD` / `Unexpected token` in EAS build | **Unresolved merge conflict markers** in a source file. Run `grep -r "<<<<<<" src/` locally to find them, fix the file, commit, and push. ALWAYS run `npx expo export --platform ios` locally before paying for an EAS build — it catches this for free |
 | `exited with non-zero code` on eas build | Run `npm install` first |
 | VS Code opens during git pull | Just close VS Code, git will finish |
 | Buy screen shows "-" for prices | Backend server is lagging. Not an app bug — wait and refresh |
@@ -642,6 +646,33 @@ This section documents a chain of errors that cost significant time. AI agents M
 - **Fix**: Not an app bug — server-side issue. Prices return when server recovers
 - **Lesson**: If prices show "-", check backend health first before debugging app
 
+### Session 8 — Merge Conflict Markers Cost $4 in Failed Builds (2026-03-18)
+
+**Problem**: Two consecutive EAS builds failed ($2 each = $4 wasted) with:
+```
+SyntaxError: /Users/expo/workingdir/build/src/hooks/GenerationContext.tsx: Unexpected token (6:0)
+> 6 | <<<<<<< HEAD
+```
+
+**Root cause**: `GenerationContext.tsx` had unresolved git merge conflict markers (`<<<<<<< HEAD`, `=======`, `>>>>>>>`) from a previous merge between branches. The file on the remote Claude branch was clean, but the user's **local Windows machine** still had the conflicted version. EAS uploads local files, not remote files — so the broken local copy was sent to EAS.
+
+**Why `git pull` didn't fix it**: If the local file has uncommitted changes (including conflict markers), `git pull` won't overwrite it. The user needs to explicitly checkout the clean version:
+```bash
+git checkout origin/<branch-name> -- src/hooks/GenerationContext.tsx
+```
+
+**How to prevent this EVERY TIME**:
+1. After ANY merge or pull, run: `grep -r "<<<<<<" src/`
+2. If ANY results appear, the merge is NOT done — fix those files
+3. Before ANY EAS build, run: `npx expo export --platform ios`
+4. This is a FREE local test. If it says "Bundled" → safe to build. If it fails → fix first, save $2
+
+**Fix applied**: Added `npx expo export --platform ios` as a mandatory step in the Golden Rule (both CLAUDE.md and HANDOFF.md). Also added merge conflict scan reminder to git rules.
+
+**RULE FOR AI AGENTS**: After pushing code, ALWAYS tell the user to run `npx expo export --platform ios` before `eas build`. NEVER tell them to go straight to `eas build`. The local test is free. The EAS build is $2.
+
+---
+
 ### Session 2 — The usePhantomDeepLink Disaster (2026-03-14)
 
 **Problem**: WalletScreen imported `usePhantomDeepLink` which imports `tweetnacl` and `bs58` — these crash the app because they require Node.js `Buffer`.
@@ -667,17 +698,20 @@ This section documents a chain of errors that cost significant time. AI agents M
 
 ### Build & Deploy Rules
 10. **ALWAYS run `npm install` before `eas build`** — missing deps = cryptic errors
-11. **ALWAYS use `preview` profile for device testing** — production is for App Store only
-12. **ALWAYS verify app.json after merge conflicts** — check projectId, owner, updates.url
-13. **NEVER change `owner` to `comfybear71`** — Expo account is `comfybear`
-14. **NEVER replace projectId UUID with slug name** — must be `418c0a46-e73f-42b1-b388-cb801ca7d798`
-15. **Buy = BUY ONLY** — no sell feature until 5000 SOL raised
+11. **ALWAYS run `npx expo export --platform ios` before `eas build`** — this is a FREE local bundle test. If it fails, the $2 EAS build will fail too. Fix locally first
+12. **ALWAYS run `grep -r "<<<<<<" src/` after any merge/pull** — catches unresolved merge conflicts before they cost $2
+13. **ALWAYS use `preview` profile for device testing** — production is for App Store only
+14. **ALWAYS verify app.json after merge conflicts** — check projectId, owner, updates.url
+15. **NEVER change `owner` to `comfybear71`** — Expo account is `comfybear`
+16. **NEVER replace projectId UUID with slug name** — must be `418c0a46-e73f-42b1-b388-cb801ca7d798`
+17. **Buy = BUY ONLY** — no sell feature until 5000 SOL raised
 
 ### Git Rules
-16. **Always use `--legacy-peer-deps` for npm install** if peer dep errors occur
-17. **Always stash before merging** if you have local changes
-18. **Always use `origin/` prefix** when merging remote branches
-19. **Close VS Code** if it opens during git operations — it's just the merge editor
+18. **Always use `--legacy-peer-deps` for npm install** if peer dep errors occur
+19. **Always stash before merging** if you have local changes
+20. **Always use `origin/` prefix** when merging remote branches
+21. **Close VS Code** if it opens during git operations — it's just the merge editor
+22. **After ANY merge, run `grep -r "<<<<<<" src/`** — if any results, the merge is incomplete. Fix the files before committing. Unresolved merge conflicts caused $4 in wasted EAS builds (Session 8)
 
 ---
 

@@ -2,7 +2,6 @@ import React, { useEffect, useState, useCallback, useRef } from "react";
 import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet,
   ActivityIndicator, Alert, RefreshControl, TextInput, Image,
-  Animated, Easing,
 } from "react-native";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
@@ -11,12 +10,14 @@ import { colors } from "../theme/colors";
 import { useSession } from "../hooks/useSession";
 import { usePhantomWallet } from "../hooks/usePhantomWallet";
 import {
-  generateContent, getContentJobStatus, getContentLibrary,
-  uploadMedia, getMediaLibrary, deleteMedia, triggerDirectorMovie,
+  uploadMedia, deleteMedia, triggerDirectorMovie,
   generatePoster, generateHeroImage, getMarketingStats,
+  getMarketingPosts, getMarketingAccounts, getMarketingMetrics,
+  generateAd, getAdStatus, getDirectorMovieStatus, getMovies,
   spreadCustomContent, getSpreadHistory,
   getCronStatus, getAdminHealth,
-  ContentType, DirectorStyle, ContentJob, MediaLibraryItem,
+  getMediaLibrary,
+  MediaLibraryItem,
 } from "../services/api";
 
 // ── Directors from the web app ──
@@ -94,11 +95,18 @@ function StatCard({ emoji, value, label, color: c }: { emoji: string; value: str
 }
 
 // ── Generation Log ──
-function GenerationLog({ entries }: { entries: LogEntry[] }) {
+function GenerationLog({ entries, onClear }: { entries: LogEntry[]; onClear?: () => void }) {
   const scrollRef = useRef<ScrollView>(null);
   return (
     <View style={styles.logContainer}>
-      <Text style={styles.logHeader}>Generation Log</Text>
+      <View style={styles.logHeaderRow}>
+        <Text style={styles.logHeader}>Generation Log</Text>
+        {onClear && entries.length > 0 && (
+          <TouchableOpacity onPress={onClear} style={styles.logClearBtn}>
+            <Text style={styles.logClearText}>Clear</Text>
+          </TouchableOpacity>
+        )}
+      </View>
       <ScrollView
         ref={scrollRef}
         style={styles.logScroll}
@@ -153,11 +161,7 @@ export default function ContentStudioScreen() {
   };
 
   // ── Content Create State ──
-  const [selectedType, setSelectedType] = useState<ContentType | null>(null);
-  const [prompt, setPrompt] = useState("");
-  const [directorStyle, setDirectorStyle] = useState<DirectorStyle>("cinematic");
-  const [generating, setGenerating] = useState(false);
-  const [activeJob, setActiveJob] = useState<ContentJob | null>(null);
+  const [adGenerating, setAdGenerating] = useState(false);
 
   // ── Director Movie State ──
   const [selectedDirector, setSelectedDirector] = useState<string | null>(null);
@@ -172,8 +176,9 @@ export default function ContentStudioScreen() {
   };
 
   // ── Library State ──
-  const [library, setLibrary] = useState<ContentJob[]>([]);
+  const [library, setLibrary] = useState<any[]>([]);
   const [libraryLoading, setLibraryLoading] = useState(false);
+  const [moviesList, setMoviesList] = useState<any[]>([]);
 
   // ── Uploads State ──
   const [uploads, setUploads] = useState<MediaLibraryItem[]>([]);
@@ -190,6 +195,7 @@ export default function ContentStudioScreen() {
   const [cronJobs, setCronJobs] = useState<any[]>([]);
   const [healthData, setHealthData] = useState<any>(null);
   const [monitorLoading, setMonitorLoading] = useState(false);
+  const [platformAccounts, setPlatformAccounts] = useState<any[]>([]);
 
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -199,20 +205,24 @@ export default function ContentStudioScreen() {
 
   // ── Loaders ──
   const loadLibrary = useCallback(async () => {
-    if (!sessionId || !walletAddress) return;
+    if (!walletAddress) return;
     setLibraryLoading(true);
     try {
-      const data = await getContentLibrary(sessionId, walletAddress);
-      setLibrary(data.items || []);
+      const [postsRes, moviesRes] = await Promise.all([
+        getMarketingPosts(walletAddress).catch(() => ({ posts: [] })),
+        getMovies(walletAddress).catch(() => ({ movies: [] })),
+      ]);
+      setLibrary(postsRes.posts || []);
+      setMoviesList(moviesRes.movies || []);
     } catch (e: any) { console.warn("Library:", e?.message); }
     setLibraryLoading(false);
-  }, [sessionId, walletAddress]);
+  }, [walletAddress]);
 
   const loadUploads = useCallback(async () => {
     if (!sessionId || !walletAddress) return;
     setUploadsLoading(true);
     try {
-      const data = await getMediaLibrary(sessionId, walletAddress);
+      const data = await getMediaLibrary(sessionId, walletAddress).catch(() => ({ items: [] }));
       setUploads(data.items || []);
     } catch (e: any) { console.warn("Uploads:", e?.message); }
     setUploadsLoading(false);
@@ -222,8 +232,12 @@ export default function ContentStudioScreen() {
     if (!walletAddress) return;
     setSocialLoading(true);
     try {
-      const data = await getSpreadHistory(walletAddress);
-      setSpreadHistory(data.spreads || []);
+      const [spreadRes, accountsRes] = await Promise.all([
+        getSpreadHistory(walletAddress).catch(() => ({ spreads: [] })),
+        getMarketingAccounts(walletAddress).catch(() => ({ accounts: [] })),
+      ]);
+      setSpreadHistory(spreadRes.spreads || []);
+      setPlatformAccounts(accountsRes.accounts || []);
     } catch (e: any) { console.warn("Social:", e?.message); }
     setSocialLoading(false);
   }, [walletAddress]);
@@ -232,12 +246,23 @@ export default function ContentStudioScreen() {
     if (!walletAddress || !sessionId) return;
     setMonitorLoading(true);
     try {
-      const [stats, cron, health] = await Promise.all([
+      const [stats, cron, health, adStatus, movieStatus] = await Promise.all([
         getMarketingStats(walletAddress).catch(() => ({ stats: null })),
         getCronStatus(walletAddress).catch(() => ({ jobs: [] })),
         getAdminHealth(sessionId, walletAddress).catch(() => null),
+        getAdStatus(walletAddress).catch(() => ({ jobs: [], stats: null })),
+        getDirectorMovieStatus(walletAddress).catch(() => ({ jobs: [], movies: [], stats: null })),
       ]);
-      setMktgStats(stats.stats);
+      // Merge all stats together
+      const mergedStats = {
+        ...(stats?.stats || {}),
+        ad_jobs: adStatus?.jobs?.length || 0,
+        ad_stats: adStatus?.stats || null,
+        movie_jobs: movieStatus?.jobs?.length || 0,
+        movie_stats: movieStatus?.stats || null,
+        movies_count: movieStatus?.movies?.length || 0,
+      };
+      setMktgStats(mergedStats);
       setCronJobs(cron.jobs || []);
       setHealthData(health);
     } catch (e: any) { console.warn("Monitor:", e?.message); }
@@ -250,63 +275,28 @@ export default function ContentStudioScreen() {
   useEffect(() => { if (expandedSections.social) loadSocial(); }, [expandedSections.social]);
   useEffect(() => { if (expandedSections.monitor) loadMonitor(); }, [expandedSections.monitor]);
 
-  // ── Poll for job completion ──
-  const startPolling = (jobId: string, contentType: string) => {
-    if (pollTimer.current) clearInterval(pollTimer.current);
-    let attempts = 0;
-    addQuickLog("⏳", `Polling ${contentType} job...`, "waiting");
-    pollTimer.current = setInterval(async () => {
-      attempts++;
-      if (attempts > 60 || !sessionId) {
-        if (pollTimer.current) clearInterval(pollTimer.current);
-        setGenerating(false);
-        addQuickLog("❌", "Polling timed out", "error");
-        return;
-      }
-      try {
-        const job = await getContentJobStatus(jobId, sessionId!);
-        setActiveJob(job);
-        if (job.status === "complete") {
-          if (pollTimer.current) clearInterval(pollTimer.current);
-          setGenerating(false);
-          addQuickLog("✅", `${contentType} generated successfully!`, "success");
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        } else if (job.status === "failed") {
-          if (pollTimer.current) clearInterval(pollTimer.current);
-          setGenerating(false);
-          addQuickLog("❌", `${contentType} failed: ${job.error || "Unknown"}`, "error");
-        } else {
-          addQuickLog("⏳", `Attempt ${attempts}... status: ${job.status}`, "waiting");
-        }
-      } catch (_) {}
-    }, 3000);
-  };
-
-  // ── Generate content (ad_image, ad_video, directors_movie) ──
-  const handleGenerate = async () => {
-    if (!selectedType || !sessionId || !walletAddress || generating) return;
-    setGenerating(true);
-    setActiveJob(null);
+  // ── Generate Ad (via /api/generate-ads) ──
+  const handleGenerateAd = async () => {
+    if (adGenerating || !walletAddress) return;
+    setAdGenerating(true);
+    addQuickLog("🎬", `Starting ad generation...`, "info");
+    addQuickLog("📡", `Submitting to /api/generate-ads...`, "info");
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    const typeName = selectedType.replace(/_/g, " ");
-    addQuickLog("🎬", `Starting ${typeName} generation...`, "info");
     try {
-      const result = await generateContent(sessionId, walletAddress, selectedType, {
-        prompt: prompt.trim() || undefined,
-        director_style: selectedType === "directors_movie" ? directorStyle : undefined,
-      });
-      if (result.success && result.job_id) {
-        addQuickLog("📡", `Job submitted: ${result.job_id.slice(0, 8)}...`, "info");
-        setActiveJob({ job_id: result.job_id, content_type: result.content_type, status: result.status, created_at: new Date().toISOString() });
-        startPolling(result.job_id, typeName);
+      const res = await generateAd(walletAddress);
+      if (res.success) {
+        addQuickLog("✅", `Ad generated! ${res.message || ""}`, "success");
+        if (res.job_id) addQuickLog("📡", `Job ID: ${res.job_id}`, "info");
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        Alert.alert("Ad Generated!", res.message || "Ad video is being created.");
       } else {
-        setGenerating(false);
-        addQuickLog("❌", result.message || "Could not start", "error");
+        addQuickLog("❌", res.message || "Ad generation failed", "error");
       }
     } catch (e: any) {
-      setGenerating(false);
-      addQuickLog("❌", e?.message || "Generation failed", "error");
+      addQuickLog("❌", e?.message || "Ad generation failed", "error");
+      Alert.alert("Error", e?.message || "Ad generation failed");
     }
+    setAdGenerating(false);
   };
 
   // ── Quick Generate (poster/hero using working endpoints) ──
@@ -470,36 +460,19 @@ export default function ContentStudioScreen() {
 
             <View style={styles.divider} />
 
-            {/* Additional content types */}
-            {[
-              { key: "ad_image" as ContentType, emoji: "🎯", title: "Ad Image", desc: "Eye-catching advertisement image" },
-              { key: "ad_video" as ContentType, emoji: "🎬", title: "Ad Video", desc: "Short promotional video for ads" },
-            ].map((ct) => (
-              <TouchableOpacity key={ct.key}
-                style={[styles.typeCard, selectedType === ct.key && styles.typeCardSelected]}
-                onPress={() => { setSelectedType(selectedType === ct.key ? null : ct.key); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}>
-                <Text style={styles.typeEmoji}>{ct.emoji}</Text>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.typeTitle}>{ct.title}</Text>
-                  <Text style={styles.typeDesc}>{ct.desc}</Text>
-                </View>
-                {selectedType === ct.key && <Text style={styles.typeCheck}>✓</Text>}
-              </TouchableOpacity>
-            ))}
-
-            {selectedType && (
-              <View style={styles.optionsSection}>
-                <Text style={styles.optionLabel}>Creative Prompt (optional)</Text>
-                <TextInput style={styles.optionInput} value={prompt} onChangeText={setPrompt}
-                  placeholder="Describe what you want..." placeholderTextColor={colors.textMuted} multiline maxLength={500} />
-                <TouchableOpacity style={[styles.generateBtn, generating && { opacity: 0.5 }]} onPress={handleGenerate} disabled={generating}>
-                  <Text style={styles.generateBtnText}>{generating ? "Generating..." : `Generate ${selectedType.replace(/_/g, " ")}`}</Text>
-                </TouchableOpacity>
+            {/* Ad generation via working endpoint */}
+            <TouchableOpacity style={[styles.actionCard, adGenerating && { opacity: 0.5 }]}
+              onPress={handleGenerateAd} disabled={adGenerating}>
+              <Text style={styles.actionEmoji}>🎬</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.actionTitle}>{adGenerating ? "Generating..." : "Generate Ad Video"}</Text>
+                <Text style={styles.actionDesc}>AI persona ad with auto social distribution</Text>
               </View>
-            )}
+              <Text style={styles.actionChevron}>›</Text>
+            </TouchableOpacity>
 
             {/* Generation Log */}
-            {quickLog.length > 0 && <GenerationLog entries={quickLog} />}
+            {quickLog.length > 0 && <GenerationLog entries={quickLog} onClear={() => setQuickLog([])} />}
           </View>
         )}
 
@@ -574,7 +547,7 @@ export default function ContentStudioScreen() {
             </TouchableOpacity>
 
             {/* Movie generation log */}
-            {movieLog.length > 0 && <GenerationLog entries={movieLog} />}
+            {movieLog.length > 0 && <GenerationLog entries={movieLog} onClear={() => setMovieLog([])} />}
 
             {/* Movie result */}
             {movieResult && (
@@ -588,28 +561,60 @@ export default function ContentStudioScreen() {
         )}
 
         {/* ══════════════ LIBRARY ══════════════ */}
-        <SectionHeader title={`Library (${library.length})`} emoji="📚" expanded={expandedSections.library} onToggle={() => toggleSection("library")} accent={colors.amber} />
+        <SectionHeader title={`Library (${library.length + moviesList.length})`} emoji="📚" expanded={expandedSections.library} onToggle={() => toggleSection("library")} accent={colors.amber} />
         {expandedSections.library && (
           <View style={styles.sectionBody}>
             {libraryLoading && <ActivityIndicator color={colors.purple} style={{ marginVertical: 16 }} />}
-            {library.length === 0 && !libraryLoading && (
+
+            {/* Movies */}
+            {moviesList.length > 0 && (
+              <>
+                <Text style={styles.subsectionLabel}>Movies ({moviesList.length})</Text>
+                {moviesList.slice(0, 20).map((movie: any, i: number) => (
+                  <View key={movie.id || i} style={styles.libraryItem}>
+                    {movie.thumbnail_url && <Image source={{ uri: movie.thumbnail_url }} style={styles.libraryThumb} />}
+                    {!movie.thumbnail_url && <View style={[styles.libraryThumb, { backgroundColor: "rgba(147,51,234,0.15)", justifyContent: "center", alignItems: "center" }]}><Text style={{ fontSize: 24 }}>🎬</Text></View>}
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.libraryTitle}>{movie.title || "Untitled Movie"}</Text>
+                      <Text style={styles.libraryMeta}>{movie.genre || ""} {movie.director_username ? `· ${movie.director_username}` : ""}</Text>
+                      {movie.tagline && <Text style={styles.libraryPrompt} numberOfLines={1}>{movie.tagline}</Text>}
+                    </View>
+                    <StatusBadge status={movie.status || "complete"} />
+                  </View>
+                ))}
+              </>
+            )}
+
+            {/* Marketing Posts */}
+            {library.length > 0 && (
+              <>
+                <Text style={[styles.subsectionLabel, moviesList.length > 0 && { marginTop: 16 }]}>Posts ({library.length})</Text>
+                {library.slice(0, 20).map((item: any, i: number) => (
+                  <View key={item.id || i} style={styles.libraryItem}>
+                    {item.media_url && <Image source={{ uri: item.media_url }} style={styles.libraryThumb} />}
+                    {!item.media_url && <View style={[styles.libraryThumb, { backgroundColor: "rgba(245,158,11,0.15)", justifyContent: "center", alignItems: "center" }]}><Text style={{ fontSize: 24 }}>📄</Text></View>}
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.libraryTitle}>{item.post_type || item.media_type || "Post"}</Text>
+                      <Text style={styles.libraryMeta}>{item.created_at ? new Date(item.created_at).toLocaleDateString() : ""}</Text>
+                      {item.content && <Text style={styles.libraryPrompt} numberOfLines={1}>{item.content}</Text>}
+                    </View>
+                    <StatusBadge status={item.status || "posted"} />
+                  </View>
+                ))}
+              </>
+            )}
+
+            {library.length === 0 && moviesList.length === 0 && !libraryLoading && (
               <View style={styles.emptyState}>
                 <Text style={styles.emptyEmoji}>📚</Text>
                 <Text style={styles.emptyTitle}>No content yet</Text>
                 <Text style={styles.emptySub}>Generated content will appear here</Text>
               </View>
             )}
-            {library.map((item) => (
-              <View key={item.job_id} style={styles.libraryItem}>
-                {item.final_url && <Image source={{ uri: item.final_url }} style={styles.libraryThumb} />}
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.libraryTitle}>{item.content_type?.replace(/_/g, " ")}</Text>
-                  <Text style={styles.libraryMeta}>{new Date(item.created_at).toLocaleDateString()}</Text>
-                  {item.prompt && <Text style={styles.libraryPrompt} numberOfLines={1}>{item.prompt}</Text>}
-                </View>
-                <StatusBadge status={item.status} />
-              </View>
-            ))}
+
+            <TouchableOpacity style={styles.refreshBtn} onPress={loadLibrary}>
+              <Text style={[styles.refreshBtnText, { color: colors.amber }]}>Refresh Library</Text>
+            </TouchableOpacity>
           </View>
         )}
 
@@ -673,13 +678,17 @@ export default function ContentStudioScreen() {
           <View style={styles.sectionBody}>
             <Text style={styles.subsectionLabel}>Platforms</Text>
             <View style={styles.platformGrid}>
-              {PLATFORMS.map(p => (
-                <View key={p.key} style={[styles.platformCard, { borderTopColor: p.color }]}>
-                  <Text style={{ fontSize: 24 }}>{p.emoji}</Text>
-                  <Text style={[styles.platformName, { color: p.color }]}>{p.name}</Text>
-                  <StatusBadge status="posted" />
-                </View>
-              ))}
+              {PLATFORMS.map(p => {
+                const account = platformAccounts.find((a: any) => a.platform === p.key);
+                const isConnected = account?.is_active;
+                return (
+                  <View key={p.key} style={[styles.platformCard, { borderTopColor: p.color }]}>
+                    <Text style={{ fontSize: 24 }}>{p.emoji}</Text>
+                    <Text style={[styles.platformName, { color: p.color }]}>{p.name}</Text>
+                    <StatusBadge status={isConnected ? "posted" : "pending"} />
+                  </View>
+                );
+              })}
             </View>
 
             <Text style={[styles.subsectionLabel, { marginTop: 16 }]}>Recent Spreads ({spreadHistory.length})</Text>
@@ -709,32 +718,43 @@ export default function ContentStudioScreen() {
           <View style={styles.sectionBody}>
             {monitorLoading && <ActivityIndicator color={colors.cyan} style={{ marginVertical: 16 }} />}
 
-            {/* Stats grid */}
-            {mktgStats && (
-              <>
-                <Text style={styles.subsectionLabel}>Marketing Stats</Text>
-                <View style={styles.statsGrid}>
-                  <StatCard emoji="📢" value={mktgStats.posters_generated || mktgStats.total_posters || 0} label="Posters" color={colors.purpleLight} />
-                  <StatCard emoji="🖼" value={mktgStats.heroes_generated || mktgStats.total_heroes || 0} label="Heroes" color={colors.cyan} />
-                  <StatCard emoji="🎬" value={mktgStats.videos_generated || mktgStats.total_videos || 0} label="Videos" color={colors.pink} />
-                  <StatCard emoji="📡" value={mktgStats.posts_spread || mktgStats.total_spreads || 0} label="Spreads" color={colors.amber} />
-                </View>
-              </>
+            {/* Stats grid — always show */}
+            <Text style={styles.subsectionLabel}>Generation Stats</Text>
+            <View style={styles.statsGrid}>
+              <StatCard emoji="📢" value={mktgStats?.posters_generated || mktgStats?.total_posters || 0} label="Posters" color={colors.purpleLight} />
+              <StatCard emoji="🖼" value={mktgStats?.heroes_generated || mktgStats?.total_heroes || 0} label="Heroes" color={colors.cyan} />
+              <StatCard emoji="🎬" value={mktgStats?.movies_count || mktgStats?.total_videos || 0} label="Movies" color={colors.pink} />
+              <StatCard emoji="📡" value={mktgStats?.posts_spread || mktgStats?.total_spreads || 0} label="Spreads" color={colors.amber} />
+            </View>
+
+            {/* Ad & Movie pipeline stats */}
+            {(mktgStats?.ad_jobs != null || mktgStats?.movie_jobs != null) && (
+              <View style={[styles.statsGrid, { marginTop: 10 }]}>
+                <StatCard emoji="🎯" value={mktgStats?.ad_jobs || 0} label="Ad Jobs" color={colors.orange} />
+                <StatCard emoji="🎥" value={mktgStats?.movie_jobs || 0} label="Movie Jobs" color={colors.pink} />
+              </View>
             )}
 
             {/* System health */}
-            {healthData && (
-              <>
-                <Text style={[styles.subsectionLabel, { marginTop: 16 }]}>System Health</Text>
-                <View style={styles.healthGrid}>
-                  {Object.entries(healthData.services || healthData).slice(0, 6).map(([key, val]: [string, any]) => (
-                    <View key={key} style={styles.healthItem}>
-                      <View style={[styles.healthDot, { backgroundColor: val === true || val?.healthy ? colors.green : typeof val === "object" && val?.status === "degraded" ? colors.yellow : colors.red }]} />
-                      <Text style={styles.healthLabel}>{key.replace(/_/g, " ")}</Text>
-                    </View>
-                  ))}
-                </View>
-              </>
+            <Text style={[styles.subsectionLabel, { marginTop: 16 }]}>System Health</Text>
+            {healthData ? (
+              <View style={styles.healthGrid}>
+                {(Array.isArray(healthData.services) ? healthData.services : Object.entries(healthData.services || healthData).map(([k, v]: [string, any]) => ({ name: k, ...((typeof v === "object" && v) || { status: v ? "healthy" : "down" }) }))).slice(0, 8).map((svc: any, i: number) => (
+                  <View key={i} style={styles.healthItem}>
+                    <View style={[styles.healthDot, { backgroundColor: svc.status === "healthy" || svc.status === "ok" || svc.healthy === true ? colors.green : svc.status === "degraded" ? colors.yellow : colors.red }]} />
+                    <Text style={styles.healthLabel}>{(svc.name || "service").replace(/_/g, " ")}</Text>
+                    {svc.latency_ms != null && <Text style={styles.healthLatency}>{svc.latency_ms}ms</Text>}
+                  </View>
+                ))}
+                {healthData.overall && (
+                  <View style={styles.healthItem}>
+                    <View style={[styles.healthDot, { backgroundColor: healthData.overall === "healthy" ? colors.green : colors.yellow }]} />
+                    <Text style={[styles.healthLabel, { fontWeight: "800" }]}>Overall: {healthData.overall}</Text>
+                  </View>
+                )}
+              </View>
+            ) : (
+              <Text style={styles.healthFallback}>Tap Refresh to load health data</Text>
             )}
 
             {/* Cron jobs */}
@@ -877,10 +897,19 @@ const styles = StyleSheet.create({
     backgroundColor: "#0a0a0a", borderRadius: 12, marginTop: 16, overflow: "hidden",
     borderWidth: 1, borderColor: "#1f2937",
   },
+  logHeaderRow: {
+    flexDirection: "row", justifyContent: "space-between", alignItems: "center",
+    backgroundColor: "#111827", paddingHorizontal: 12, paddingVertical: 8,
+  },
   logHeader: {
     color: colors.textSecondary, fontSize: 11, fontWeight: "700", textTransform: "uppercase",
-    letterSpacing: 1, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: "#111827",
+    letterSpacing: 1,
   },
+  logClearBtn: {
+    paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8,
+    backgroundColor: "rgba(239,68,68,0.15)", borderWidth: 1, borderColor: "rgba(239,68,68,0.3)",
+  },
+  logClearText: { color: colors.red, fontSize: 10, fontWeight: "700" },
   logScroll: { maxHeight: 200, paddingHorizontal: 12, paddingVertical: 8 },
   logLine: { color: colors.textSecondary, fontSize: 11, fontFamily: "Courier", lineHeight: 18 },
 
@@ -966,6 +995,8 @@ const styles = StyleSheet.create({
   healthItem: { flexDirection: "row", alignItems: "center", gap: 6 },
   healthDot: { width: 8, height: 8, borderRadius: 4 },
   healthLabel: { color: colors.textSecondary, fontSize: 12, fontWeight: "600", textTransform: "capitalize" },
+  healthLatency: { color: colors.textMuted, fontSize: 10 },
+  healthFallback: { color: colors.textMuted, fontSize: 13, fontStyle: "italic", paddingVertical: 8 },
 
   // Cron
   cronItem: {

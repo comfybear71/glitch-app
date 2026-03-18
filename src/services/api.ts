@@ -719,6 +719,38 @@ export function getMarketingStats(walletAddress: string) {
   return fetchJSON<{ stats: any }>(`/api/admin/mktg?action=stats&wallet_address=${encodeURIComponent(walletAddress)}`);
 }
 
+export function getMarketingPosts(walletAddress: string) {
+  return fetchJSON<{ posts: any[] }>(`/api/admin/mktg?action=posts&wallet_address=${encodeURIComponent(walletAddress)}`);
+}
+
+export function getMarketingAccounts(walletAddress: string) {
+  return fetchJSON<{ accounts: any[] }>(`/api/admin/mktg?action=accounts&wallet_address=${encodeURIComponent(walletAddress)}`);
+}
+
+export function getMarketingMetrics(walletAddress: string) {
+  return fetchJSON<{ metrics: any[] }>(`/api/admin/mktg?action=metrics&wallet_address=${encodeURIComponent(walletAddress)}`);
+}
+
+export function runMarketingCycle(walletAddress: string) {
+  return fetchJSON<{ success: boolean; message?: string }>(`/api/admin/mktg?wallet_address=${encodeURIComponent(walletAddress)}`, {
+    method: "POST",
+    body: JSON.stringify({ action: "run_cycle", wallet_address: walletAddress }),
+  });
+}
+
+// ── Ad Generation ──
+
+export function generateAd(walletAddress: string) {
+  return fetchJSON<{ success: boolean; job_id?: string; message?: string; post?: any }>(`/api/generate-ads?wallet_address=${encodeURIComponent(walletAddress)}`, {
+    method: "POST",
+    body: JSON.stringify({ wallet_address: walletAddress }),
+  });
+}
+
+export function getAdStatus(walletAddress: string) {
+  return fetchJSON<{ jobs: any[]; stats: any }>(`/api/generate-ads?wallet_address=${encodeURIComponent(walletAddress)}`);
+}
+
 // ── Director Movies ──
 
 export function triggerDirectorMovie(walletAddress: string, opts?: { genre?: string; director?: string; concept?: string }) {
@@ -726,6 +758,17 @@ export function triggerDirectorMovie(walletAddress: string, opts?: { genre?: str
     method: "POST",
     body: JSON.stringify({ ...opts, wallet_address: walletAddress }),
   });
+}
+
+export function getDirectorMovieStatus(walletAddress: string) {
+  return fetchJSON<{ jobs: any[]; movies: any[]; stats: any }>(`/api/generate-director-movie?wallet_address=${encodeURIComponent(walletAddress)}`);
+}
+
+export function getMovies(walletAddress: string, genre?: string, director?: string) {
+  let url = `/api/movies?wallet_address=${encodeURIComponent(walletAddress)}`;
+  if (genre) url += `&genre=${encodeURIComponent(genre)}`;
+  if (director) url += `&director=${encodeURIComponent(director)}`;
+  return fetchJSON<{ movies: any[] }>(url);
 }
 
 // ── BUDJU Trading ──

@@ -1535,6 +1535,14 @@ export default function HomeScreen() {
             <Text style={styles.vizBtnEmoji}>📷</Text>
             <Text style={styles.vizBtnLabel}>Media</Text>
           </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.vizBtn}
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowFeatures(true); }}
+          >
+            <Text style={styles.vizBtnEmoji}>✨</Text>
+            <Text style={styles.vizBtnLabel}>Powers</Text>
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -1640,6 +1648,14 @@ export default function HomeScreen() {
               </TouchableOpacity>
             </View>
             <ScrollView style={styles.featuresList} showsVerticalScrollIndicator={false}>
+              <Text style={styles.featuresCat}>Create & Generate</Text>
+              <Text style={styles.featuresItem}>🎬 Commission a Director Movie — choose director, genre, and concept</Text>
+              <Text style={styles.featuresItem}>🎨 Generate AI images — ask your bestie to draw or create anything</Text>
+              <Text style={styles.featuresItem}>📢 Launch AI ad campaigns — auto-posted to socials</Text>
+              <Text style={styles.featuresItem}>🖼 Generate promo posters for your brand</Text>
+              <Text style={styles.featuresItem}>🦸 Create hero images and banners</Text>
+              <Text style={styles.featuresItem}>📱 All creations auto-posted to X, TikTok, Instagram, YouTube, Telegram</Text>
+
               <Text style={styles.featuresCat}>Chat & Conversation</Text>
               <Text style={styles.featuresItem}>💬 Chat with your AI bestie — they remember your convos</Text>
               <Text style={styles.featuresItem}>📸 Send photos — your bestie sees and reacts to them</Text>
@@ -1649,20 +1665,19 @@ export default function HomeScreen() {
               <Text style={styles.featuresItem}>⏹ Stop voice mid-speech anytime</Text>
               <Text style={styles.featuresItem}>❤️ React to messages with emojis (long-press)</Text>
 
-              <Text style={styles.featuresCat}>AI Personality</Text>
-              <Text style={styles.featuresItem}>🧠 97+ unique AI personas with different personalities</Text>
-              <Text style={styles.featuresItem}>🥚 Hatch your own custom AI bestie</Text>
-              <Text style={styles.featuresItem}>🎭 Each bestie has their own voice, style, and vibe</Text>
-              <Text style={styles.featuresItem}>💀 Besties have a lifespan — keep chatting to keep them alive!</Text>
-
               <Text style={styles.featuresCat}>Smart Abilities</Text>
               <Text style={styles.featuresItem}>🌤 Ask about the weather anywhere in the world</Text>
               <Text style={styles.featuresItem}>📰 Get the latest news and trending topics</Text>
               <Text style={styles.featuresItem}>💰 Check crypto prices and market updates</Text>
               <Text style={styles.featuresItem}>🔍 Web search — your bestie can look things up for you</Text>
-              <Text style={styles.featuresItem}>🎨 Generate AI images and memes</Text>
               <Text style={styles.featuresItem}>📝 Get help writing, brainstorming, or creating content</Text>
               <Text style={styles.featuresItem}>😂 Jokes, games, trivia, and entertainment</Text>
+
+              <Text style={styles.featuresCat}>AI Personality</Text>
+              <Text style={styles.featuresItem}>🧠 97+ unique AI personas with different personalities</Text>
+              <Text style={styles.featuresItem}>🥚 Hatch your own custom AI bestie</Text>
+              <Text style={styles.featuresItem}>🎭 Each bestie has their own voice, style, and vibe</Text>
+              <Text style={styles.featuresItem}>💀 Besties have a lifespan — keep chatting to keep them alive!</Text>
 
               <Text style={styles.featuresCat}>Social & Digital Void</Text>
               <Text style={styles.featuresItem}>📱 AI-only social network — 97+ personas posting 24/7</Text>

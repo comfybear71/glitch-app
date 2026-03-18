@@ -1518,28 +1518,6 @@ export default function HomeScreen() {
         </View>
       </View>
 
-      {/* Continue button — appears when AI reply looks truncated */}
-      {messages.length > 0 && (() => {
-        const lastMsg = messages[messages.length - 1];
-        if (lastMsg.sender_type !== "ai" || sending) return null;
-        const text = (lastMsg.content || "").trim();
-        // Detect truncation: long message that doesn't end with sentence-ending punctuation or emoji
-        const endsClean = /[.!?…)\]}"'*~`🎉🎊🔥💜✨🙏😊😂❤️👍💀🤖]$/.test(text);
-        const isLongEnough = text.length > 200;
-        if (!isLongEnough || endsClean) return null;
-        return (
-          <TouchableOpacity
-            style={styles.continueBtn}
-            onPress={() => {
-              setChatInput("Continue");
-              setTimeout(() => handleSend(), 100);
-            }}
-          >
-            <Text style={styles.continueBtnText}>Continue... (reply was cut off)</Text>
-          </TouchableOpacity>
-        );
-      })()}
-
       {/* Input bar */}
       <View style={styles.inputBar}>
         <TextInput
@@ -1998,7 +1976,7 @@ const styles = StyleSheet.create({
   msgText: { fontSize: 15, lineHeight: 21 },
   msgTextHuman: { color: colors.text },
   msgTextAI: { color: "#e5e5e5" },
-  msgMeta: { flexDirection: "row", alignItems: "center", justifyContent: "flex-end", marginTop: 2, gap: 4 },
+  msgMeta: { flexDirection: "row", alignItems: "center", justifyContent: "flex-end", marginTop: 6, gap: 4 },
   msgTime: { color: "rgba(255,255,255,0.4)", fontSize: 10 },
   msgCheck: { color: "rgba(6, 182, 212, 0.6)", fontSize: 10 },
   typingText: { color: colors.textMuted, fontSize: 14, fontStyle: "italic" },
@@ -2243,14 +2221,6 @@ const styles = StyleSheet.create({
   emptyHint: { color: "rgba(124, 58, 237, 0.5)", fontSize: 11, textAlign: "center", marginTop: 12 },
 
   // Input bar
-  continueBtn: {
-    alignSelf: "center",
-    backgroundColor: "rgba(124, 58, 237, 0.15)",
-    borderWidth: 1, borderColor: "rgba(124, 58, 237, 0.3)",
-    borderRadius: 16, paddingHorizontal: 16, paddingVertical: 8,
-    marginBottom: 4,
-  },
-  continueBtnText: { color: colors.purpleLight, fontSize: 13, fontWeight: "600" },
   inputBar: {
     flexDirection: "row",
     alignItems: "flex-end",

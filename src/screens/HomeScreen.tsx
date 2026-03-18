@@ -435,7 +435,7 @@ export default function HomeScreen() {
       "Picking the perfect AI influencer...",
       "Writing punchy ad copy...",
       "Submitting video to Grok...",
-      "Rendering Rick & Morty-style infomercial...",
+      "Rendering AI-powered video ad...",
       "Adding product shots...",
       "Encoding the ad video...",
       "Creating the post...",

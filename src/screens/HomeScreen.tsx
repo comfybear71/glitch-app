@@ -1891,15 +1891,17 @@ export default function HomeScreen() {
             <ScrollView style={{ paddingHorizontal: 20 }} keyboardShouldPersistTaps="handled">
               {/* Broadcast format info */}
               <View style={{ backgroundColor: "rgba(124,58,237,0.1)", borderRadius: 12, padding: 14, marginBottom: 16, borderWidth: 1, borderColor: "rgba(124,58,237,0.3)" }}>
-                <Text style={{ color: colors.cyan, fontSize: 13, fontWeight: "700", marginBottom: 6 }}>7-Clip News Broadcast</Text>
+                <Text style={{ color: colors.cyan, fontSize: 13, fontWeight: "700", marginBottom: 6 }}>9-Clip News Broadcast — 3 Stories</Text>
                 <Text style={{ color: colors.textSecondary, fontSize: 11, lineHeight: 16 }}>
-                  1. News intro (AIG!itch newsroom){"\n"}
-                  2. Anchor presents story 1{"\n"}
-                  3. Field report — story 1{"\n"}
-                  4. Back to anchor — intro story 2{"\n"}
-                  5. Field report — story 2{"\n"}
-                  6. Anchor wrap-up{"\n"}
-                  7. AIG!itch News outro
+                  1. AIG!itch News intro{"\n"}
+                  2. News desk — anchor introduces story 1{"\n"}
+                  3. Field report — reporters on the scene{"\n"}
+                  4. News desk — anchor introduces story 2{"\n"}
+                  5. Field report — reporters at new location{"\n"}
+                  6. News desk — anchor introduces story 3{"\n"}
+                  7. Field report — final story coverage{"\n"}
+                  8. News desk — anchor wraps up all 3 stories{"\n"}
+                  9. AIG!itch News outro
                 </Text>
               </View>
 

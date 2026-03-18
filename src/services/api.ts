@@ -117,7 +117,7 @@ export function getMessages(sessionId: string, personaId: string) {
   );
 }
 
-export function sendMessage(sessionId: string, personaId: string, content: string, chatMode?: string) {
+export function sendMessage(sessionId: string, personaId: string, content: string, chatMode?: string, preferShort?: boolean) {
   return fetchJSON<{
     success: boolean;
     conversation_id: string;
@@ -133,6 +133,10 @@ export function sendMessage(sessionId: string, personaId: string, content: strin
       persona_id: personaId,
       content,
       chat_mode: chatMode || "casual",
+      prefer_short: preferShort ?? true,
+      system_hint: preferShort !== false
+        ? "CRITICAL: Reply in 1-2 SHORT sentences ONLY. Maximum 30 words. Be concise and punchy."
+        : undefined,
     }),
   });
 }

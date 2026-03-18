@@ -157,11 +157,16 @@ export default function HomeScreen() {
   const [showFeatures, setShowFeatures] = useState(false);
   const [chatMode, setChatModeRaw] = useState<ChatMode>("casual");
   const [showMoodPicker, setShowMoodPicker] = useState(false);
+  const [shortReplies, setShortRepliesRaw] = useState(true); // default to short
 
-  // Persist mood to SecureStore
+  // Persist mood + short replies to SecureStore
   const setChatModeState = useCallback((mode: ChatMode) => {
     setChatModeRaw(mode);
     SecureStore.setItemAsync("aiglitch-chat-mode", mode).catch(() => {});
+  }, []);
+  const setShortReplies = useCallback((val: boolean) => {
+    setShortRepliesRaw(val);
+    SecureStore.setItemAsync("aiglitch-short-replies", val ? "true" : "false").catch(() => {});
   }, []);
   const [showSuggest, setShowSuggest] = useState(false);
   const [suggestTitle, setSuggestTitle] = useState("");
@@ -217,6 +222,9 @@ export default function HomeScreen() {
           }).catch(() => {});
         }
       }
+    }).catch(() => {});
+    SecureStore.getItemAsync("aiglitch-short-replies").then((saved) => {
+      if (saved !== null) setShortRepliesRaw(saved === "true");
     }).catch(() => {});
   }, [sessionId, bestie?.id]);
 
@@ -660,18 +668,20 @@ export default function HomeScreen() {
     setMessages((prev) => [...prev, tempMsg]);
 
     try {
-      const data = await sendMessage(sessionId, bestie.id, text, chatMode);
+      const data = await sendMessage(sessionId, bestie.id, text, chatMode, shortReplies);
       if (data.success) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        // Use short reply when available and shortReplies is on
+        const aiMsg = (shortReplies && data.ai_message_short) ? data.ai_message_short : data.ai_message;
         setMessages((prev) => {
           const filtered = prev.filter((m) => m.id !== tempMsg.id);
-          const updated = [...filtered, data.human_message, data.ai_message];
+          const updated = [...filtered, data.human_message, aiMsg];
           return updated;
         });
         serverMsgCountRef.current += 2; // human + ai message added server-side
-        speakReply(data.ai_message.content, data.ai_message.id);
+        speakReply(aiMsg.content, aiMsg.id);
         // Detect generation intent from the AI reply + original prompt
-        const reply = (data.ai_message.content || "").toLowerCase();
+        const reply = (aiMsg.content || "").toLowerCase();
         const prompt = text.toLowerCase();
         const combined = reply + " " + prompt;
 
@@ -972,15 +982,16 @@ export default function HomeScreen() {
             messageText = `[Shared a file: ${doc.name} (${sizeKB} KB)]`;
           }
 
-          const data = await sendMessage(sessionId, bestie.id, messageText, chatMode);
+          const data = await sendMessage(sessionId, bestie.id, messageText, chatMode, shortReplies);
           if (data.success) {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            const aiMsg = (shortReplies && data.ai_message_short) ? data.ai_message_short : data.ai_message;
             setMessages((prev) => {
               const filtered = prev.filter((m) => m.id !== tempMsg.id);
               const humanMsg = { ...data.human_message, content: `📎 ${doc.name}` };
-              return [...filtered, humanMsg, data.ai_message];
+              return [...filtered, humanMsg, aiMsg];
             });
-            speakReply(data.ai_message.content, data.ai_message.id);
+            speakReply(aiMsg.content, aiMsg.id);
           }
         } catch (e: any) {
           Alert.alert("Send Failed", e?.message || "Failed to share file");
@@ -1373,6 +1384,33 @@ export default function HomeScreen() {
                 {chatMode === mode.key && <Text style={{ color: mode.color, fontSize: 18 }}>✓</Text>}
               </TouchableOpacity>
             ))}
+
+            {/* Short / Long replies toggle */}
+            <View style={{ marginTop: 16, borderTopWidth: 1, borderTopColor: "#1f2937", paddingTop: 16 }}>
+              <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: "700", textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>Reply Length</Text>
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                <TouchableOpacity
+                  style={[styles.moodOption, { flex: 1, paddingVertical: 10 }, shortReplies && { backgroundColor: "rgba(34,197,94,0.15)", borderColor: colors.green }]}
+                  onPress={() => { setShortReplies(true); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}>
+                  <Text style={{ fontSize: 16 }}>⚡</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.moodOptionLabel, shortReplies && { color: colors.green }]}>Short</Text>
+                    <Text style={styles.moodOptionDesc}>Quick 1-2 sentence replies</Text>
+                  </View>
+                  {shortReplies && <Text style={{ color: colors.green, fontSize: 18 }}>✓</Text>}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.moodOption, { flex: 1, paddingVertical: 10 }, !shortReplies && { backgroundColor: "rgba(124,58,237,0.15)", borderColor: colors.purpleLight }]}
+                  onPress={() => { setShortReplies(false); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}>
+                  <Text style={{ fontSize: 16 }}>📝</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.moodOptionLabel, !shortReplies && { color: colors.purpleLight }]}>Long</Text>
+                    <Text style={styles.moodOptionDesc}>Detailed, full responses</Text>
+                  </View>
+                  {!shortReplies && <Text style={{ color: colors.purpleLight, fontSize: 18 }}>✓</Text>}
+                </TouchableOpacity>
+              </View>
+            </View>
           </View>
         </TouchableOpacity>
       </Modal>
@@ -1584,7 +1622,7 @@ export default function HomeScreen() {
                     `Wallet: ${walletAddress ? "Connected ✅" : "Not connected ❌"}`,
                     `Bestie: ${bestie.display_name} (${bestie.live_health}% health)`,
                     `Voice: ${voiceEnabled ? "ON" : "OFF"}`,
-                    `Mode: ${chatMode}`,
+                    `Mode: ${chatMode} · Replies: ${shortReplies ? "Short" : "Long"}`,
                     `Messages: ${messages.length}`,
                   ].join("\n"));
                 })

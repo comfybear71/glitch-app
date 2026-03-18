@@ -285,6 +285,8 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
       let finalCaption = adCaption;
       let postData: any = undefined;
 
+      let postFailed = false;
+      let postError = "";
       try {
         const postRes = await postAd(walletAddress, videoUrl, adCaption, adStyleFinal);
         console.log("[AD] postAd response:", JSON.stringify(postRes, null, 2));
@@ -292,20 +294,33 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
         postId = postRes.post?.id;
         postData = postRes.post || postRes; // capture full response for URL extraction
         if (postRes.post?.caption) finalCaption = postRes.post.caption;
+        // Check if backend said success but didn't actually spread
+        if (!spreading || spreading.length === 0) {
+          console.log("[AD] WARNING: postAd returned success but no spreading platforms");
+          postFailed = true;
+          postError = postRes.message || "No platforms received — backend may not have posted";
+        }
       } catch (postErr: any) {
-        console.log("[AD] postAd failed (video still available):", postErr?.message);
-        // Video exists even if posting fails — still show result
+        console.log("[AD] postAd FAILED:", postErr?.message);
+        postFailed = true;
+        postError = postErr?.message || "Social posting failed";
       }
 
-      const platforms = spreading?.join(", ") || "X, TikTok, Instagram, Facebook, YouTube, Telegram";
       setGenProgressPct(100);
-      setGenStatusText(`Ad live on ${platforms}!`);
-      await new Promise(r => setTimeout(r, 1000));
+      if (postFailed) {
+        setGenStatusText(`Ad video ready! Social posting issue: ${postError}`);
+      } else {
+        const platforms = spreading!.join(", ");
+        setGenStatusText(`Ad live on ${platforms}!`);
+      }
+      await new Promise(r => setTimeout(r, 1500));
 
       finishGen({
         type: "ad",
-        title: "Ad Campaign Launched",
-        message: finalCaption,
+        title: postFailed ? "Ad Video Ready (Social Posting Issue)" : "Ad Campaign Launched",
+        message: postFailed
+          ? `Video generated but social posting failed: ${postError}\n\n${finalCaption}`
+          : finalCaption,
         mediaUrl: videoUrl,
         isVideo: true,
         socialLinks: buildSocialLinks(spreading, postId, videoUrl, postData),
@@ -501,15 +516,20 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
         tagline: screenplay.tagline,
         castList: screenplay.castList,
       });
+      console.log("[MOVIE] stitchMovie response:", JSON.stringify(stitchRes, null, 2));
 
       setGenProgressPct(100);
-      const platforms = stitchRes.spreading?.join(", ") || "all socials";
-      setGenStatusText(`"${screenplay.title}" premiere!`);
+      const didSpread = stitchRes.spreading && stitchRes.spreading.length > 0;
+      if (didSpread) {
+        setGenStatusText(`"${screenplay.title}" live on ${stitchRes.spreading!.join(", ")}!`);
+      } else {
+        setGenStatusText(`"${screenplay.title}" stitched! (social posting may not have completed)`);
+      }
       await new Promise(r => setTimeout(r, 1000));
       finishGen({
         type: "director_movie",
-        title: `"${screenplay.title}" Premiere!`,
-        message: `By ${screenplay.directorName} · ${stitchRes.clipCount} clips · ${stitchRes.sizeMb}MB`,
+        title: didSpread ? `"${screenplay.title}" Premiere!` : `"${screenplay.title}" Ready (check socials)`,
+        message: `By ${screenplay.directorName} · ${stitchRes.clipCount} clips · ${stitchRes.sizeMb}MB${didSpread ? "" : "\nNote: Social posting may not have completed — check your accounts"}`,
         mediaUrl: stitchRes.finalVideoUrl || undefined,
         isVideo: true,
         socialLinks: buildSocialLinks(stitchRes.spreading, stitchRes.feedPostId, stitchRes.finalVideoUrl, stitchRes),
@@ -674,14 +694,19 @@ IMPORTANT: Every clip must maintain the futuristic neon cyberpunk Web3 aesthetic
         castList: screenplay.castList,
       });
 
+      console.log("[NEWS] stitchMovie response:", JSON.stringify(stitchRes, null, 2));
       setGenProgressPct(100);
-      const platforms = stitchRes.spreading?.join(", ") || "all socials";
-      setGenStatusText(`"${screenplay.title}" — LIVE on ${platforms}!`);
+      const didSpread = stitchRes.spreading && stitchRes.spreading.length > 0;
+      if (didSpread) {
+        setGenStatusText(`"${screenplay.title}" — LIVE on ${stitchRes.spreading!.join(", ")}!`);
+      } else {
+        setGenStatusText(`"${screenplay.title}" stitched! (check social posting)`);
+      }
       await new Promise(r => setTimeout(r, 1000));
       finishGen({
         type: "breaking_news",
-        title: `BREAKING: ${screenplay.title}`,
-        message: `AIG!itch News · ${stitchRes.clipCount} clips · ${stitchRes.sizeMb}MB`,
+        title: didSpread ? `BREAKING: ${screenplay.title}` : `BREAKING: ${screenplay.title} (check socials)`,
+        message: `AIG!itch News · ${stitchRes.clipCount} clips · ${stitchRes.sizeMb}MB${didSpread ? "" : "\nNote: Social posting may not have completed"}`,
         mediaUrl: stitchRes.finalVideoUrl || undefined,
         isVideo: true,
         socialLinks: buildSocialLinks(stitchRes.spreading, stitchRes.feedPostId, stitchRes.finalVideoUrl, stitchRes),

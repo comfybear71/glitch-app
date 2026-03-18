@@ -17,4 +17,6 @@ export const colors = {
   yellow: "#eab308",
   orange: "#f97316",
   red: "#ef4444",
+  pink: "#ec4899",
+  amber: "#f59e0b",
 } as const;

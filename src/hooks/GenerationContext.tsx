@@ -3,7 +3,7 @@ import { Keyboard } from "react-native";
 import * as Haptics from "expo-haptics";
 import * as Notifications from "expo-notifications";
 import {
-  generateAd, generatePoster, generateHeroImage,
+  generateAd, getAdStatus, generatePoster, generateHeroImage,
   generateScreenplay, submitScene, pollScene, stitchMovie,
   GENRE_FOLDER_MAP, ScreenplayResponse, Message,
 } from "../services/api";
@@ -133,22 +133,67 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
     cancelRef.current = false;
     try {
       const res = await generateAd(walletAddress, style, concept);
+      console.log("[AD] generateAd response:", JSON.stringify(res, null, 2));
       if (cancelRef.current) { setGenerating(null); return; }
       if (res.success) {
+        // Check if we have media immediately or need to poll
+        let post = res.post;
+        const hasMedia = post?.video_url || post?.image_url;
+
+        if (!hasMedia && res.job_id) {
+          // Backend is generating async — poll for the result
+          setGenStatusText("Generating your ad...");
+          setGenProgressPct(30);
+          let pollCount = 0;
+          const maxPolls = 60; // 3 minutes at 3s intervals
+          while (pollCount < maxPolls && !cancelRef.current) {
+            await new Promise(r => setTimeout(r, 3000));
+            pollCount++;
+            setGenProgressPct(Math.min(30 + Math.floor((pollCount / maxPolls) * 60), 85));
+            try {
+              const statusRes = await getAdStatus(walletAddress);
+              console.log("[AD] poll status:", JSON.stringify(statusRes, null, 2));
+              // Find the matching job
+              const job = statusRes.jobs?.find((j: any) => j.job_id === res.job_id || j.id === res.job_id);
+              if (job) {
+                if (job.status === "done" || job.status === "completed" || job.status === "complete") {
+                  post = job.post || job.result || job;
+                  break;
+                } else if (job.status === "failed" || job.status === "error") {
+                  setGenStatusText(`Ad generation failed: ${job.error || "Unknown error"}`);
+                  await new Promise(r => setTimeout(r, 3000));
+                  setGenerating(null); setGenProgressPct(0); setGenStatusText("");
+                  return;
+                }
+                // Update status text if provided
+                if (job.status_text) setGenStatusText(job.status_text);
+              }
+              // Also check if latest job has media even without matching ID
+              const latestJob = statusRes.jobs?.[0];
+              if (latestJob && (latestJob.video_url || latestJob.image_url || latestJob.post?.video_url || latestJob.post?.image_url)) {
+                post = latestJob.post || latestJob;
+                break;
+              }
+            } catch { /* ignore poll errors */ }
+          }
+        }
+
         setGenStatusText("Ad generated! Spreading to socials...");
         setGenProgressPct(90);
         await new Promise(r => setTimeout(r, 2000));
-        const platforms = res.post?.spreading?.join(", ") || "X, TikTok, Instagram, Facebook, YouTube, Telegram";
+        const mediaUrl = post?.video_url || post?.image_url || undefined;
+        const platforms = post?.spreading?.join(", ") || "X, TikTok, Instagram, Facebook, YouTube, Telegram";
         setGenProgressPct(100);
         setGenStatusText(`Ad live on ${platforms}!`);
         await new Promise(r => setTimeout(r, 1000));
+        console.log("[AD] finishGen with mediaUrl:", mediaUrl, "post:", JSON.stringify(post, null, 2));
         finishGen({
           type: "ad",
           title: "Ad Campaign Launched",
-          message: `${res.post?.caption || "Ad generated and posted!"}`,
-          mediaUrl: res.post?.video_url || res.post?.image_url || undefined,
-          isVideo: !!res.post?.video_url,
-          socialLinks: buildSocialLinks(res.post?.spreading, res.post?.id, res.post?.video_url || res.post?.image_url),
+          message: `${post?.caption || "Ad generated and posted!"}`,
+          mediaUrl,
+          isVideo: !!post?.video_url,
+          socialLinks: buildSocialLinks(post?.spreading, post?.id, mediaUrl),
         });
       } else {
         setGenStatusText(`Failed: ${res.message || "Unknown error"}`);

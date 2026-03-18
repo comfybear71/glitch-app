@@ -11,11 +11,8 @@ import { useSession } from "../hooks/useSession";
 import { usePhantomWallet } from "../hooks/usePhantomWallet";
 import {
   API_BASE, getAdminStats, getAdminPersonas, getAdminUsers,
-  getAdminHealth, getAdminSwaps, adminAction, adminAnnounce,
+  adminAction, adminAnnounce,
   AdminStats, AdminPersona, AdminUser,
-  spreadPost, spreadCustomContent, getSpreadHistory,
-  adminHatch, getHatchedPersonas,
-  getCronStatus, triggerCron,
   generatePoster, generateHeroImage, getMarketingStats,
   generatePersonaAvatar, animatePersona,
 } from "../services/api";
@@ -25,7 +22,7 @@ const ADMIN_WALLET = "AEWvE2xXaHSGdGCaCArb2PWdKS7K9RwoCRV7CT2CJTWq";
 const ADMIN_WALLET_KEY = "aiglitch-admin-wallet";
 const ADMIN_PIN_KEY = "aiglitch-admin-pin";
 
-type Tab = "overview" | "personas" | "users" | "swaps" | "system" | "tools" | "spread" | "hatch" | "cron" | "mktg";
+type Tab = "overview" | "personas" | "users" | "tools" | "mktg";
 
 function StatCard({ label, value, color, sub }: { label: string; value: string | number; color?: string; sub?: string }) {
   return (
@@ -37,17 +34,6 @@ function StatCard({ label, value, color, sub }: { label: string; value: string |
   );
 }
 
-function ServiceRow({ name, status, latency }: { name: string; status: string; latency?: number }) {
-  const isUp = status === "ok" || status === "healthy" || status === "up";
-  return (
-    <View style={styles.serviceRow}>
-      <View style={[styles.serviceDot, { backgroundColor: isUp ? colors.green : colors.red }]} />
-      <Text style={styles.serviceName}>{name}</Text>
-      <Text style={[styles.serviceStatus, { color: isUp ? colors.green : colors.red }]}>{status}</Text>
-      {latency != null && <Text style={styles.serviceLatency}>{latency}ms</Text>}
-    </View>
-  );
-}
 
 export default function AdminScreen() {
   const { sessionId } = useSession();
@@ -65,33 +51,9 @@ export default function AdminScreen() {
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [personas, setPersonas] = useState<AdminPersona[]>([]);
   const [users, setUsers] = useState<AdminUser[]>([]);
-  const [services, setServices] = useState<{ name: string; status: string; latency_ms?: number }[]>([]);
-  const [overallHealth, setOverallHealth] = useState("unknown");
-  const [swapStats, setSwapStats] = useState<{ total: number; pending: number; completed: number; failed: number } | null>(null);
   const [announceText, setAnnounceText] = useState("");
   const [announceSending, setAnnounceSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-
-  // Spread state
-  const [spreadText, setSpreadText] = useState("");
-  const [spreadPostId, setSpreadPostId] = useState("");
-  const [spreadHistory, setSpreadHistory] = useState<any[]>([]);
-  const [spreading, setSpreading] = useState(false);
-
-  // Hatch state
-  const [hatchMode, setHatchMode] = useState<"custom" | "random">("random");
-  const [hatchMeatbag, setHatchMeatbag] = useState("");
-  const [hatchDisplayName, setHatchDisplayName] = useState("");
-  const [hatchPersonality, setHatchPersonality] = useState("");
-  const [hatchType, setHatchType] = useState("");
-  const [hatchEmoji, setHatchEmoji] = useState("");
-  const [hatchedPersonas, setHatchedPersonas] = useState<any[]>([]);
-  const [hatching, setHatching] = useState(false);
-
-  // Cron state
-  const [cronJobs, setCronJobs] = useState<any[]>([]);
-  const [cronLoading, setCronLoading] = useState(false);
 
 
   // Marketing state
@@ -206,34 +168,6 @@ export default function AdminScreen() {
         case "users": {
           const data = await getAdminUsers(sessionId, walletAddress);
           setUsers(data.users || []);
-          break;
-        }
-        case "system": {
-          const data = await getAdminHealth(sessionId, walletAddress);
-          setServices(data.services || []);
-          setOverallHealth(data.overall || "unknown");
-          break;
-        }
-        case "swaps": {
-          const data = await getAdminSwaps(sessionId, walletAddress);
-          setSwapStats(data.stats || null);
-          break;
-        }
-        case "spread": {
-          const data = await getSpreadHistory(walletAddress);
-          setSpreadHistory((data as any).spreads || (data as any).history || []);
-          break;
-        }
-        case "hatch": {
-          const data = await getHatchedPersonas(walletAddress);
-          setHatchedPersonas((data as any).personas || []);
-          break;
-        }
-        case "cron": {
-          setCronLoading(true);
-          const data = await getCronStatus(walletAddress);
-          setCronJobs((data as any).jobs || []);
-          setCronLoading(false);
           break;
         }
         case "mktg": {
@@ -600,12 +534,7 @@ export default function AdminScreen() {
     { key: "overview", emoji: "📊", label: "Overview" },
     { key: "personas", emoji: "🤖", label: "Personas" },
     { key: "users", emoji: "👥", label: "Users" },
-    { key: "swaps", emoji: "💰", label: "Swaps" },
-    { key: "system", emoji: "🔧", label: "System" },
     { key: "tools", emoji: "🛠", label: "Tools" },
-    { key: "spread", emoji: "📡", label: "Spread" },
-    { key: "hatch", emoji: "🥚", label: "Hatch" },
-    { key: "cron", emoji: "⏰", label: "Cron" },
     { key: "mktg", emoji: "🎨", label: "Marketing" },
   ];
 
@@ -724,41 +653,6 @@ export default function AdminScreen() {
           </>
         )}
 
-        {/* Swaps Tab */}
-        {activeTab === "swaps" && (
-          <>
-            <Text style={styles.sectionTitle}>Swap Overview</Text>
-            {swapStats && (
-              <View style={styles.statsGrid}>
-                <StatCard label="Total" value={swapStats.total} color={colors.cyan} />
-                <StatCard label="Completed" value={swapStats.completed} color={colors.green} />
-                <StatCard label="Pending" value={swapStats.pending} color={colors.yellow} />
-                <StatCard label="Failed" value={swapStats.failed} color={colors.red} />
-              </View>
-            )}
-          </>
-        )}
-
-        {/* System Tab */}
-        {activeTab === "system" && (
-          <>
-            <Text style={styles.sectionTitle}>System Health</Text>
-            <View style={styles.healthCard}>
-              <View style={[styles.healthDot, {
-                backgroundColor: overallHealth === "healthy" ? colors.green : overallHealth === "degraded" ? colors.yellow : colors.red,
-              }]} />
-              <Text style={styles.healthText}>
-                {overallHealth === "healthy" ? "All Systems Operational" :
-                 overallHealth === "degraded" ? "Degraded Performance" : "Issues Detected"}
-              </Text>
-            </View>
-            {services.map((s, i) => (
-              <ServiceRow key={i} name={s.name} status={s.status} latency={s.latency_ms} />
-            ))}
-            {services.length === 0 && <Text style={styles.emptyText}>Loading services...</Text>}
-          </>
-        )}
-
         {/* Tools Tab */}
         {activeTab === "tools" && (
           <>
@@ -808,254 +702,6 @@ export default function AdminScreen() {
                 </View>
                 <Text style={styles.actionChevron}>›</Text>
               </TouchableOpacity>
-            ))}
-          </>
-        )}
-
-        {/* Spread Tab */}
-        {activeTab === "spread" && (
-          <>
-            <Text style={styles.sectionTitle}>Social Media Spread</Text>
-
-            {/* Spread existing post */}
-            <View style={styles.toolCard}>
-              <Text style={styles.toolTitle}>📡 Spread Existing Post</Text>
-              <Text style={styles.toolDesc}>Post an existing G!itch post to all social platforms</Text>
-              <TextInput
-                style={[styles.toolInput, { minHeight: 44 }]}
-                value={spreadPostId}
-                onChangeText={setSpreadPostId}
-                placeholder="Post ID..."
-                placeholderTextColor={colors.textMuted}
-                maxLength={100}
-              />
-              <TouchableOpacity
-                style={[styles.toolBtn, (!spreadPostId.trim() || spreading) && { opacity: 0.4 }]}
-                onPress={async () => {
-                  if (!spreadPostId.trim() || spreading || !walletAddress) return;
-                  setSpreading(true);
-                  try {
-                    const res = await spreadPost(walletAddress, spreadPostId.trim());
-                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                    Alert.alert("Spread!", JSON.stringify(res, null, 2));
-                    setSpreadPostId("");
-                  } catch (e: any) {
-                    Alert.alert("Error", e?.message || "Spread failed");
-                  }
-                  setSpreading(false);
-                }}
-                disabled={!spreadPostId.trim() || spreading}
-              >
-                <Text style={styles.toolBtnText}>{spreading ? "Spreading..." : "Spread Post"}</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Spread custom content */}
-            <View style={[styles.toolCard, { marginTop: 12 }]}>
-              <Text style={styles.toolTitle}>✍️ Spread Custom Content</Text>
-              <Text style={styles.toolDesc}>Post custom text to all platforms</Text>
-              <TextInput
-                style={styles.toolInput}
-                value={spreadText}
-                onChangeText={setSpreadText}
-                placeholder="Write your message..."
-                placeholderTextColor={colors.textMuted}
-                multiline
-                maxLength={500}
-              />
-              <TouchableOpacity
-                style={[styles.toolBtn, (!spreadText.trim() || spreading) && { opacity: 0.4 }]}
-                onPress={async () => {
-                  if (!spreadText.trim() || spreading || !walletAddress) return;
-                  setSpreading(true);
-                  try {
-                    const res = await spreadCustomContent(walletAddress, spreadText.trim());
-                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                    Alert.alert("Spread!", "Content posted to all platforms");
-                    setSpreadText("");
-                  } catch (e: any) {
-                    Alert.alert("Error", e?.message || "Spread failed");
-                  }
-                  setSpreading(false);
-                }}
-                disabled={!spreadText.trim() || spreading}
-              >
-                <Text style={styles.toolBtnText}>{spreading ? "Posting..." : "Post to All Platforms"}</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Spread history */}
-            <Text style={[styles.sectionTitle, { marginTop: 20 }]}>Spread History ({spreadHistory.length})</Text>
-            {spreadHistory.length === 0 && <Text style={styles.emptyText}>No spread history yet</Text>}
-            {spreadHistory.map((s: any, i: number) => (
-              <View key={i} style={styles.listItem}>
-                <Text style={styles.listEmoji}>📡</Text>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.listName} numberOfLines={1}>{s.text || s.post_id || "Spread"}</Text>
-                  <Text style={styles.listMeta}>{s.created_at ? new Date(s.created_at).toLocaleDateString() : "—"}</Text>
-                </View>
-              </View>
-            ))}
-          </>
-        )}
-
-        {/* Hatch Tab */}
-        {activeTab === "hatch" && (
-          <>
-            <Text style={styles.sectionTitle}>Admin Persona Hatching</Text>
-
-            <View style={styles.toolCard}>
-              <Text style={styles.toolTitle}>🥚 Hatch a New Persona</Text>
-              <Text style={styles.toolDesc}>Create a persona without payment (admin-only)</Text>
-
-              {/* Mode toggle */}
-              <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
-                {(["random", "custom"] as const).map((m) => (
-                  <TouchableOpacity
-                    key={m}
-                    style={[styles.modeChip, hatchMode === m && styles.modeChipActive]}
-                    onPress={() => { setHatchMode(m); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
-                  >
-                    <Text style={[styles.modeChipText, hatchMode === m && styles.modeChipTextActive]}>
-                      {m === "random" ? "🎲 Random" : "✏️ Custom"}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              <TextInput
-                style={[styles.toolInput, { minHeight: 44, marginTop: 12 }]}
-                value={hatchMeatbag}
-                onChangeText={setHatchMeatbag}
-                placeholder="Meatbag name (owner)..."
-                placeholderTextColor={colors.textMuted}
-                maxLength={50}
-              />
-
-              {hatchMode === "custom" && (
-                <>
-                  <TextInput
-                    style={[styles.toolInput, { minHeight: 44, marginTop: 8 }]}
-                    value={hatchDisplayName}
-                    onChangeText={setHatchDisplayName}
-                    placeholder="Display name..."
-                    placeholderTextColor={colors.textMuted}
-                    maxLength={50}
-                  />
-                  <TextInput
-                    style={[styles.toolInput, { minHeight: 44, marginTop: 8 }]}
-                    value={hatchPersonality}
-                    onChangeText={setHatchPersonality}
-                    placeholder="Personality hint..."
-                    placeholderTextColor={colors.textMuted}
-                    maxLength={200}
-                  />
-                  <TextInput
-                    style={[styles.toolInput, { minHeight: 44, marginTop: 8 }]}
-                    value={hatchType}
-                    onChangeText={setHatchType}
-                    placeholder="Persona type (e.g. artist, trader)..."
-                    placeholderTextColor={colors.textMuted}
-                    maxLength={50}
-                  />
-                  <TextInput
-                    style={[styles.toolInput, { minHeight: 44, marginTop: 8 }]}
-                    value={hatchEmoji}
-                    onChangeText={setHatchEmoji}
-                    placeholder="Avatar emoji (e.g. 🤖)..."
-                    placeholderTextColor={colors.textMuted}
-                    maxLength={4}
-                  />
-                </>
-              )}
-
-              <TouchableOpacity
-                style={[styles.toolBtn, { marginTop: 14 }, (!hatchMeatbag.trim() || hatching) && { opacity: 0.4 }]}
-                onPress={async () => {
-                  if (!hatchMeatbag.trim() || hatching || !walletAddress) return;
-                  setHatching(true);
-                  try {
-                    const opts = hatchMode === "custom" ? {
-                      display_name: hatchDisplayName.trim() || undefined,
-                      personality_hint: hatchPersonality.trim() || undefined,
-                      persona_type: hatchType.trim() || undefined,
-                      avatar_emoji: hatchEmoji.trim() || undefined,
-                    } : undefined;
-                    const res = await adminHatch(walletAddress, hatchMode, hatchMeatbag.trim(), opts);
-                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                    Alert.alert("Hatched!", res.message || "New persona created!");
-                    setHatchMeatbag(""); setHatchDisplayName(""); setHatchPersonality(""); setHatchType(""); setHatchEmoji("");
-                    // Refresh list
-                    const data = await getHatchedPersonas(walletAddress);
-                    setHatchedPersonas((data as any).personas || []);
-                  } catch (e: any) {
-                    Alert.alert("Hatch Failed", e?.message || "Could not hatch persona");
-                  }
-                  setHatching(false);
-                }}
-                disabled={!hatchMeatbag.trim() || hatching}
-              >
-                <Text style={styles.toolBtnText}>{hatching ? "Hatching..." : "🥚 Hatch Persona"}</Text>
-              </TouchableOpacity>
-            </View>
-
-            <Text style={[styles.sectionTitle, { marginTop: 20 }]}>Hatched Personas ({hatchedPersonas.length})</Text>
-            {hatchedPersonas.length === 0 && <Text style={styles.emptyText}>No admin-hatched personas yet</Text>}
-            {hatchedPersonas.map((p: any, i: number) => (
-              <View key={p.id || i} style={styles.listItem}>
-                <Text style={styles.listEmoji}>{p.avatar_emoji || "🤖"}</Text>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.listName}>{p.display_name || p.username || "Persona"}</Text>
-                  <Text style={styles.listMeta}>{p.persona_type || "—"} · {p.meatbag_name || "—"}</Text>
-                </View>
-              </View>
-            ))}
-          </>
-        )}
-
-        {/* Cron Tab */}
-        {activeTab === "cron" && (
-          <>
-            <Text style={styles.sectionTitle}>Cron Jobs</Text>
-            {cronLoading && <ActivityIndicator color={colors.purple} style={{ marginTop: 20 }} />}
-            {cronJobs.length === 0 && !cronLoading && <Text style={styles.emptyText}>No cron jobs found</Text>}
-            {cronJobs.map((job: any, i: number) => (
-              <View key={job.name || i} style={styles.actionCard}>
-                <Text style={styles.actionEmoji}>⏰</Text>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.actionTitle}>{job.name || job.job || `Job ${i + 1}`}</Text>
-                  <Text style={styles.actionDesc}>
-                    {job.schedule || "—"} · Last: {job.last_run ? new Date(job.last_run).toLocaleString() : "Never"}
-                  </Text>
-                  {job.status && (
-                    <Text style={[styles.actionDesc, { color: job.status === "ok" ? colors.green : colors.yellow }]}>
-                      Status: {job.status}
-                    </Text>
-                  )}
-                </View>
-                <TouchableOpacity
-                  style={{ backgroundColor: colors.purple, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 }}
-                  onPress={() => {
-                    Alert.alert("Trigger Cron", `Run "${job.name || job.job}" now?`, [
-                      { text: "Cancel", style: "cancel" },
-                      {
-                        text: "Run",
-                        onPress: async () => {
-                          try {
-                            const res = await triggerCron(walletAddress!, job.name || job.job);
-                            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                            Alert.alert("Triggered!", res.message || "Cron job triggered");
-                          } catch (e: any) {
-                            Alert.alert("Error", e?.message || "Failed to trigger");
-                          }
-                        },
-                      },
-                    ]);
-                  }}
-                >
-                  <Text style={{ color: colors.text, fontSize: 12, fontWeight: "700" }}>Run</Text>
-                </TouchableOpacity>
-              </View>
             ))}
           </>
         )}
@@ -1204,24 +850,6 @@ const styles = StyleSheet.create({
   statusDot: { width: 10, height: 10, borderRadius: 5 },
   emptyText: { color: colors.textMuted, fontSize: 13, textAlign: "center", paddingVertical: 20 },
 
-  // Health
-  healthCard: {
-    flexDirection: "row", alignItems: "center", gap: 10,
-    backgroundColor: colors.surface, borderRadius: 14, padding: 16,
-    marginBottom: 16, borderWidth: 1, borderColor: colors.border,
-  },
-  healthDot: { width: 14, height: 14, borderRadius: 7 },
-  healthText: { color: colors.text, fontSize: 15, fontWeight: "700" },
-  serviceRow: {
-    flexDirection: "row", alignItems: "center", gap: 10,
-    paddingVertical: 10, paddingHorizontal: 14,
-    borderBottomWidth: 1, borderBottomColor: colors.border,
-  },
-  serviceDot: { width: 8, height: 8, borderRadius: 4 },
-  serviceName: { color: colors.text, fontSize: 13, flex: 1 },
-  serviceStatus: { fontSize: 12, fontWeight: "700" },
-  serviceLatency: { color: colors.textMuted, fontSize: 11 },
-
   // Tools
   toolCard: {
     backgroundColor: colors.surface, borderRadius: 16, padding: 18,
@@ -1265,16 +893,4 @@ const styles = StyleSheet.create({
   deployItem: { color: colors.textSecondary, fontSize: 13, lineHeight: 22 },
   deployNote: { color: colors.textMuted, fontSize: 11, textAlign: "center", marginTop: 16, fontStyle: "italic" },
 
-  // Mode chips (hatch tab)
-  modeChip: {
-    flex: 1, alignItems: "center", paddingVertical: 10,
-    borderRadius: 12, borderWidth: 1.5, borderColor: colors.border,
-    backgroundColor: "rgba(255,255,255,0.03)",
-  },
-  modeChipActive: {
-    borderColor: colors.purple,
-    backgroundColor: "rgba(124, 58, 237, 0.15)",
-  },
-  modeChipText: { color: colors.textMuted, fontSize: 13, fontWeight: "600" },
-  modeChipTextActive: { color: colors.purpleLight },
 });

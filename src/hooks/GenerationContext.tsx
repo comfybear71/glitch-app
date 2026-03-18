@@ -66,7 +66,7 @@ interface GenerationContextType {
   genResult: GenResult | null;
   clearResult: () => void;
   cancelGeneration: () => void;
-  runAdGeneration: (walletAddress: string) => void;
+  runAdGeneration: (walletAddress: string, style?: string, concept?: string) => void;
   runPosterGeneration: (walletAddress: string) => void;
   runHeroGeneration: (walletAddress: string) => void;
   runMovieGeneration: (walletAddress: string, director?: string, genre?: string, concept?: string) => void;
@@ -125,14 +125,14 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
     sendLocalNotification(result.title, result.message);
   }, []);
 
-  const runAdGeneration = useCallback(async (walletAddress: string) => {
+  const runAdGeneration = useCallback(async (walletAddress: string, style?: string, concept?: string) => {
     Keyboard.dismiss();
     setGenerating("ad");
     setGenStatusText("Submitting ad...");
     setGenProgressPct(10);
     cancelRef.current = false;
     try {
-      const res = await generateAd(walletAddress);
+      const res = await generateAd(walletAddress, style, concept);
       if (cancelRef.current) { setGenerating(null); return; }
       if (res.success) {
         setGenStatusText("Ad generated! Spreading to socials...");

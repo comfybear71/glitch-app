@@ -816,10 +816,10 @@ export function runMarketingCycle(walletAddress: string) {
 
 // ── Ad Generation ──
 
-export function generateAd(walletAddress: string) {
+export function generateAd(walletAddress: string, style?: string, concept?: string) {
   return fetchJSON<{ success: boolean; job_id?: string; message?: string; post?: any }>(`/api/generate-ads?wallet_address=${encodeURIComponent(walletAddress)}`, {
     method: "POST",
-    body: JSON.stringify({ wallet_address: walletAddress }),
+    body: JSON.stringify({ wallet_address: walletAddress, ...(style && { style }), ...(concept && { concept }) }),
   });
 }
 

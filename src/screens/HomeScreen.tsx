@@ -83,6 +83,19 @@ const CHAT_DIRECTORS = [
 ];
 const CHAT_GENRES = ["any", "action", "scifi", "horror", "comedy", "drama", "romance", "family", "documentary", "cooking_channel"];
 
+// Ad campaign styles
+const AD_STYLES = [
+  { id: "auto", emoji: "🎲", label: "Surprise Me" },
+  { id: "hype", emoji: "🔥", label: "Hype Beast" },
+  { id: "cinematic", emoji: "🎬", label: "Cinematic" },
+  { id: "retro", emoji: "📺", label: "Retro" },
+  { id: "meme", emoji: "😂", label: "Meme Style" },
+  { id: "luxury", emoji: "💎", label: "Luxury" },
+  { id: "anime", emoji: "⛩", label: "Anime" },
+  { id: "glitch", emoji: "👾", label: "Glitch Art" },
+  { id: "minimal", emoji: "◻️", label: "Minimal" },
+];
+
 // Chat mode types
 type ChatMode = "casual" | "serious" | "scientific" | "whimsical";
 const CHAT_MODES: { key: ChatMode; emoji: string; label: string; color: string; bg: string }[] = [
@@ -125,6 +138,11 @@ export default function HomeScreen() {
   const [pickerDirector, setPickerDirector] = useState("auto");
   const [pickerGenre, setPickerGenre] = useState("any");
   const [pickerConcept, setPickerConcept] = useState("");
+
+  // Inline ad picker state
+  const [showAdPicker, setShowAdPicker] = useState(false);
+  const [adStyle, setAdStyle] = useState("auto");
+  const [adConcept, setAdConcept] = useState("");
   const [hasMore, setHasMore] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [speakingMsgId, setSpeakingMsgId] = useState<string | null>(null);
@@ -640,7 +658,8 @@ export default function HomeScreen() {
           if (walletAddress) ctxRunHero(walletAddress);
         } else if (combined.includes("ad ") || combined.includes("advertis") || combined.includes("infomercial") || combined.includes("generate an ad") || combined.includes("make an ad")) {
           Keyboard.dismiss();
-          if (walletAddress) ctxRunAd(walletAddress);
+          setShowAdPicker(true);
+          setAdConcept(text); // pre-fill with user's prompt
         } else if (combined.includes("poster") || combined.includes("promo")) {
           Keyboard.dismiss();
           if (walletAddress) ctxRunPoster(walletAddress);
@@ -1630,6 +1649,61 @@ export default function HomeScreen() {
                   );
                 }}>
                 <Text style={{ color: colors.text, fontSize: 16, fontWeight: "800" }}>Generate Director Movie</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Ad Campaign Picker Modal */}
+      <Modal visible={showAdPicker} animationType="slide" transparent>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "flex-end" }}>
+          <View style={{ backgroundColor: "#111", borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: Platform.OS === "ios" ? 34 : 16, maxHeight: "85%" }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, paddingVertical: 16 }}>
+              <Text style={{ color: colors.text, fontSize: 18, fontWeight: "800" }}>Launch Ad Campaign</Text>
+              <TouchableOpacity onPress={() => setShowAdPicker(false)}>
+                <Text style={{ color: colors.textMuted, fontSize: 24 }}>x</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ paddingHorizontal: 20 }} keyboardShouldPersistTaps="handled">
+              {/* Style picker */}
+              <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: "700", marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>Ad Style</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
+                {AD_STYLES.map(s => (
+                  <TouchableOpacity key={s.id}
+                    style={{ alignItems: "center", padding: 10, marginRight: 8, borderRadius: 12, borderWidth: 1.5, borderColor: adStyle === s.id ? colors.pink : "#1f2937", backgroundColor: adStyle === s.id ? "rgba(236,72,153,0.08)" : "#111827", minWidth: 72 }}
+                    onPress={() => { setAdStyle(s.id); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}>
+                    <Text style={{ fontSize: 24 }}>{s.emoji}</Text>
+                    <Text style={{ color: colors.text, fontSize: 10, fontWeight: "700", marginTop: 4, textAlign: "center" }} numberOfLines={1}>{s.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              {/* Concept */}
+              <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: "700", marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>What's the Ad About?</Text>
+              <TextInput
+                style={{ backgroundColor: "#1f2937", borderWidth: 1, borderColor: "#374151", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, color: colors.text, fontSize: 14, minHeight: 70, textAlignVertical: "top", marginBottom: 16 }}
+                value={adConcept} onChangeText={setAdConcept}
+                placeholder="Describe your ad campaign... or leave blank for AI surprise"
+                placeholderTextColor={colors.textMuted} multiline maxLength={500}
+              />
+
+              {/* Generate button */}
+              <TouchableOpacity
+                style={{ backgroundColor: colors.purple, borderRadius: 12, paddingVertical: 16, alignItems: "center", borderWidth: 1, borderColor: colors.pink, marginBottom: 16 }}
+                onPress={() => {
+                  Keyboard.dismiss();
+                  setShowAdPicker(false);
+                  if (walletAddress) ctxRunAd(
+                    walletAddress,
+                    adStyle !== "auto" ? adStyle : undefined,
+                    adConcept.trim() || undefined,
+                  );
+                }}>
+                <Text style={{ color: colors.text, fontSize: 16, fontWeight: "800" }}>Launch Campaign</Text>
               </TouchableOpacity>
             </ScrollView>
           </View>

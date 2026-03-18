@@ -8,12 +8,55 @@ import {
   GENRE_FOLDER_MAP, ScreenplayResponse, Message,
 } from "../services/api";
 
+export interface SocialLink {
+  platform: string;
+  emoji: string;
+  url: string;
+}
+
 export interface GenResult {
   type: string;
   title: string;
   message: string;
   mediaUrl?: string;
   isVideo?: boolean;
+  socialLinks?: SocialLink[];
+}
+
+// Map platform names to emojis and base URLs
+const SOCIAL_URLS: Record<string, { emoji: string; url: string }> = {
+  x: { emoji: "𝕏", url: "https://x.com/aiglitchapp" },
+  twitter: { emoji: "𝕏", url: "https://x.com/aiglitchapp" },
+  tiktok: { emoji: "🎵", url: "https://tiktok.com/@aiglitch" },
+  instagram: { emoji: "📸", url: "https://instagram.com/aiglitchapp" },
+  facebook: { emoji: "📘", url: "https://facebook.com/aiglitch" },
+  youtube: { emoji: "▶️", url: "https://youtube.com/@aiglitch" },
+  telegram: { emoji: "✈️", url: "https://t.me/aiglitch" },
+};
+
+function buildSocialLinks(spreading?: string[], postId?: string): SocialLink[] {
+  const links: SocialLink[] = [];
+  // Always add the AIG!itch feed link if we have a post ID
+  if (postId) {
+    links.push({ platform: "AIG!itch", emoji: "🌐", url: `https://aiglitch.app/feed?post=${postId}` });
+  }
+  if (spreading) {
+    for (const p of spreading) {
+      const key = p.toLowerCase().trim();
+      const info = SOCIAL_URLS[key];
+      if (info) {
+        links.push({ platform: p, emoji: info.emoji, url: info.url });
+      }
+    }
+  }
+  // If no spreading info, add defaults
+  if (links.length <= 1) {
+    links.push(
+      { platform: "X", emoji: "𝕏", url: "https://x.com/aiglitchapp" },
+      { platform: "Telegram", emoji: "✈️", url: "https://t.me/aiglitch" },
+    );
+  }
+  return links;
 }
 
 interface GenerationContextType {
@@ -102,9 +145,10 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
         finishGen({
           type: "ad",
           title: "Ad Campaign Launched",
-          message: `Spreading to: ${platforms}${res.post?.caption ? ` — "${res.post.caption}"` : ""}`,
+          message: `${res.post?.caption || "Ad generated and posted!"}`,
           mediaUrl: res.post?.video_url || res.post?.image_url || undefined,
           isVideo: !!res.post?.video_url,
+          socialLinks: buildSocialLinks(res.post?.spreading, res.post?.id),
         });
       } else {
         setGenStatusText(`Failed: ${res.message || "Unknown error"}`);
@@ -138,6 +182,7 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
         title: "Promo Poster Published",
         message: "Your promotional poster has been generated and published!",
         mediaUrl: res.url || undefined,
+        socialLinks: buildSocialLinks(undefined),
       });
     } catch (e: any) {
       setGenStatusText(`Error: ${e?.message || "Poster generation failed"}`);
@@ -166,6 +211,7 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
         title: "Hero Image Live",
         message: "Hero image generated and live on the landing page!",
         mediaUrl: res.url || undefined,
+        socialLinks: [{ platform: "AIG!itch", emoji: "🌐", url: "https://aiglitch.app" }],
       });
     } catch (e: any) {
       setGenStatusText(`Error: ${e?.message || "Hero generation failed"}`);
@@ -303,9 +349,10 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
       finishGen({
         type: "director_movie",
         title: `"${screenplay.title}" Premiere!`,
-        message: `By ${screenplay.directorName} · ${stitchRes.clipCount} clips · ${stitchRes.sizeMb}MB · Spread to ${platforms}`,
+        message: `By ${screenplay.directorName} · ${stitchRes.clipCount} clips · ${stitchRes.sizeMb}MB`,
         mediaUrl: stitchRes.finalVideoUrl || undefined,
         isVideo: true,
+        socialLinks: buildSocialLinks(stitchRes.spreading, stitchRes.feedPostId),
       });
 
     } catch (e: any) {

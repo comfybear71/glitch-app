@@ -25,7 +25,7 @@ import {
   Bestie, OnChainBalances, Message, TrendingPost, FeedbackAction,
 } from "../services/api";
 import CosmicVisualizer from "../components/CosmicVisualizer";
-import { useGeneration } from "../hooks/GenerationContext";
+import { useGeneration, SocialLink } from "../hooks/GenerationContext";
 const APP_VERSION = "1.0.2";
 
 function HealthBar({ health }: { health: number }) {
@@ -266,17 +266,23 @@ export default function HomeScreen() {
   }, [sessionId, bestie?.id]);
 
   // ── Generation results → chat messages ──
-  // When generation completes via context, add the result as a chat message
+  const [msgSocialLinks, setMsgSocialLinks] = useState<Record<string, SocialLink[]>>({});
+
+  // When generation completes via context, add the result as a chat message with social links
   useEffect(() => {
     if (genResult) {
+      const msgId = `gen-result-${Date.now()}`;
       const resultMsg: Message = {
-        id: `gen-result-${Date.now()}`,
+        id: msgId,
         sender_type: "ai",
         content: `${genResult.title}\n${genResult.message}`,
         created_at: new Date().toISOString(),
         image_url: genResult.mediaUrl,
       };
       setMessages((prev) => [...prev, resultMsg]);
+      if (genResult.socialLinks && genResult.socialLinks.length > 0) {
+        setMsgSocialLinks((prev) => ({ ...prev, [msgId]: genResult.socialLinks! }));
+      }
       clearResult();
     }
   }, [genResult, clearResult]);
@@ -1002,6 +1008,8 @@ export default function HomeScreen() {
     const isFeedPost = item.id.startsWith("feed-");
     const feedPostId = isFeedPost ? item.id.replace("feed-", "") : null;
     const currentFeedReaction = feedPostId ? postReactions[feedPostId] : null;
+    const isGenResult = item.id.startsWith("gen-result-");
+    const socialLinks = msgSocialLinks[item.id];
     // Hide placeholder text like "[Photo]" or "[Video]" when media is displayed
     const isMediaPlaceholder = hasMedia && /^\[(Photo|Video|Shared a photo)\]$/i.test(item.content.trim());
     return (
@@ -1053,6 +1061,23 @@ export default function HomeScreen() {
               </TouchableOpacity>
             )}
           </TouchableOpacity>
+
+          {/* Social media links — shown below generated content */}
+          {isGenResult && socialLinks && socialLinks.length > 0 && (
+            <View style={styles.socialLinksBar}>
+              <Text style={styles.socialLinksLabel}>View on:</Text>
+              {socialLinks.map((link, idx) => (
+                <TouchableOpacity
+                  key={idx}
+                  style={styles.socialLinkBtn}
+                  onPress={() => Linking.openURL(link.url)}
+                >
+                  <Text style={styles.socialLinkEmoji}>{link.emoji}</Text>
+                  <Text style={styles.socialLinkText}>{link.platform}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
 
           {/* Feed post reaction bar — like/love/fire/dislike/save for ML feedback */}
           {isFeedPost && feedPostId && (
@@ -2047,6 +2072,40 @@ const styles = StyleSheet.create({
   reactionBubbleLeft: { alignSelf: "flex-start" },
   reactionBubbleRight: { alignSelf: "flex-end" },
   reactionBubbleText: { fontSize: 16 },
+
+  // Social media links (below generated content)
+  socialLinksBar: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    marginTop: 6,
+    paddingHorizontal: 4,
+    alignItems: "center",
+  },
+  socialLinksLabel: {
+    color: colors.textMuted,
+    fontSize: 10,
+    fontWeight: "600",
+    marginRight: 2,
+  },
+  socialLinkBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.purple,
+    backgroundColor: "rgba(124, 58, 237, 0.1)",
+  },
+  socialLinkEmoji: { fontSize: 12 },
+  socialLinkText: {
+    color: colors.purpleLight,
+    fontSize: 10,
+    fontWeight: "700",
+    textDecorationLine: "underline",
+  },
 
   // Feed post reaction bar (ML feedback)
   feedReactionBar: {

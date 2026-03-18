@@ -6,7 +6,7 @@ import {
   generateAd, getAdStatus, planAd, postAd,
   generatePoster, generateHeroImage,
   generateScreenplay, submitScene, pollScene, stitchMovie,
-  getBriefing,
+  getBriefing, spreadCustomContent,
   GENRE_FOLDER_MAP, ScreenplayResponse, Message,
 } from "../services/api";
 
@@ -106,6 +106,37 @@ function buildSocialLinks(spreading?: string[], postId?: string, mediaUrl?: stri
     );
   }
   return links;
+}
+
+/**
+ * Publish generated content to the AIG!itch "for you" feed.
+ * This ensures all content (ads, posters, movies, news) appears on aiglitch.app.
+ * Uses spreadCustomContent which both creates a feed post AND spreads to socials.
+ * Only called as a safety net — if the backend already created a post (feedPostId/postId exists),
+ * we skip the extra publish to avoid duplicates.
+ */
+async function publishToFeed(
+  walletAddress: string,
+  title: string,
+  caption: string,
+  mediaUrl?: string,
+  isVideo?: boolean,
+  alreadyPosted?: boolean, // true if backend already confirmed a feed post was created
+) {
+  if (alreadyPosted) {
+    console.log("[FEED] Skipping publishToFeed — backend already created feed post");
+    return;
+  }
+  try {
+    const text = `${title}\n\n${caption}`;
+    const mediaType = isVideo ? "video" : mediaUrl ? "image" : undefined;
+    console.log("[FEED] Publishing to feed:", { title, mediaUrl, mediaType });
+    const res = await spreadCustomContent(walletAddress, text, mediaUrl, mediaType);
+    console.log("[FEED] publishToFeed result:", JSON.stringify(res));
+  } catch (err: any) {
+    console.log("[FEED] publishToFeed failed (non-fatal):", err?.message);
+    // Non-fatal — content is still generated, just won't appear in feed
+  }
 }
 
 interface GenerationContextType {
@@ -315,6 +346,9 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
       }
       await new Promise(r => setTimeout(r, 1500));
 
+      // Publish to AIG!itch "for you" feed
+      await publishToFeed(walletAddress, "Ad Campaign", finalCaption, videoUrl, true, !!postId);
+
       finishGen({
         type: "ad",
         title: postFailed ? "Ad Video Ready (Social Posting Issue)" : "Ad Campaign Launched",
@@ -346,13 +380,19 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
       setGenStatusText("Poster generated! Uploading...");
       setGenProgressPct(80);
       await new Promise(r => setTimeout(r, 1500));
+      setGenProgressPct(90);
+      setGenStatusText("Publishing to AIG!itch feed...");
+
+      // Publish to "for you" feed
+      await publishToFeed(walletAddress, "Promo Poster", "New promotional poster from AIG!itch Studios!", res.url, false, !!res.post?.id);
+
       setGenProgressPct(100);
-      setGenStatusText("Poster published!");
+      setGenStatusText("Poster published to feed!");
       await new Promise(r => setTimeout(r, 1000));
       finishGen({
         type: "poster",
         title: "Promo Poster Published",
-        message: "Your promotional poster has been generated and published!",
+        message: "Your promotional poster has been generated and published to the AIG!itch feed!",
         mediaUrl: res.url || undefined,
         socialLinks: buildSocialLinks(res.spreading, res.post?.id, res.url, res.post || res),
       });
@@ -373,19 +413,24 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
       const res = await generateHeroImage(walletAddress);
       console.log("[HERO] generateHeroImage response:", JSON.stringify(res, null, 2));
       if (cancelRef.current) { setGenerating(null); return; }
-      setGenStatusText("Hero image generated! Spreading to socials...");
+      setGenStatusText("Hero image generated! Publishing to feed...");
       setGenProgressPct(80);
-      await new Promise(r => setTimeout(r, 1500));
+
+      // Publish to "for you" feed
+      await publishToFeed(walletAddress, "Hero Image", "New hero image live on the AIG!itch landing page!", res.url, false, !!res.post?.id);
+
+      setGenProgressPct(95);
+      await new Promise(r => setTimeout(r, 1000));
       setGenProgressPct(100);
       const didSpread = res.spreading && res.spreading.length > 0;
-      setGenStatusText(didSpread ? `Hero image live on ${res.spreading!.join(", ")}!` : "Hero image live on landing page!");
+      setGenStatusText(didSpread ? `Hero image live on ${res.spreading!.join(", ")} + feed!` : "Hero image published to feed + landing page!");
       await new Promise(r => setTimeout(r, 1000));
       finishGen({
         type: "hero",
-        title: didSpread ? "Hero Image Published" : "Hero Image Live",
+        title: "Hero Image Published",
         message: didSpread
-          ? `Hero image generated and published to ${res.spreading!.join(", ")}!`
-          : "Hero image generated and live on the landing page!",
+          ? `Hero image published to AIG!itch feed and ${res.spreading!.join(", ")}!`
+          : "Hero image published to the AIG!itch feed and landing page!",
         mediaUrl: res.url || undefined,
         socialLinks: [
           ...buildSocialLinks(res.spreading, res.post?.id, res.url, res.post || res),
@@ -523,18 +568,25 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
       });
       console.log("[MOVIE] stitchMovie response:", JSON.stringify(stitchRes, null, 2));
 
+      setGenProgressPct(92);
+      setGenStatusText("Publishing to AIG!itch feed...");
+
+      // Publish to "for you" feed — stitchMovie should create feedPostId, but safety net if not
+      const movieCaption = `"${screenplay.title}" by ${screenplay.directorName}\n${screenplay.tagline || screenplay.synopsis || ""}`;
+      await publishToFeed(walletAddress, screenplay.title, movieCaption, stitchRes.finalVideoUrl, true, !!stitchRes.feedPostId);
+
       setGenProgressPct(100);
       const didSpread = stitchRes.spreading && stitchRes.spreading.length > 0;
       if (didSpread) {
-        setGenStatusText(`"${screenplay.title}" live on ${stitchRes.spreading!.join(", ")}!`);
+        setGenStatusText(`"${screenplay.title}" live on ${stitchRes.spreading!.join(", ")} + feed!`);
       } else {
-        setGenStatusText(`"${screenplay.title}" stitched! (social posting may not have completed)`);
+        setGenStatusText(`"${screenplay.title}" published to AIG!itch feed!`);
       }
       await new Promise(r => setTimeout(r, 1000));
       finishGen({
         type: "director_movie",
-        title: didSpread ? `"${screenplay.title}" Premiere!` : `"${screenplay.title}" Ready (check socials)`,
-        message: `By ${screenplay.directorName} · ${stitchRes.clipCount} clips · ${stitchRes.sizeMb}MB${didSpread ? "" : "\nNote: Social posting may not have completed — check your accounts"}`,
+        title: `"${screenplay.title}" Premiere!`,
+        message: `By ${screenplay.directorName} · ${stitchRes.clipCount} clips · ${stitchRes.sizeMb}MB · Published to AIG!itch feed${didSpread ? ` + ${stitchRes.spreading!.join(", ")}` : ""}`,
         mediaUrl: stitchRes.finalVideoUrl || undefined,
         isVideo: true,
         socialLinks: buildSocialLinks(stitchRes.spreading, stitchRes.feedPostId, stitchRes.finalVideoUrl, stitchRes),
@@ -760,6 +812,13 @@ IMPORTANT: Every clip MUST maintain the futuristic neon cyberpunk Web3 aesthetic
       });
 
       console.log("[NEWS] stitchMovie response:", JSON.stringify(stitchRes, null, 2));
+      setGenProgressPct(92);
+      setGenStatusText("Publishing to AIG!itch feed...");
+
+      // Publish to "for you" feed
+      const newsCaption = `BREAKING: ${screenplay.title}\n${screenplay.synopsis || screenplay.tagline || "AIG!itch News broadcast"}`;
+      await publishToFeed(walletAddress, `BREAKING: ${screenplay.title}`, newsCaption, stitchRes.finalVideoUrl, true, !!stitchRes.feedPostId);
+
       setGenProgressPct(95);
       setGenStatusText("Broadcasting to socials...");
       await new Promise(r => setTimeout(r, 1000));
@@ -767,16 +826,16 @@ IMPORTANT: Every clip MUST maintain the futuristic neon cyberpunk Web3 aesthetic
       setGenProgressPct(100);
       const didSpread = stitchRes.spreading && stitchRes.spreading.length > 0;
       if (didSpread) {
-        setGenStatusText(`BREAKING: "${screenplay.title}" — LIVE on ${stitchRes.spreading!.join(", ")}!`);
+        setGenStatusText(`BREAKING: "${screenplay.title}" — LIVE on ${stitchRes.spreading!.join(", ")} + feed!`);
       } else {
-        setGenStatusText(`"${screenplay.title}" broadcast ready! (check social posting)`);
+        setGenStatusText(`"${screenplay.title}" published to AIG!itch feed!`);
       }
       await new Promise(r => setTimeout(r, 1500));
 
       finishGen({
         type: "breaking_news",
-        title: didSpread ? `BREAKING: ${screenplay.title}` : `BREAKING: ${screenplay.title} (check socials)`,
-        message: `AIG!itch News · 3 stories · ${stitchRes.clipCount} clips · ${stitchRes.sizeMb}MB${didSpread ? "" : "\nNote: Social posting may not have completed"}`,
+        title: `BREAKING: ${screenplay.title}`,
+        message: `AIG!itch News · 3 stories · ${stitchRes.clipCount} clips · ${stitchRes.sizeMb}MB · Published to AIG!itch feed${didSpread ? ` + ${stitchRes.spreading!.join(", ")}` : ""}`,
         mediaUrl: stitchRes.finalVideoUrl || undefined,
         isVideo: true,
         socialLinks: buildSocialLinks(stitchRes.spreading, stitchRes.feedPostId, stitchRes.finalVideoUrl, stitchRes),

@@ -76,6 +76,7 @@ export interface Message {
   sender_type: "human" | "ai";
   content: string;
   image_url?: string;
+  is_video?: boolean;
   created_at: string;
 }
 

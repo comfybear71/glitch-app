@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import {
-  View, Text, TouchableOpacity, Image, FlatList, TextInput,
+  View, Text, TouchableOpacity, Image, FlatList, TextInput, Pressable,
   StyleSheet, ActivityIndicator, Alert, Share, Platform, Linking,
   KeyboardAvoidingView, Keyboard, Modal, ScrollView, Animated, Easing,
 } from "react-native";
@@ -147,7 +147,8 @@ export default function HomeScreen() {
   const soundRef = useRef<Audio.Sound | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const messageCountRef = useRef(0); // track count for polling comparison
+  const messageCountRef = useRef(0); // track count for polling comparison (server-side messages only)
+  const serverMsgCountRef = useRef(0); // last known server message count
 
   const load = useCallback(async () => {
     if (!sessionId) return;
@@ -201,7 +202,9 @@ export default function HomeScreen() {
     setChatLoading(true);
     getMessages(sessionId, bestie.id)
       .then((data) => {
-        setMessages(data.messages || []);
+        const msgs = data.messages || [];
+        setMessages(msgs);
+        serverMsgCountRef.current = msgs.length;
         setHasMore(!!data.has_more);
         setChatLoading(false);
       })
@@ -221,6 +224,7 @@ export default function HomeScreen() {
         const data = await res.json();
         const olderMsgs: Message[] = data.messages || [];
         if (olderMsgs.length > 0) {
+          serverMsgCountRef.current += olderMsgs.length;
           setMessages((prev) => [...olderMsgs, ...prev]);
         }
         setHasMore(!!data.has_more);
@@ -244,13 +248,21 @@ export default function HomeScreen() {
       if (pollCount > 40) { // stop after ~2min (40 * 3s)
         if (pollTimerRef.current) { clearInterval(pollTimerRef.current); pollTimerRef.current = null; }
         setCosmeticGen(null);
+        // Let the user know it timed out
+        setMessages((prev) => [...prev, {
+          id: `timeout-${Date.now()}`,
+          sender_type: "ai",
+          content: "Hmm, that's taking longer than expected. The server might still be working on it — try refreshing in a moment or ask me again!",
+          created_at: new Date().toISOString(),
+        }]);
         return;
       }
       try {
         const data = await getMessages(sessionId!, bestie!.id);
         const newMsgs = data.messages || [];
-        if (newMsgs.length > messageCountRef.current) {
+        if (newMsgs.length > serverMsgCountRef.current) {
           // New messages arrived from background task!
+          serverMsgCountRef.current = newMsgs.length;
           setMessages(newMsgs);
           setCosmeticGen(null);
           if (pollTimerRef.current) { clearInterval(pollTimerRef.current); pollTimerRef.current = null; }
@@ -278,6 +290,7 @@ export default function HomeScreen() {
         content: `${genResult.title}\n${genResult.message}`,
         created_at: new Date().toISOString(),
         image_url: genResult.mediaUrl,
+        is_video: genResult.isVideo,
       };
       setMessages((prev) => [...prev, resultMsg]);
       if (genResult.socialLinks && genResult.socialLinks.length > 0) {
@@ -314,9 +327,10 @@ export default function HomeScreen() {
         const postMsg: Message = {
           id: `feed-${post.id}`,
           sender_type: "ai",
-          content: `Found this on the feed — ${post.display_name} (@${post.username}) posted:\n\n"${post.content}"\n\n${post.ai_like_count} likes · ${post.comment_count} comments`,
+          content: `Found this on the feed — ${post.display_name} (@${post.username}) posted:\n\n"${post.content}"\n\n${post.ai_like_count} likes · ${post.comment_count} comments\n\nhttps://aiglitch.app/feed?post=${post.id}`,
           created_at: new Date().toISOString(),
           image_url: post.image_url || post.video_url || undefined,
+          is_video: !!post.video_url && !post.image_url,
         };
         setMessages((prev) => [...prev, postMsg]);
       }
@@ -604,8 +618,10 @@ export default function HomeScreen() {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         setMessages((prev) => {
           const filtered = prev.filter((m) => m.id !== tempMsg.id);
-          return [...filtered, data.human_message, data.ai_message];
+          const updated = [...filtered, data.human_message, data.ai_message];
+          return updated;
         });
+        serverMsgCountRef.current += 2; // human + ai message added server-side
         speakReply(data.ai_message.content, data.ai_message.id);
         // Detect generation intent from the AI reply + original prompt
         const reply = (data.ai_message.content || "").toLowerCase();
@@ -631,7 +647,7 @@ export default function HomeScreen() {
         } else if (data.background_task) {
           // Fallback to cosmetic polling for other background tasks (image gen, etc)
           const genType =
-            reply.includes("image") || reply.includes("cook up") || reply.includes("picture") || reply.includes("photo") ? "image"
+            reply.includes("image") || reply.includes("cook up") || reply.includes("picture") || reply.includes("photo") || reply.includes("draw") || prompt.includes("draw") ? "image"
             : reply.includes("video") || reply.includes("clip") ? "video"
             : reply.includes("hatch") ? "hatching"
             : reply.includes("content") ? "content"
@@ -715,6 +731,7 @@ export default function HomeScreen() {
           const humanMsg = { ...data.human_message, image_url: data.human_message.image_url || uri };
           return [...filtered, humanMsg, data.ai_message];
         });
+        serverMsgCountRef.current += 2; // human + ai message added server-side
         speakReply(data.ai_message.content, data.ai_message.id);
         if (data.background_task) {
           startPolling("image");
@@ -1018,7 +1035,7 @@ export default function HomeScreen() {
             }}
             style={[styles.msgBubble, isHuman ? styles.msgHuman : styles.msgAI, (hasMedia || hasYouTube) && styles.msgBubbleMedia]}
           >
-            {item.image_url && isVideoUrl(item.image_url) ? (
+            {item.image_url && (item.is_video || isVideoUrl(item.image_url)) ? (
               <Video
                 source={{ uri: item.image_url }}
                 style={styles.msgVideo}
@@ -1326,6 +1343,7 @@ export default function HomeScreen() {
       )}
 
       {/* Chat messages — inverted list (newest at bottom, scroll up for older) */}
+      <Pressable style={{ flex: 1 }} onPress={Keyboard.dismiss}>
       {chatLoading ? (
         <View style={styles.chatLoading}>
           <ActivityIndicator color={colors.purple} />
@@ -1338,8 +1356,9 @@ export default function HomeScreen() {
           renderItem={renderMessage}
           contentContainerStyle={styles.messageList}
           inverted={true}
-          keyboardDismissMode="on-drag"
+          keyboardDismissMode="interactive"
           keyboardShouldPersistTaps="handled"
+          onScrollBeginDrag={Keyboard.dismiss}
           onEndReached={loadOlderMessages}
           onEndReachedThreshold={0.3}
           ListEmptyComponent={
@@ -1450,6 +1469,7 @@ export default function HomeScreen() {
           }
         />
       )}
+      </Pressable>
 
       {/* Permanent Cosmic Visualizer with controls — hidden during generation (big one shows in chat) */}
       <View style={[styles.vizSection, !!generating && { display: "none" }]}>
@@ -1987,7 +2007,7 @@ const styles = StyleSheet.create({
   speakBtnText: { fontSize: 14 },
   msgBubbleMedia: { maxWidth: "78%", paddingHorizontal: 6, paddingTop: 6, overflow: "hidden" },
   msgImage: { width: "100%" as any, aspectRatio: 1, borderRadius: 12, marginBottom: 6, maxHeight: 250 },
-  msgVideo: { width: 240, height: 320, borderRadius: 12, marginBottom: 6, backgroundColor: "#000" },
+  msgVideo: { width: "100%" as any, aspectRatio: 9 / 16, borderRadius: 12, marginBottom: 6, backgroundColor: "#000", maxHeight: 320 },
   linkText: { color: "#60a5fa", textDecorationLine: "underline" as const },
   ytContainer: { width: "100%" as any, aspectRatio: 16 / 9, borderRadius: 12, overflow: "hidden" as const, marginVertical: 6 },
   ytPlayer: { flex: 1, backgroundColor: "#000" },

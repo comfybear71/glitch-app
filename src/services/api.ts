@@ -125,7 +125,12 @@ export function sendMessage(sessionId: string, personaId: string, content: strin
     background_task?: boolean;
   }>("/api/messages", {
     method: "POST",
-    body: JSON.stringify({ session_id: sessionId, persona_id: personaId, content }),
+    body: JSON.stringify({
+      session_id: sessionId,
+      persona_id: personaId,
+      content,
+      system_hint: "Reply in 1-2 short sentences max. Be brief and direct. No waffle.",
+    }),
   });
 }
 

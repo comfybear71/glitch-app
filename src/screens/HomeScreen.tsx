@@ -397,6 +397,7 @@ export default function HomeScreen() {
   }, [walletAddress, sessionId]);
 
   // Voice playback — Grok Rex
+  const speakingRef = useRef(false);
   const speakReply = async (text: string, msgId?: string) => {
     if (!voiceEnabled) return;
     const clean = text
@@ -404,10 +405,15 @@ export default function HomeScreen() {
       .trim();
     if (!clean || clean.length < 2) return;
 
+    // Stop any current speech before starting new one
     if (soundRef.current) {
+      try { await soundRef.current.stopAsync(); } catch (_) {}
       try { await soundRef.current.unloadAsync(); } catch (_) {}
       soundRef.current = null;
     }
+    // Prevent overlapping speech requests
+    if (speakingRef.current) return;
+    speakingRef.current = true;
 
     if (msgId) setSpeakingMsgId(msgId);
 
@@ -449,6 +455,7 @@ export default function HomeScreen() {
       sound.setOnPlaybackStatusUpdate((status) => {
         if (status.isLoaded && status.didJustFinish) {
           setSpeakingMsgId(null);
+          speakingRef.current = false;
           sound.unloadAsync();
           soundRef.current = null;
         }
@@ -456,6 +463,7 @@ export default function HomeScreen() {
     } catch (e) {
       console.warn("Voice playback error:", e);
       setSpeakingMsgId(null);
+      speakingRef.current = false;
     }
   };
 
@@ -681,10 +689,12 @@ export default function HomeScreen() {
   // Stop voice playback
   const stopSpeaking = async () => {
     if (soundRef.current) {
+      try { await soundRef.current.stopAsync(); } catch (_) {}
       try { await soundRef.current.unloadAsync(); } catch (_) {}
       soundRef.current = null;
     }
     setSpeakingMsgId(null);
+    speakingRef.current = false;
   };
 
   // Copy message text to clipboard

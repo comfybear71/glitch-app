@@ -831,6 +831,7 @@ export function runMarketingCycle(walletAddress: string) {
 
 // ── Ad Generation ──
 
+// Original one-shot endpoint (kept as fallback)
 export function generateAd(walletAddress: string, style?: string, concept?: string) {
   return fetchJSON<{ success: boolean; job_id?: string; message?: string; post?: any }>(`/api/generate-ads?wallet_address=${encodeURIComponent(walletAddress)}`, {
     method: "POST",
@@ -840,6 +841,22 @@ export function generateAd(walletAddress: string, style?: string, concept?: stri
 
 export function getAdStatus(walletAddress: string) {
   return fetchJSON<{ jobs: any[]; stats: any }>(`/api/generate-ads?wallet_address=${encodeURIComponent(walletAddress)}`);
+}
+
+// Step 1: Plan ad — get concept + video prompt without generating video
+export function planAd(walletAddress: string, style?: string, concept?: string) {
+  return fetchJSON<{ success: boolean; prompt: string; caption: string; style: string; concept: string; message?: string }>(`/api/generate-ads?wallet_address=${encodeURIComponent(walletAddress)}`, {
+    method: "POST",
+    body: JSON.stringify({ wallet_address: walletAddress, plan_only: true, ...(style && { style }), ...(concept && { concept }) }),
+  });
+}
+
+// Step 4: Post completed ad video to socials
+export function postAd(walletAddress: string, videoUrl: string, caption: string, style?: string) {
+  return fetchJSON<{ success: boolean; post?: any; spreading?: string[]; message?: string }>(`/api/generate-ads?wallet_address=${encodeURIComponent(walletAddress)}`, {
+    method: "PUT",
+    body: JSON.stringify({ wallet_address: walletAddress, video_url: videoUrl, caption, ...(style && { style }) }),
+  });
 }
 
 // ── Director Movies ──

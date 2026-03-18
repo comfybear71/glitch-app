@@ -1,6 +1,6 @@
 # HANDOFF.md — AI G!itch App Project Status
 
-Last updated: 2026-03-18 (Session 6 — GenerationContext, keyboard fixes, AI brevity, chat result messages, local push notifications)
+Last updated: 2026-03-18 (Session 7 — Ad generation rewrite using director movie pipeline pattern)
 
 ## Project Overview
 
@@ -375,6 +375,33 @@ If "your local changes would be overwritten" appears, stash first (see above).
 - **Fix**: Check xAI credit balance at console.xai.com and top up. This is a backend issue, not an app issue
 - **Note**: The app code just calls `/api/voice` and plays whatever MP3 comes back — it doesn't know which TTS engine was used
 - **Where to check credits**: console.xai.com → API Keys → Usage
+
+---
+
+## Recent Changes — Session 2026-03-18 (Session 7)
+
+### Ad Generation Rewrite — Using Director Movie Pipeline Pattern (CRITICAL FIX)
+
+**Problem**: Ad generation has failed ~20 times. The old approach used a single black-box API call (`POST /api/generate-ads`) that tried to do everything server-side — generate concept, create video, wait for render, post to socials — all in one request. This either:
+- Timed out (~140 seconds)
+- Returned `success: true` but with no media (no `video_url` or `image_url`)
+- Returned a `job_id` for async polling, but the polling endpoint (`GET /api/generate-ads`) returned data in unpredictable formats
+
+**Root cause**: The ad endpoint was a monolithic server-side job. Director movies work because they use a **client-orchestrated multi-step pipeline** where each step is a separate, fast API call. The ad generation tried to do what director movies split across 4 steps (screenplay → submit → poll → stitch) in a SINGLE request.
+
+**Fix**: Rewrote `runAdGeneration` in `GenerationContext.tsx` to follow the **exact same proven pipeline** as director movies:
+1. **Generate ad concept** — `POST /api/generate-ads` with `plan_only: true` → returns concept/prompt text (fast, no video)
+2. **Submit to Grok Video** — `POST /api/test-grok-video` (same endpoint movies use) → returns `requestId`
+3. **Poll for completion** — `GET /api/test-grok-video?id={requestId}` every 10s (same as movie scenes)
+4. **Post & spread** — `PUT /api/generate-ads` with the completed video URL → posts to socials, returns spreading info
+
+**Why this works**: Each step is a fast, focused API call. No single request runs longer than ~10 seconds. The Grok Video API (`/api/test-grok-video`) is the **same proven endpoint** that successfully renders 10-14 movie scenes. The polling interval matches movies (10s, not 3s).
+
+**Files changed**: `src/hooks/GenerationContext.tsx`, `src/services/api.ts`
+
+### Files Changed (Session 7)
+- `src/hooks/GenerationContext.tsx` — rewrote runAdGeneration to use multi-step pipeline
+- `src/services/api.ts` — added `planAd()` and `postAd()` functions, kept existing `generateAd`/`getAdStatus` as fallback
 
 ---
 

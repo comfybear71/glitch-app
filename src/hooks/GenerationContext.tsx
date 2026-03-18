@@ -3,7 +3,8 @@ import { Keyboard } from "react-native";
 import * as Haptics from "expo-haptics";
 import * as Notifications from "expo-notifications";
 import {
-  generateAd, getAdStatus, generatePoster, generateHeroImage,
+  generateAd, getAdStatus, planAd, postAd,
+  generatePoster, generateHeroImage,
   generateScreenplay, submitScene, pollScene, stitchMovie,
   GENRE_FOLDER_MAP, ScreenplayResponse, Message,
 } from "../services/api";
@@ -128,79 +129,138 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
   const runAdGeneration = useCallback(async (walletAddress: string, style?: string, concept?: string) => {
     Keyboard.dismiss();
     setGenerating("ad");
-    setGenStatusText("Submitting ad...");
-    setGenProgressPct(10);
+    setGenProgressPct(0);
     cancelRef.current = false;
+    const startTime = Date.now();
+    const formatElapsed = (from: number) => {
+      const s = Math.floor((Date.now() - from) / 1000);
+      return `${Math.floor(s / 60)}m ${s % 60}s`;
+    };
+
     try {
-      const res = await generateAd(walletAddress, style, concept);
-      console.log("[AD] generateAd response:", JSON.stringify(res, null, 2));
-      if (cancelRef.current) { setGenerating(null); return; }
-      if (res.success) {
-        // Check if we have media immediately or need to poll
-        let post = res.post;
-        const hasMedia = post?.video_url || post?.image_url;
+      // ── Step 1: Get ad concept + video prompt from backend ──
+      // Uses plan_only=true so the server just generates the creative brief, no video
+      setGenStatusText("Writing ad concept...");
+      setGenProgressPct(5);
+      let adPrompt: string;
+      let adCaption: string;
+      let adStyleFinal = style || "auto";
 
-        if (!hasMedia && res.job_id) {
-          // Backend is generating async — poll for the result
-          setGenStatusText("Generating your ad...");
-          setGenProgressPct(30);
-          let pollCount = 0;
-          const maxPolls = 60; // 3 minutes at 3s intervals
-          while (pollCount < maxPolls && !cancelRef.current) {
-            await new Promise(r => setTimeout(r, 3000));
-            pollCount++;
-            setGenProgressPct(Math.min(30 + Math.floor((pollCount / maxPolls) * 60), 85));
-            try {
-              const statusRes = await getAdStatus(walletAddress);
-              console.log("[AD] poll status:", JSON.stringify(statusRes, null, 2));
-              // Find the matching job
-              const job = statusRes.jobs?.find((j: any) => j.job_id === res.job_id || j.id === res.job_id);
-              if (job) {
-                if (job.status === "done" || job.status === "completed" || job.status === "complete") {
-                  post = job.post || job.result || job;
-                  break;
-                } else if (job.status === "failed" || job.status === "error") {
-                  setGenStatusText(`Ad generation failed: ${job.error || "Unknown error"}`);
-                  await new Promise(r => setTimeout(r, 3000));
-                  setGenerating(null); setGenProgressPct(0); setGenStatusText("");
-                  return;
-                }
-                // Update status text if provided
-                if (job.status_text) setGenStatusText(job.status_text);
-              }
-              // Also check if latest job has media even without matching ID
-              const latestJob = statusRes.jobs?.[0];
-              if (latestJob && (latestJob.video_url || latestJob.image_url || latestJob.post?.video_url || latestJob.post?.image_url)) {
-                post = latestJob.post || latestJob;
-                break;
-              }
-            } catch { /* ignore poll errors */ }
-          }
+      try {
+        const plan = await planAd(walletAddress, style, concept);
+        console.log("[AD] planAd response:", JSON.stringify(plan, null, 2));
+        if (cancelRef.current) { setGenerating(null); return; }
+        if (plan.success && plan.prompt) {
+          adPrompt = plan.prompt;
+          adCaption = plan.caption || concept || "AI G!itch ad campaign";
+          adStyleFinal = plan.style || adStyleFinal;
+        } else {
+          // Fallback: build a prompt ourselves
+          adPrompt = `Create a 10-second cinematic advertisement video. ${concept || "Promote AI G!itch - the AI companion app on Solana blockchain"}. Style: ${style || "cinematic"}. High energy, vibrant colors, futuristic tech aesthetic.`;
+          adCaption = concept || "AI G!itch — Your AI Bestie on Solana";
         }
+      } catch (planErr: any) {
+        console.log("[AD] planAd failed, using fallback prompt:", planErr?.message);
+        // If plan endpoint doesn't exist yet, build prompt client-side
+        adPrompt = `Create a 10-second cinematic advertisement video. ${concept || "Promote AI G!itch - the AI companion app on Solana blockchain"}. Style: ${style || "cinematic"}. High energy, vibrant colors, futuristic tech aesthetic.`;
+        adCaption = concept || "AI G!itch — Your AI Bestie on Solana";
+      }
 
-        setGenStatusText("Ad generated! Spreading to socials...");
-        setGenProgressPct(90);
-        await new Promise(r => setTimeout(r, 2000));
-        const mediaUrl = post?.video_url || post?.image_url || undefined;
-        const platforms = post?.spreading?.join(", ") || "X, TikTok, Instagram, Facebook, YouTube, Telegram";
-        setGenProgressPct(100);
-        setGenStatusText(`Ad live on ${platforms}!`);
-        await new Promise(r => setTimeout(r, 1000));
-        console.log("[AD] finishGen with mediaUrl:", mediaUrl, "post:", JSON.stringify(post, null, 2));
-        finishGen({
-          type: "ad",
-          title: "Ad Campaign Launched",
-          message: `${post?.caption || "Ad generated and posted!"}`,
-          mediaUrl,
-          isVideo: !!post?.video_url,
-          socialLinks: buildSocialLinks(post?.spreading, post?.id, mediaUrl),
-        });
-      } else {
-        setGenStatusText(`Failed: ${res.message || "Unknown error"}`);
+      if (cancelRef.current) { setGenerating(null); return; }
+
+      // ── Step 2: Submit video to Grok Video API ──
+      // Same endpoint that successfully renders 10-14 movie scenes
+      setGenStatusText("Submitting ad to video engine...");
+      setGenProgressPct(15);
+
+      const folder = "ads"; // dedicated blob folder for ads
+      const submitRes = await submitScene(walletAddress, adPrompt, 10, folder);
+      console.log("[AD] submitScene response:", JSON.stringify(submitRes, null, 2));
+      if (cancelRef.current) { setGenerating(null); return; }
+
+      if (!submitRes.success || !submitRes.requestId) {
+        setGenStatusText(`Failed to submit: ${submitRes.error || "No request ID returned"}`);
         await new Promise(r => setTimeout(r, 3000));
         setGenerating(null); setGenProgressPct(0); setGenStatusText("");
+        return;
       }
+
+      // ── Step 3: Poll for completion ──
+      // Same polling as movie scenes: 10s intervals, up to 90 polls (15 min)
+      setGenStatusText("Rendering ad video...");
+      setGenProgressPct(20);
+      let pollCount = 0;
+      const maxPolls = 90;
+      let videoUrl: string | null = null;
+
+      while (pollCount < maxPolls && !cancelRef.current) {
+        await new Promise(r => setTimeout(r, 10000)); // 10s intervals, same as movies
+        pollCount++;
+        const pct = 20 + Math.round((pollCount / maxPolls) * 60);
+        setGenProgressPct(Math.min(pct, 80));
+        setGenStatusText(`Rendering ad video... (${formatElapsed(startTime)})`);
+
+        try {
+          const pollRes = await pollScene(walletAddress, submitRes.requestId, folder);
+          console.log("[AD] pollScene:", JSON.stringify(pollRes, null, 2));
+
+          if (pollRes.status === "done" && (pollRes.blobUrl || pollRes.videoUrl)) {
+            videoUrl = pollRes.blobUrl || pollRes.videoUrl || null;
+            break;
+          } else if (["failed", "moderation_failed", "expired"].includes(pollRes.status)) {
+            setGenStatusText(`Video rendering failed: ${pollRes.status}`);
+            await new Promise(r => setTimeout(r, 3000));
+            setGenerating(null); setGenProgressPct(0); setGenStatusText("");
+            return;
+          }
+          // Still pending — keep polling
+        } catch { /* ignore individual poll errors, keep trying */ }
+      }
+
+      if (cancelRef.current) { setGenerating(null); return; }
+
+      if (!videoUrl) {
+        setGenStatusText("Video render timed out. Try again.");
+        await new Promise(r => setTimeout(r, 3000));
+        setGenerating(null); setGenProgressPct(0); setGenStatusText("");
+        return;
+      }
+
+      // ── Step 4: Post to socials ──
+      setGenStatusText("Ad rendered! Spreading to socials...");
+      setGenProgressPct(85);
+
+      let spreading: string[] | undefined;
+      let postId: string | undefined;
+      let finalCaption = adCaption;
+
+      try {
+        const postRes = await postAd(walletAddress, videoUrl, adCaption, adStyleFinal);
+        console.log("[AD] postAd response:", JSON.stringify(postRes, null, 2));
+        spreading = postRes.spreading || postRes.post?.spreading;
+        postId = postRes.post?.id;
+        if (postRes.post?.caption) finalCaption = postRes.post.caption;
+      } catch (postErr: any) {
+        console.log("[AD] postAd failed (video still available):", postErr?.message);
+        // Video exists even if posting fails — still show result
+      }
+
+      const platforms = spreading?.join(", ") || "X, TikTok, Instagram, Facebook, YouTube, Telegram";
+      setGenProgressPct(100);
+      setGenStatusText(`Ad live on ${platforms}!`);
+      await new Promise(r => setTimeout(r, 1000));
+
+      finishGen({
+        type: "ad",
+        title: "Ad Campaign Launched",
+        message: finalCaption,
+        mediaUrl: videoUrl,
+        isVideo: true,
+        socialLinks: buildSocialLinks(spreading, postId, videoUrl),
+      });
+
     } catch (e: any) {
+      console.log("[AD] fatal error:", e?.message);
       setGenStatusText(`Error: ${e?.message || "Ad generation failed"}`);
       await new Promise(r => setTimeout(r, 3000));
       setGenerating(null); setGenProgressPct(0); setGenStatusText("");

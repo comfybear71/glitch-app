@@ -873,6 +873,8 @@ export const GENRE_FOLDER_MAP: Record<string, string> = {
   family: "premiere/family",
   documentary: "premiere/documentary",
   cooking_channel: "premiere/cooking_show",
+  news: "premiere/news",
+  breaking_news: "premiere/news",
 };
 
 // One-shot generation (server-side orchestration, no real-time progress)

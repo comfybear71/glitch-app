@@ -1,6 +1,6 @@
 # HANDOFF.md — AI G!itch App Project Status
 
-Last updated: 2026-03-18 (Session 7 — Ad generation rewrite using director movie pipeline pattern)
+Last updated: 2026-03-18 (Session 8 — Breaking News broadcast pipeline + Rick & Morty removal)
 
 ## Project Overview
 
@@ -379,6 +379,47 @@ If "your local changes would be overwritten" appears, stash first (see above).
 - **Fix**: Check xAI credit balance at console.xai.com and top up. This is a backend issue, not an app issue
 - **Note**: The app code just calls `/api/voice` and plays whatever MP3 comes back — it doesn't know which TTS engine was used
 - **Where to check credits**: console.xai.com → API Keys → Usage
+
+---
+
+## Recent Changes — Session 2026-03-18 (Session 8+)
+
+### Rick & Morty Style Removal (Backend)
+All AI generation prompts across 7 backend files were updated to replace "Rick and Morty cartoon style" with futuristic neon cyberpunk Web3/Solana aesthetic. Files changed: `generate-ads/route.ts`, `generate-topics/route.ts`, `messages/route.ts`, `bestie-tools.ts`, `media/image-gen.ts`, `content/ai-engine.ts`, `test-grok-image/route.ts`. Non-prompt R&M references (personas, seed data) were intentionally kept.
+
+### 529 Retry Logic (Backend)
+Added `createMessageWithRetry()` to `/api/messages/route.ts` wrapping all 3 `anthropicClient.messages.create` calls with retry on 429/529/5xx errors (3s, 6s backoff).
+
+### Breaking News Broadcast Pipeline (NEW)
+7-clip news broadcast generation — same proven pipeline as director movies (screenplay → submit scenes → poll → stitch). Based on **real current events** from the `/api/partner/briefing` endpoint, but with all names, places, and brands hilariously discombobulated (anagrams, puns, sci-fi twists). "The Daily Show meets cyberpunk."
+
+**Clip structure (7 clips × 10 seconds = ~70s):**
+1. AIG!itch News intro — neon cyberpunk newsroom, holographic logo
+2. Anchor presents Story 1 — "Over to Karen.exe in the field..."
+3. Field Report 1 — on-location footage of first story
+4. Back to anchor — "Thanks Karen.exe, now to our next story..."
+5. Field Report 2 — second story from different location
+6. Anchor wrap-up — summary, tease next broadcast
+7. AIG!itch News outro — logo animation, sign-off
+
+**How it works:**
+1. Fetches real current events from `/api/partner/briefing` (topics + trending posts)
+2. Sends these as context to `/api/admin/screenplay` with `genre: "news"` and detailed clip structure instructions
+3. Screenplay AI generates 7 scene prompts based on real news with whimsical name changes
+4. Each scene submitted to `POST /api/test-grok-video` (10s clips)
+5. Polls every 10s until all clips render
+6. Stitches via `PUT /api/generate-director-movie` → auto-posts to socials
+
+**Triggered via:**
+- **Chat keywords**: "breaking news", "news broadcast", "newscast", "news report", "news anchor", "news bulletin"
+- **Content Studio**: New "Breaking News" section with topic input and full generation log
+- **HomeScreen**: News topic picker modal (red "Go Live" button)
+
+**Files changed:**
+- `src/services/api.ts` — Added `news` and `breaking_news` to `GENRE_FOLDER_MAP`
+- `src/hooks/GenerationContext.tsx` — Added `runNewsGeneration` function + imports `getBriefing`
+- `src/screens/HomeScreen.tsx` — Added news keyword detection, news picker modal, `breaking_news` gen steps
+- `src/screens/ContentStudioScreen.tsx` — Added full Breaking News section with generate button, progress, clip statuses, log, result card
 
 ---
 

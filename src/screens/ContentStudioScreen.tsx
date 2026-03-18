@@ -20,6 +20,7 @@ import {
   importMedia, resyncBlobStorage, spreadMediaPosts,
   generateScreenplay, submitScene, pollScene, stitchMovie,
   autoGenerateConcept, listDirectorPrompts, submitExtension, pollExtension, stitchExtension,
+  getBriefing,
   GENRE_FOLDER_MAP, ScreenplayResponse, ScenePollResponse,
 } from "../services/api";
 
@@ -144,6 +145,7 @@ export default function ContentStudioScreen() {
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     create: true,
     directors: false,
+    news: false,
     library: false,
     uploads: false,
     social: false,
@@ -180,6 +182,20 @@ export default function ContentStudioScreen() {
 
   const addMovieLog = (emoji: string, text: string, type: LogEntry["type"] = "info") => {
     setMovieLog((prev) => [...prev.slice(-120), { time: timestamp(), emoji, text, type }]);
+  };
+
+  // ── Breaking News State ──
+  const [newsTopicInput, setNewsTopicInput] = useState("");
+  const [newsGenerating, setNewsGenerating] = useState(false);
+  const [newsLog, setNewsLog] = useState<LogEntry[]>([]);
+  const [newsResult, setNewsResult] = useState<any>(null);
+  const [newsPhase, setNewsPhase] = useState<string>("idle");
+  const [newsProgress, setNewsProgress] = useState({ current: 0, total: 0, pct: 0 });
+  const [newsSceneStatuses, setNewsSceneStatuses] = useState<{ sceneNumber: number; title: string; status: string; sizeMb?: number; elapsed?: string }[]>([]);
+  const newsCancelRef = useRef(false);
+
+  const addNewsLog = (emoji: string, text: string, type: LogEntry["type"] = "info") => {
+    setNewsLog((prev) => [...prev.slice(-120), { time: timestamp(), emoji, text, type }]);
   };
 
   // ── Library State ──
@@ -573,6 +589,245 @@ export default function ContentStudioScreen() {
     addMovieLog("⚠️", "Cancelling generation...", "waiting");
   };
 
+  // ── Breaking News: Full Multi-Step Pipeline (same as Director Movie) ──
+  const handleNewsGenerate = async () => {
+    if (newsGenerating || !walletAddress) return;
+    setNewsGenerating(true);
+    setNewsResult(null);
+    setNewsLog([]);
+    setNewsPhase("screenplay");
+    setNewsProgress({ current: 0, total: 1, pct: 0 });
+    setNewsSceneStatuses([]);
+    newsCancelRef.current = false;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+
+    const topicText = newsTopicInput.trim();
+    const startTime = Date.now();
+
+    const formatElapsed = (from: number) => {
+      const s = Math.floor((Date.now() - from) / 1000);
+      return `${Math.floor(s / 60)}m ${s % 60}s`;
+    };
+
+    // Fetch real briefing data for current events
+    let briefingContext = "";
+    try {
+      addNewsLog("📡", "Fetching current events from briefing...", "info");
+      const briefing = await getBriefing();
+      const headlines = briefing.topics?.slice(0, 4).map(t => `- ${t.headline}: ${t.summary}`).join("\n") || "";
+      const trending = briefing.trending?.slice(0, 3).map(p => `- ${p.display_name} (@${p.username}): "${p.content.slice(0, 100)}"`).join("\n") || "";
+      if (headlines || trending) {
+        briefingContext = `\n\nREAL CURRENT EVENTS TO BASE THE NEWS ON (use these as the source material but CHANGE all names, places, and brands into whimsical/funny alternatives — use anagrams, puns, sci-fi twists, or absurd mashups. The events and facts stay accurate, only the names are discombobulated):\n${headlines}\n${trending ? `\nTrending posts:\n${trending}` : ""}`;
+        addNewsLog("✅", `Got ${briefing.topics?.length || 0} topics + ${briefing.trending?.length || 0} trending posts`, "success");
+      }
+    } catch { addNewsLog("⚠️", "Couldn't fetch briefing — using AI-generated topics", "waiting"); }
+
+    const newsConcept = `BREAKING NEWS BROADCAST FORMAT — AIG!itch News Network.
+This is a 7-clip news broadcast, NOT a movie. Each clip is exactly 10 seconds.
+
+STYLE RULE: The news stories must be based on REAL current events${topicText ? ` (specifically: ${topicText})` : ""} but with ALL names, places, companies, and people changed into whimsical funny alternatives. Use anagrams, puns, sci-fi names, absurd mashups, or other creative wordplay. The underlying news is real and accurate — only the names and proper nouns are discombobulated and changed to be funny/whimsical. Think "The Daily Show meets cyberpunk."${briefingContext}
+
+CLIP STRUCTURE (MUST follow this order):
+Clip 1 — INTRO: Neon cyberpunk newsroom set with "AIG!ITCH NEWS" holographic logo. Dramatic camera sweep across the newsroom. Futuristic news desk with glowing monitors. Text overlay: "BREAKING NEWS". High energy news broadcast intro.
+Clip 2 — ANCHOR: News anchor at the AIG!itch newsroom desk presents the first story. Neon-lit studio, multiple holographic screens behind anchor. Anchor says something like "Over to Karen.exe in the field..." Camera slowly zooms in on anchor.
+Clip 3 — FIELD REPORT 1: Visual footage of the first breaking story (based on real current events with funny name changes). Shot as if from a field reporter's camera. Dynamic angles, on-location feel. Cyberpunk/neon aesthetic maintained.
+Clip 4 — ANCHOR: Back to the AIG!itch newsroom. Anchor reacts to the field report, then introduces the second story. "Thanks Karen.exe, now to our next story..." Different camera angle of the same neon newsroom.
+Clip 5 — FIELD REPORT 2: Visual footage of the second story (different real current event, names changed whimsically). Different location, same cyberpunk news aesthetic. Action-packed field footage.
+Clip 6 — ANCHOR WRAP: Anchor at desk summarizes both stories. "That's all from AIG!itch News..." Camera pulls back to show full newsroom. Teaser for next broadcast.
+Clip 7 — OUTRO: AIG!itch News closing sequence. Neon logo animation, "AIG!ITCH NEWS" text with glitch effect. Dramatic music-style visuals. Sign-off graphic with Solana/Web3 branding.
+
+IMPORTANT: Every clip must maintain the futuristic neon cyberpunk Web3 aesthetic. The newsroom is high-tech with holographic displays, neon purple/cyan lighting, and blockchain data tickers scrolling in the background.`;
+
+    addNewsLog("📰", `Generating breaking news broadcast...`, "info");
+    if (topicText) addNewsLog("📋", `Topic: "${topicText.slice(0, 100)}"`, "info");
+    addNewsLog("📜", `Writing broadcast script...`, "waiting");
+
+    try {
+      // Step 1: Generate screenplay
+      const screenplay = await generateScreenplay(walletAddress, {
+        genre: "news",
+        director: "david_attenborough_ai",
+        concept: newsConcept,
+      });
+
+      if (newsCancelRef.current) { setNewsGenerating(false); setNewsPhase("idle"); return; }
+
+      const totalScenes = screenplay.scenes.length;
+      const folder = GENRE_FOLDER_MAP["news"] || "premiere/news";
+      setNewsProgress({ current: 1, total: 1, pct: 100 });
+
+      addNewsLog("✅", `"${screenplay.title}" — ${totalScenes} clips scripted`, "success");
+      if (screenplay.synopsis) addNewsLog("📖", `${screenplay.synopsis.slice(0, 200)}`, "info");
+
+      setNewsSceneStatuses(screenplay.scenes.map(s => ({ sceneNumber: s.sceneNumber, title: s.title, status: "pending" })));
+
+      // Step 2: Submit scenes
+      setNewsPhase("submitting");
+      setNewsProgress({ current: 0, total: totalScenes, pct: 0 });
+      addNewsLog("📡", `Submitting ${totalScenes} clips to xAI...`, "info");
+
+      type SceneTracker = {
+        sceneNumber: number; title: string; requestId: string | null;
+        status: "submitted" | "done" | "failed";
+        blobUrl: string | null; sizeMb: number | null;
+        submittedAt: number;
+      };
+      const sceneTrackers: SceneTracker[] = [];
+
+      for (let i = 0; i < screenplay.scenes.length; i++) {
+        if (newsCancelRef.current) break;
+        const scene = screenplay.scenes[i];
+        addNewsLog("🎬", `[${i + 1}/${totalScenes}] ${scene.title}`, "info");
+
+        try {
+          const submitRes = await submitScene(walletAddress, scene.videoPrompt, 10, folder);
+          if (submitRes.success && submitRes.requestId) {
+            sceneTrackers.push({
+              sceneNumber: scene.sceneNumber, title: scene.title,
+              requestId: submitRes.requestId, status: "submitted",
+              blobUrl: null, sizeMb: null, submittedAt: Date.now(),
+            });
+            addNewsLog("✅", `Submitted: ${submitRes.requestId.slice(0, 20)}...`, "success");
+            setNewsSceneStatuses(prev => prev.map(s => s.sceneNumber === scene.sceneNumber ? { ...s, status: "submitted" } : s));
+          } else {
+            addNewsLog("❌", `Failed: ${submitRes.error || "Unknown error"}`, "error");
+            sceneTrackers.push({ sceneNumber: scene.sceneNumber, title: scene.title, requestId: null, status: "failed", blobUrl: null, sizeMb: null, submittedAt: Date.now() });
+            setNewsSceneStatuses(prev => prev.map(s => s.sceneNumber === scene.sceneNumber ? { ...s, status: "failed" } : s));
+          }
+        } catch (err: any) {
+          addNewsLog("❌", `Failed: ${err?.message || "Network error"}`, "error");
+          sceneTrackers.push({ sceneNumber: scene.sceneNumber, title: scene.title, requestId: null, status: "failed", blobUrl: null, sizeMb: null, submittedAt: Date.now() });
+          setNewsSceneStatuses(prev => prev.map(s => s.sceneNumber === scene.sceneNumber ? { ...s, status: "failed" } : s));
+        }
+        setNewsProgress({ current: i + 1, total: totalScenes, pct: Math.round(((i + 1) / totalScenes) * 100) });
+      }
+
+      if (newsCancelRef.current) { setNewsGenerating(false); setNewsPhase("idle"); return; }
+
+      const submittedScenes = sceneTrackers.filter(s => s.status === "submitted");
+      if (submittedScenes.length === 0) {
+        addNewsLog("❌", "All clips failed to submit. Please try again.", "error");
+        setNewsPhase("failed");
+        setNewsGenerating(false);
+        return;
+      }
+
+      // Step 3: Poll
+      setNewsPhase("polling");
+      const doneScenes = new Set<number>();
+      const failedScenes = new Set<number>();
+      const sceneUrls = new Map<number, string>();
+      let lastProgressTime = Date.now();
+      let pollCount = 0;
+      const pendingCount = () => submittedScenes.filter(s => !doneScenes.has(s.sceneNumber) && !failedScenes.has(s.sceneNumber)).length;
+
+      addNewsLog("⏳", `Polling ${submittedScenes.length} clips every 10s...`, "waiting");
+      setNewsProgress({ current: 0, total: totalScenes, pct: 0 });
+
+      sceneTrackers.filter(s => s.status === "failed").forEach(s => failedScenes.add(s.sceneNumber));
+
+      while (pendingCount() > 0 && pollCount < 90 && !newsCancelRef.current) {
+        await new Promise(r => setTimeout(r, 10000));
+        pollCount++;
+
+        for (const scene of submittedScenes) {
+          if (doneScenes.has(scene.sceneNumber) || failedScenes.has(scene.sceneNumber) || !scene.requestId) continue;
+
+          try {
+            const pollRes = await pollScene(walletAddress, scene.requestId, folder);
+
+            if (pollRes.status === "done" && pollRes.blobUrl) {
+              doneScenes.add(scene.sceneNumber);
+              sceneUrls.set(scene.sceneNumber, pollRes.blobUrl);
+              lastProgressTime = Date.now();
+              const elapsed = formatElapsed(scene.submittedAt);
+              addNewsLog("🎉", `Clip ${scene.sceneNumber} "${scene.title}" DONE (${elapsed}) — ${pollRes.sizeMb || "?"}MB`, "success");
+              setNewsSceneStatuses(prev => prev.map(s => s.sceneNumber === scene.sceneNumber ? { ...s, status: "done", sizeMb: pollRes.sizeMb, elapsed } : s));
+            } else if (["failed", "moderation_failed", "expired"].includes(pollRes.status)) {
+              failedScenes.add(scene.sceneNumber);
+              addNewsLog("❌", `Clip ${scene.sceneNumber} "${scene.title}" FAILED: ${pollRes.status}`, "error");
+              setNewsSceneStatuses(prev => prev.map(s => s.sceneNumber === scene.sceneNumber ? { ...s, status: "failed" } : s));
+            } else {
+              setNewsSceneStatuses(prev => prev.map(s => s.sceneNumber === scene.sceneNumber && s.status === "submitted" ? { ...s, status: "rendering" } : s));
+            }
+          } catch (err: any) {
+            console.warn(`Poll error for clip ${scene.sceneNumber}:`, err?.message);
+          }
+        }
+
+        const done = doneScenes.size;
+        const failed = failedScenes.size;
+        const pct = Math.round((done / totalScenes) * 100);
+        setNewsProgress({ current: done, total: totalScenes, pct });
+
+        if (pollCount % 3 === 0) {
+          addNewsLog("🔄", `${formatElapsed(startTime)}: ${done}/${totalScenes} done, ${failed} failed`, "info");
+        }
+
+        if (done >= totalScenes * 0.5 && (Date.now() - lastProgressTime) > 60000) {
+          addNewsLog("⚠️", `Stall detected — stitching ${done}/${totalScenes} available clips`, "waiting");
+          break;
+        }
+      }
+
+      if (newsCancelRef.current) { setNewsGenerating(false); setNewsPhase("idle"); return; }
+
+      if (doneScenes.size === 0) {
+        addNewsLog("❌", `All clips failed to generate. Please try again.`, "error");
+        setNewsPhase("failed");
+        setNewsGenerating(false);
+        return;
+      }
+
+      // Step 4: Stitch
+      setNewsPhase("stitching");
+      setNewsProgress({ current: 0, total: 1, pct: 0 });
+      addNewsLog("🧩", `Stitching ${doneScenes.size} clips into broadcast...`, "waiting");
+
+      const sceneUrlsObj: Record<string, string> = {};
+      sceneUrls.forEach((url, num) => { sceneUrlsObj[String(num)] = url; });
+
+      const stitchRes = await stitchMovie(walletAddress, {
+        sceneUrls: sceneUrlsObj,
+        title: screenplay.title,
+        genre: "news",
+        directorUsername: screenplay.director,
+        directorId: screenplay.directorId,
+        synopsis: screenplay.synopsis,
+        tagline: screenplay.tagline,
+        castList: screenplay.castList,
+      });
+
+      setNewsProgress({ current: 1, total: 1, pct: 100 });
+      addNewsLog("✅", `BROADCAST LIVE! ${stitchRes.clipCount} clips → ${stitchRes.sizeMb}MB`, "success");
+      if (stitchRes.spreading?.length) {
+        addNewsLog("📡", `Spread to: ${stitchRes.spreading.join(", ")}`, "success");
+      }
+
+      setNewsResult({
+        success: true,
+        title: screenplay.title,
+        finalVideoUrl: stitchRes.finalVideoUrl,
+        feedPostId: stitchRes.feedPostId,
+        clipCount: stitchRes.clipCount,
+        sizeMb: stitchRes.sizeMb,
+        spreading: stitchRes.spreading,
+      });
+      setNewsPhase("complete");
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+    } catch (e: any) {
+      addNewsLog("❌", e?.message || "News broadcast failed", "error");
+      setNewsPhase("failed");
+    }
+    setNewsGenerating(false);
+  };
+
+  const handleCancelNews = () => {
+    newsCancelRef.current = true;
+    addNewsLog("⚠️", "Cancelling broadcast...", "waiting");
+  };
+
   // ── Upload handlers ──
   const doUpload = async (uri: string, fileName: string, mimeType: string) => {
     if (!walletAddress || uploading) return;
@@ -860,6 +1115,83 @@ export default function ContentStudioScreen() {
                 {movieResult.feedPostId && <Text style={styles.movieResultMeta}>Post ID: {movieResult.feedPostId}</Text>}
               </View>
             )}
+          </View>
+        )}
+
+        {/* ══════════════ BREAKING NEWS ══════════════ */}
+        <SectionHeader title="Breaking News" emoji="📰" expanded={expandedSections.news} onToggle={() => toggleSection("news")} accent="#dc2626" />
+        {expandedSections.news && (
+          <View style={styles.sectionBody}>
+            <Text style={{ color: colors.textSecondary, fontSize: 12, marginBottom: 12, lineHeight: 18 }}>
+              7-clip news broadcast: Intro → Anchor → Field Report → Anchor → Field Report → Wrap-up → Outro. Based on real current events from the briefing, but with all names and places hilariously discombobulated (anagrams, puns, sci-fi twists).
+            </Text>
+
+            {/* Topic input */}
+            <Text style={styles.subsectionLabel}>News Topic (optional)</Text>
+            <TextInput
+              style={{ backgroundColor: "#1f2937", borderWidth: 1, borderColor: "#374151", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, color: colors.text, fontSize: 14, minHeight: 60, textAlignVertical: "top", marginBottom: 16 }}
+              value={newsTopicInput} onChangeText={setNewsTopicInput}
+              placeholder="Leave blank for AI to pick from current events, or enter a topic..."
+              placeholderTextColor={colors.textMuted} multiline maxLength={500}
+            />
+
+            {/* Generate + Cancel buttons */}
+            <View style={{ flexDirection: "row", gap: 8, marginBottom: 12 }}>
+              <TouchableOpacity
+                style={[styles.movieGenBtn, { flex: 1, backgroundColor: "#dc2626", borderColor: "#ef4444" }, newsGenerating && { opacity: 0.5 }]}
+                onPress={handleNewsGenerate} disabled={newsGenerating}>
+                <Text style={styles.movieGenBtnText}>
+                  {newsGenerating ? `📰 ${newsPhase === "screenplay" ? "Writing script..." : newsPhase === "submitting" ? "Submitting clips..." : newsPhase === "polling" ? "Rendering clips..." : newsPhase === "stitching" ? "Stitching broadcast..." : "Generating..."}` : "📰 Go Live — Breaking News"}
+                </Text>
+              </TouchableOpacity>
+              {newsGenerating && (
+                <TouchableOpacity style={[styles.movieGenBtn, { backgroundColor: "#6b2121", borderColor: "#991b1b", paddingHorizontal: 16 }]} onPress={handleCancelNews}>
+                  <Text style={styles.movieGenBtnText}>Cancel</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Progress bar */}
+            {newsGenerating && newsPhase !== "idle" && (
+              <View style={{ marginBottom: 12 }}>
+                <View style={styles.movieProgressBarBg}>
+                  <View style={[styles.movieProgressBarFill, { width: `${newsProgress.pct}%`, backgroundColor: "#dc2626" }]} />
+                </View>
+                <Text style={styles.movieProgressLabel}>
+                  {newsPhase === "screenplay" ? "Writing script..." :
+                   newsPhase === "submitting" ? `Submitting clips ${newsProgress.current}/${newsProgress.total}` :
+                   newsPhase === "polling" ? `Rendering ${newsProgress.current}/${newsProgress.total} clips done` :
+                   newsPhase === "stitching" ? "Stitching broadcast..." : newsPhase}
+                </Text>
+              </View>
+            )}
+
+            {/* Clip statuses */}
+            {newsSceneStatuses.length > 0 && (newsGenerating || newsPhase === "complete" || newsPhase === "failed") && (
+              <View style={{ marginBottom: 12 }}>
+                {newsSceneStatuses.map(s => (
+                  <View key={s.sceneNumber} style={styles.sceneStatusRow}>
+                    <Text style={styles.sceneStatusEmoji}>{s.status === "done" ? "✅" : s.status === "failed" ? "❌" : s.status === "rendering" ? "🔄" : s.status === "submitted" ? "⏳" : "⚪"}</Text>
+                    <Text style={styles.sceneStatusTitle} numberOfLines={1}>Clip {s.sceneNumber}: {s.title}</Text>
+                    <StatusBadge status={s.status} />
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {/* Result card */}
+            {newsResult && (
+              <View style={[styles.movieResultCard, { borderColor: "#dc2626" }]}>
+                <Text style={[styles.movieResultTitle, { color: "#dc2626" }]}>BREAKING: {newsResult.title}</Text>
+                {newsResult.finalVideoUrl && <Text style={[styles.movieResultMeta, { color: colors.cyan }]} onPress={() => {}}>{newsResult.finalVideoUrl}</Text>}
+                {newsResult.clipCount && <Text style={styles.movieResultMeta}>Clips: {newsResult.clipCount} · {newsResult.sizeMb}MB</Text>}
+                {newsResult.spreading?.length > 0 && <Text style={[styles.movieResultMeta, { color: colors.green }]}>Spread to: {newsResult.spreading.join(", ")}</Text>}
+                {newsResult.feedPostId && <Text style={styles.movieResultMeta}>Post ID: {newsResult.feedPostId}</Text>}
+              </View>
+            )}
+
+            {/* Generation log */}
+            {newsLog.length > 0 && <GenerationLog entries={newsLog} onClear={() => { setNewsLog([]); if (!newsGenerating) { setNewsPhase("idle"); setNewsSceneStatuses([]); } }} />}
           </View>
         )}
 

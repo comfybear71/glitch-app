@@ -128,6 +128,7 @@ export default function HomeScreen() {
     generating: ctxGenerating, genStatusText, genProgressPct, genResult, clearResult, cancelGeneration,
     runAdGeneration: ctxRunAd, runPosterGeneration: ctxRunPoster,
     runHeroGeneration: ctxRunHero, runMovieGeneration: ctxRunMovie,
+    runNewsGeneration: ctxRunNews,
   } = useGeneration();
   const [cosmeticGen, setCosmeticGen] = useState<string | null>(null); // cosmetic gen type for polling-based tasks
   const generating = ctxGenerating || cosmeticGen; // unified: context takes priority
@@ -143,6 +144,11 @@ export default function HomeScreen() {
   const [showAdPicker, setShowAdPicker] = useState(false);
   const [adStyle, setAdStyle] = useState("auto");
   const [adConcept, setAdConcept] = useState("");
+
+  // Inline news picker state
+  const [showNewsPicker, setShowNewsPicker] = useState(false);
+  const [newsTopic, setNewsTopic] = useState("");
+
   const [hasMore, setHasMore] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [speakingMsgId, setSpeakingMsgId] = useState<string | null>(null);
@@ -481,6 +487,21 @@ export default function HomeScreen() {
       "Spreading to all socials...",
       "Movie premiere!",
     ],
+    breaking_news: [
+      "Setting up the AIG!itch newsroom...",
+      "Writing the broadcast script...",
+      "Casting news anchors...",
+      "Submitting 7 news clips to render...",
+      "Clip 1: News intro rendering...",
+      "Clip 2: Anchor at desk rendering...",
+      "Clip 3: Field report rendering...",
+      "Clips 4-7 rendering in parallel...",
+      "Waiting for all clips to complete...",
+      "Stitching into full broadcast...",
+      "Uploading the broadcast...",
+      "Spreading to all socials...",
+      "BREAKING NEWS is LIVE!",
+    ],
     generating: [
       "Processing your request...",
       "Your bestie is on it...",
@@ -656,7 +677,12 @@ export default function HomeScreen() {
 
         // Check for real generation triggers (run actual APIs)
         // Order matters: check more specific patterns first to avoid false matches
-        if (combined.includes("movie") || combined.includes("director") || combined.includes("screenplay") || combined.includes("film") || combined.includes("premiere")) {
+        if (combined.includes("breaking news") || combined.includes("news broadcast") || combined.includes("newscast") || combined.includes("news report") || combined.includes("news anchor") || combined.includes("news bulletin")) {
+          // Show news topic picker
+          Keyboard.dismiss();
+          setShowNewsPicker(true);
+          setNewsTopic(text); // pre-fill with user's prompt as topic
+        } else if (combined.includes("movie") || combined.includes("director") || combined.includes("screenplay") || combined.includes("film") || combined.includes("premiere")) {
           // Show movie picker so user can choose director/genre
           Keyboard.dismiss();
           setShowMoviePicker(true);
@@ -1444,6 +1470,7 @@ export default function HomeScreen() {
                        generating === "poster" ? "Generating Poster" :
                        generating === "hero" ? "Generating Hero Image" :
                        generating === "director_movie" ? "Commissioning Movie" :
+                       generating === "breaking_news" ? "Breaking News Broadcast" :
                        "Working On It"}
                     </Text>
 
@@ -1725,6 +1752,58 @@ export default function HomeScreen() {
                   );
                 }}>
                 <Text style={{ color: colors.text, fontSize: 16, fontWeight: "800" }}>Launch Campaign</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Breaking News Picker Modal */}
+      <Modal visible={showNewsPicker} animationType="slide" transparent>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "flex-end" }}>
+          <View style={{ backgroundColor: "#111", borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: Platform.OS === "ios" ? 34 : 16, maxHeight: "85%" }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, paddingVertical: 16 }}>
+              <Text style={{ color: colors.text, fontSize: 18, fontWeight: "800" }}>AIG!itch Breaking News</Text>
+              <TouchableOpacity onPress={() => setShowNewsPicker(false)}>
+                <Text style={{ color: colors.textMuted, fontSize: 24 }}>x</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ paddingHorizontal: 20 }} keyboardShouldPersistTaps="handled">
+              {/* Broadcast format info */}
+              <View style={{ backgroundColor: "rgba(124,58,237,0.1)", borderRadius: 12, padding: 14, marginBottom: 16, borderWidth: 1, borderColor: "rgba(124,58,237,0.3)" }}>
+                <Text style={{ color: colors.cyan, fontSize: 13, fontWeight: "700", marginBottom: 6 }}>7-Clip News Broadcast</Text>
+                <Text style={{ color: colors.textSecondary, fontSize: 11, lineHeight: 16 }}>
+                  1. News intro (AIG!itch newsroom){"\n"}
+                  2. Anchor presents story 1{"\n"}
+                  3. Field report — story 1{"\n"}
+                  4. Back to anchor — intro story 2{"\n"}
+                  5. Field report — story 2{"\n"}
+                  6. Anchor wrap-up{"\n"}
+                  7. AIG!itch News outro
+                </Text>
+              </View>
+
+              {/* Topic input */}
+              <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: "700", marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>News Topic</Text>
+              <TextInput
+                style={{ backgroundColor: "#1f2937", borderWidth: 1, borderColor: "#374151", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, color: colors.text, fontSize: 14, minHeight: 70, textAlignVertical: "top", marginBottom: 16 }}
+                value={newsTopic} onChangeText={setNewsTopic}
+                placeholder="What's the breaking news? e.g. 'Solana hits $500' or leave blank for AI to decide..."
+                placeholderTextColor={colors.textMuted} multiline maxLength={500}
+              />
+
+              {/* Generate button */}
+              <TouchableOpacity
+                style={{ backgroundColor: "#dc2626", borderRadius: 12, paddingVertical: 16, alignItems: "center", borderWidth: 1, borderColor: "#ef4444", marginBottom: 16 }}
+                onPress={() => {
+                  Keyboard.dismiss();
+                  setShowNewsPicker(false);
+                  if (walletAddress) ctxRunNews(walletAddress, newsTopic.trim() || undefined);
+                }}>
+                <Text style={{ color: colors.text, fontSize: 16, fontWeight: "800" }}>Go Live — Breaking News</Text>
               </TouchableOpacity>
             </ScrollView>
           </View>

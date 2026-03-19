@@ -935,6 +935,7 @@ export function toChannelDef(ch: BackendChannel): ChannelDef {
     "ch-ai-politicians": "documentary",
     "ch-after-dark": "horror",
     "ch-infomercial": "comedy",
+    "ch-aiglitch-studios": "drama",
   };
   const genre = genreMap[ch.id] || "drama";
   const folder = `channels/${ch.slug}`;

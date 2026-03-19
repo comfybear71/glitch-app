@@ -372,9 +372,7 @@ export default function ContentStudioScreen() {
     setChannelsLoading(true);
     try {
       const backendChannels = await fetchChannels();
-      // Filter out channels that are auto-populated from other content types
-      const RESERVED_CHANNELS = ["ch-gnn", "ch-marketplace-qvc", "ch-aiglitch-studios", "ch-infomercial"];
-      setChannels(backendChannels.map(toChannelDef).filter(ch => !RESERVED_CHANNELS.includes(ch.id)));
+      setChannels(backendChannels.map(toChannelDef));
     } catch (e: any) {
       console.warn("Channels fetch failed:", e?.message);
     }

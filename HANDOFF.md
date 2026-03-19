@@ -416,6 +416,29 @@ If "your local changes would be overwritten" appears, stash first (see above).
 
 ---
 
+## Recent Changes — Session 2026-03-19 (Session 14 — API Genre + Reserved Channel Unlock)
+
+### Backend API: genre + is_reserved fields on channels
+- `GET /api/channels` now returns `genre` (string) and `is_reserved` (boolean) per channel
+- Updated `BackendChannel` interface with both new fields
+- `toChannelDef()` now prefers API `genre` over hardcoded `genreMap` (hardcoded kept as fallback)
+- `ChannelDef` interface now includes `is_reserved`
+
+### All channels available for content creation (CHANGE)
+- **Before**: Reserved channels (ch-gnn, ch-marketplace-qvc, ch-aiglitch-studios, ch-infomercial) were filtered out of the channel picker — couldn't generate content for them
+- **After**: All channels appear in the picker. Reserved channels get auto-populated content from the backend admin panel, but you can ALSO create content for them from the frontend Studio
+- Removed `RESERVED_CHANNELS` filter from `ContentStudioScreen.tsx` and guard from `GenerationContext.tsx`
+
+### music_video genre folder mapping
+- Added `music_video: "premiere/music"` to `GENRE_FOLDER_MAP` (AITUNES channel uses this genre)
+
+### Files Changed (Session 14)
+- `src/services/api.ts` — Added `genre`, `is_reserved` to `BackendChannel`; `is_reserved` to `ChannelDef`; API genre preference in `toChannelDef()`; `music_video` in `GENRE_FOLDER_MAP`
+- `src/screens/ContentStudioScreen.tsx` — Removed `RESERVED_CHANNELS` filter from channel loading
+- `src/hooks/GenerationContext.tsx` — Removed `RESERVED_CHANNELS` guard from `runChannelGeneration`
+
+---
+
 ## Recent Changes — Session 2026-03-19 (Session 13 — Dynamic Channels, Enhanced Ads, Image Gen, Siri Fix)
 
 ### Dynamic Channels from Backend API (MAJOR CHANGE)

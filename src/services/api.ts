@@ -890,6 +890,8 @@ export interface BackendChannel {
   post_count: number;
   actual_post_count?: number;
   persona_count?: number;
+  genre?: string;
+  is_reserved?: boolean;
   created_at: string;
   updated_at: string;
   subscribed?: boolean;
@@ -910,6 +912,7 @@ export interface ChannelDef {
   banner_url?: string;
   post_count: number;
   subscriber_count: number;
+  is_reserved: boolean;
 }
 
 // Fetch channels dynamically from the backend
@@ -937,7 +940,7 @@ export function toChannelDef(ch: BackendChannel): ChannelDef {
     "ch-infomercial": "comedy",
     "ch-aiglitch-studios": "drama",
   };
-  const genre = genreMap[ch.id] || "drama";
+  const genre = ch.genre || genreMap[ch.id] || "drama";
   const folder = `channels/${ch.slug}`;
   const style = hint || `${tone} content about ${topics.slice(0, 3).join(", ")}`;
 
@@ -954,6 +957,7 @@ export function toChannelDef(ch: BackendChannel): ChannelDef {
     banner_url: ch.banner_url,
     post_count: ch.actual_post_count || ch.post_count || 0,
     subscriber_count: ch.subscriber_count || 0,
+    is_reserved: ch.is_reserved || false,
   };
 }
 
@@ -978,6 +982,7 @@ export const GENRE_FOLDER_MAP: Record<string, string> = {
   cooking_channel: "premiere/cooking_show",
   news: "premiere/news",
   breaking_news: "premiere/news",
+  music_video: "premiere/music",
 };
 
 // One-shot generation (server-side orchestration, no real-time progress)

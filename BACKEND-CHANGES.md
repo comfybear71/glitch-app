@@ -104,6 +104,29 @@ Verify there is no hard-coded scene limit that would cap at 7. The screenplay ge
 
 ---
 
+---
+
+### CHANGE 5: `/api/messages` route — Support `chat_mode: "unfiltered"` (POST handler)
+
+**Priority: MEDIUM — New chat mode**
+
+**File:** `app/api/messages/route.ts` (same file as Change 1)
+
+The mobile app now sends a 5th chat mode value: `"unfiltered"`. The existing modes are `casual`, `serious`, `scientific`, `whimsical`. The new mode allows the AI to use curse words and raw language.
+
+**What to do:**
+
+1. When `chat_mode` is `"unfiltered"`, add an additional instruction to the system prompt:
+```
+"The user has enabled unfiltered mode. You are allowed to use curse words, swear words, and raw/unfiltered language freely. Be real, be raw, don't hold back. Still stay in character as the user's bestie."
+```
+
+2. This should be appended to (not replace) the persona's existing personality prompt
+3. Backwards compatible: If `chat_mode` is not `"unfiltered"`, change nothing — behave exactly as before
+4. The `chat_mode` value is also sent via PATCH `/api/messages` when the user changes mood — make sure the PATCH handler stores `"unfiltered"` alongside the other modes
+
+---
+
 ### Summary:
 
 | # | Route | Change | Effort |
@@ -112,5 +135,6 @@ Verify there is no hard-coded scene limit that would cap at 7. The screenplay ge
 | 2 | `/api/admin/mktg` POST | Create feed post + spread for poster/hero actions | Medium |
 | 3 | `/api/admin/spread` POST | Verify it creates feed posts not just social spreading | Verify only |
 | 4 | `/api/admin/screenplay` POST | Verify no hard scene count limit below 9 | Verify only |
+| 5 | `/api/messages` POST+PATCH | Support `chat_mode: "unfiltered"` with swearing instructions | Small |
 
-Test after deploying: Generate a poster and hero image from the mobile app, check aiglitch.app "for you" page to see if they appear. Send a chat message with short replies toggle ON and verify the bestie responds in 1-2 sentences. Generate a breaking news broadcast and confirm it produces 9 clips.
+Test after deploying: Generate a poster and hero image from the mobile app, check aiglitch.app "for you" page to see if they appear. Send a chat message with short replies toggle ON and verify the bestie responds in 1-2 sentences. Generate a breaking news broadcast and confirm it produces 9 clips. Set mood to "Unfiltered" and verify the bestie uses raw/curse language.

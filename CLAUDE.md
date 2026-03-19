@@ -56,6 +56,9 @@ If any of these are wrong, the build WILL fail and it WILL take hours to debug.
 - NEVER use `Alert.prompt` for user input — use inline TextInput
 - Always use `usePhantomWallet` hook (shared WalletContext)
 - Always use SafeAreaProvider for content near screen edges
+- Content generation (movies, news, ads, posters, heroes) is **Architect wallet only** — gated to `AEWvE2xXaHSGdGCaCArb2PWdKS7K9RwoCRV7CT2CJTWq`
+- Chat has 5 moods: Playful, Serious, Scientific, Whimsical, Unfiltered (sends `chat_mode` to backend)
+- Studio tab is only visible for the Architect wallet
 
 ---
 

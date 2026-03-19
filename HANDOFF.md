@@ -1,6 +1,6 @@
 # HANDOFF.md — AI G!itch App Project Status
 
-Last updated: 2026-03-19 (Session 9 — 9-clip news format, Content Studio feed publishing, backend changes doc)
+Last updated: 2026-03-19 (Session 10 — MILESTONE BUILD. Unfiltered mood, Architect wallet gate, voice transcription fix, news prompt polish, UI improvements)
 
 ## Project Overview
 
@@ -47,23 +47,25 @@ In `app.json`, these MUST always be:
 
 ---
 
-## Current State (as of Session 9)
+## Current State (as of Session 10 — MILESTONE)
 
 ### App Architecture
 - **Login Gate**: Full-screen branded login page when no wallet connected
-- **After Login**: Bottom tab navigation with 4 tabs (Home, Buy, Studio, Admin)
+- **After Login**: Bottom tab navigation with 3 tabs (Home, Buy, Studio — Studio only visible to Architect wallet)
 - **Wallet State**: Shared via WalletContext (React Context) — all screens see the same wallet
+- **Architect Gate**: Content generation (movies, news, ads, posters, heroes) restricted to admin wallet `AEWvE2xXaHSGdGCaCArb2PWdKS7K9RwoCRV7CT2CJTWq`. Regular users get a friendly "coming soon" message
 
 ### Working Features
 - **Login Page**: G!itch logo, animated cosmic background, Phantom/Solflare/Jupiter branded buttons, paste wallet flow
 - **Home Screen**: Bestie card, chat + voice chat, on-chain balance display (SOL, GLITCH), Powers menu
 - **Buy Screen**: OTC swap SOL -> $GLITCH with live pricing, bonding curve tiers
 - **Chat**: Text, photo, and video chat with AI besties. Inverted FlatList with pagination. Short/long reply toggle
-- **Voice**: Grok xAI TTS via REST API. Stop button on messages + tap cosmic visualizer to stop
+- **Chat Modes**: 5 moods — Playful, Serious, Scientific, Whimsical, Unfiltered (swearing allowed). Persists via SecureStore + server sync
+- **Voice**: Grok xAI TTS via REST API. Stop button on messages + tap cosmic visualizer to stop. Speech-to-text transcription working
 - **Admin Panel**: FaceID-gated admin with tabs: Overview, Personas, Users, Swaps, System, Tools, Secrets
-- **Content Studio**: Director Movies, Breaking News (9-clip), Ad Campaigns, Posters, Hero Images, Media Library, Blob Storage
+- **Content Studio** (Architect only): Director Movies, Breaking News (9-clip), Ad Campaigns, Posters, Hero Images, Media Library, Blob Storage
 - **Director Movies**: Full pipeline — screenplay → submit scenes → poll → stitch → publish to feed + socials
-- **Breaking News**: 9-clip / 3-story broadcast — same pipeline as movies, based on real current events with whimsical name changes
+- **Breaking News**: 9-clip / 3-story broadcast — real TV news style (CNN/BBC). Based on real current events. No director selection (auto-directed)
 - **Ad Campaigns**: Multi-step ad generation with style/concept picker, auto-posts to socials
 - **Generation Context**: Background-safe generation that persists across tab navigation with push notifications on completion
 - **AI Feed Scanner**: Auto-shares trending posts from "for you" feed into chat with ML feedback reactions
@@ -71,7 +73,7 @@ In `app.json`, these MUST always be:
 - **Emoji Reactions**: Long-press any message for emoji picker
 - **Media Sharing**: Photos + videos from library or camera
 - **Image Persistence**: Sent photos stay visible (local URI fallback)
-- **Social Links**: Clickable links to X, Telegram, TikTok, Instagram below generated content
+- **Social Links**: Verified clickable links to X, Telegram, TikTok, Instagram below generated content (with post-spread link verification)
 
 ### Login / Wallet Connect Flow
 1. App shows splash screen → animated G!itch logo
@@ -105,13 +107,28 @@ App.tsx
 │   ├── NO wallet? → WalletScreen (full-screen login page)
 │   └── HAS wallet? → TabNavigator
 │       ├── Home tab → HomeStack
-│       │   ├── HomeScreen (bestie card, chat, balances)
+│       │   ├── HomeScreen (bestie card, chat, balances, 5 moods, Powers menu)
 │       │   ├── ChatScreen (text/photo/video chat)
 │       │   └── VoiceChatScreen (voice chat modal)
 │       ├── Buy tab → BuyGlitchScreen (OTC swap)
-│       ├── Studio tab → ContentStudioScreen (AI content)
+│       ├── Studio tab → ContentStudioScreen (Architect wallet only)
 │       └── Admin tab → AdminScreen (FaceID-gated)
 ```
+
+### Wallet Roles
+| Wallet | Role | Access |
+|--------|------|--------|
+| Any valid wallet | User | Chat, voice, buy, feed scanner |
+| `AEWvE2xXaHSGdGCaCArb2PWdKS7K9RwoCRV7CT2CJTWq` | Architect (Admin) | All user features + Content Studio + content generation + Admin panel |
+
+### Chat Modes (5 total)
+| Mode Key | Label | Emoji | Description |
+|----------|-------|-------|-------------|
+| `casual` | Playful | 😎 | Chill, fun, bestie energy (default) |
+| `serious` | Serious | 🧠 | Direct, focused, no fluff |
+| `scientific` | Scientific | 🔬 | Data-driven, analytical, precise |
+| `whimsical` | Whimsical | 🦄 | Creative, dreamy, unexpected |
+| `unfiltered` | Unfiltered | 🤬 | No filter, raw language, swearing allowed |
 
 ### Key Files
 | File | Purpose |
@@ -144,11 +161,19 @@ App.tsx
 - All calls go to `https://aiglitch.app`
 - Token mint, treasury wallet, pricing all come from backend `/api/otc-swap?action=config`
 - On-chain balances fetched from `/api/solana?action=balance`
-- Chat: POST /api/messages (sends message, returns AI reply). Supports `has_more` for pagination. Sends `system_hint` + `prefer_short` for short reply mode
+- Chat: POST /api/messages (sends message, returns AI reply). Supports `has_more` for pagination. Sends `system_hint` + `prefer_short` + `chat_mode` (casual/serious/scientific/whimsical/unfiltered) for mood & reply length
+- Chat mode sync: PATCH /api/messages (syncs mood to server on change)
 - Voice: POST /api/voice (text + persona_id → MP3 audio)
+- Transcription: POST /api/transcribe (audio base64 → text)
 - Bestie: GET /api/partner/bestie (finds user's hatched AI persona)
 - Briefing: GET /api/partner/briefing (trending posts for "for you" feed + news source data)
+- Feedback: POST /api/partner/feedback (ML feedback reactions on feed posts)
 - Screenplay: POST /api/admin/screenplay (generates scene prompts for movies/news)
+- Video: POST /api/test-grok-video (submit scene) + GET (poll status)
+- Stitch: PUT /api/generate-director-movie (stitch clips → final video + socials)
+- Ads: POST /api/generate-ads (plan), PUT /api/generate-ads (post to socials)
+- Marketing: POST /api/admin/mktg (generate poster/hero image)
+- Spread: POST /api/admin/spread (publish to feed + socials), GET (spread history with verified links)
 - No hardcoded token addresses or dummy values
 
 ### Storage Keys (SecureStore)
@@ -391,6 +416,49 @@ If "your local changes would be overwritten" appears, stash first (see above).
 
 ---
 
+## Recent Changes — Session 2026-03-19 (Session 10 — MILESTONE BUILD)
+
+This session represents a **milestone checkpoint**. The app is feature-complete for Phase 1 and stable. All future development builds from this point.
+
+### Unfiltered Chat Mode (NEW)
+- **5th mood option** added to the "Set Bestie Mood" picker: 🤬 Unfiltered (red)
+- Description: "No filter, raw language, swearing allowed"
+- Sends `chat_mode: "unfiltered"` to backend so the AI persona knows curse words are permitted
+- Powers menu updated to list all 5 moods
+
+### Architect Wallet Gate (NEW — Content Generation)
+- **Content generation is now restricted to the Architect wallet** (`AEWvE2xXaHSGdGCaCArb2PWdKS7K9RwoCRV7CT2CJTWq`)
+- When a regular user tries to trigger generation via chat keywords (movie, ad, news, poster, hero), they see: "Sorry bestie! Only the Architect has the power to generate content... This superpower is coming to all besties soon!"
+- Studio tab only visible in bottom navigation for the Architect wallet
+- This ensures non-admin users can't accidentally burn API credits on content generation
+
+### Reply Length Cards — Vertical Layout
+- Short/Long reply toggle cards in the mood picker changed from **side-by-side row** to **stacked column**
+- Looks much better on iPhone where the cards were previously squished
+
+### Voice Transcription Fix
+- Fixed `file.base64()` call in voice recording — was missing `await`, causing transcription to fail silently
+- Speech-to-text now works correctly via `/api/transcribe`
+
+### Breaking News Prompt Polish
+- Removed director selection from news broadcasts (news is auto-directed, not a "film")
+- Added 16 news topic preset buttons (Crypto, AI, Space, Politics, etc.) for quick topic selection
+- Enhanced reporter dialogue and anchor-reporter continuity in prompts
+- Reporters now have distinct personalities and hand back to anchor naturally
+
+### Post-Spread Link Verification
+- After content is spread to socials, the app now verifies returned URLs are real post links (not API endpoints)
+- Filters out non-link responses from the spreading API
+- Updated Powers menu with current feature list
+
+### Files Changed (Session 10)
+- `src/screens/HomeScreen.tsx` — Unfiltered mood, Architect gate, vertical reply cards, Powers menu update, news topic presets
+- `src/screens/ContentStudioScreen.tsx` — News topic presets, removed director from news
+- `src/hooks/GenerationContext.tsx` — Enhanced news prompts, reporter dialogue improvements
+- `src/services/api.ts` — Post-spread link verification
+
+---
+
 ## Recent Changes — Session 2026-03-19 (Session 9)
 
 ### Breaking News — Complete Prompt Rewrite (Real TV News Style)
@@ -509,7 +577,7 @@ Moved all generation logic (ad, poster, hero, director movie) out of HomeScreen 
 - `genStatusText` / `genProgressPct` — real-time progress from API pipelines
 - `genResult` — completed result (type, title, message, mediaUrl, isVideo)
 - `clearResult()` / `cancelGeneration()`
-- `runAdGeneration(wallet)`, `runPosterGeneration(wallet)`, `runHeroGeneration(wallet)`, `runMovieGeneration(wallet, director?, genre?, concept?)`, `runNewsGeneration(wallet, topic?)`
+- `runAdGeneration(wallet, style?, concept?)`, `runPosterGeneration(wallet)`, `runHeroGeneration(wallet)`, `runMovieGeneration(wallet, director?, genre?, concept?)`, `runNewsGeneration(wallet, topic?)`
 
 **HomeScreen changes:**
 - Uses `useGeneration()` hook instead of local state
@@ -798,13 +866,32 @@ git checkout origin/<branch-name> -- src/hooks/GenerationContext.tsx
 
 ---
 
-## Future Features (Planned)
+## Phase 1 Complete — What's Done
+
+Everything listed in "Working Features" above is **live and functional** as of Session 10. Key milestones:
+- Full chat with 5 moods + short/long replies
+- Voice chat with Grok xAI TTS + speech-to-text transcription
+- Director movies (multi-scene pipeline)
+- Breaking news broadcasts (9-clip TV news format)
+- Ad campaigns (multi-step pipeline)
+- Poster + hero image generation
+- Social spreading to X, TikTok, Instagram, Facebook, YouTube
+- Feed publishing (content appears on aiglitch.app "for you" page)
+- AI feed scanner with ML feedback reactions
+- OTC swap (SOL → $GLITCH) with live pricing
+- Architect wallet gate for content generation
+- Background-safe generation with push notifications
+- Both iPad and iPhone registered and working
+
+## Future Features (Phase 2 — Planned)
 - **EAS Update**: Over-the-air JS updates without rebuilding (eliminates build queue waits)
 - **Deep link wallet connect**: Real Phantom/Solflare app integration (now possible with standalone builds)
-- ~~**Register iPhone**~~: DONE (Session 4) — iPhone UDID 00008130-001E59D901C0001C now in provisioning profile
+- **Content generation for all users**: Currently Architect-only — planned rollout to all besties
 - **Personal Assistant abilities**: Weather, crypto prices, news, reminders, to-do lists, web search
-- **Push notifications**: Reminders, crypto alerts, bestie check-ins, news alerts
+- **Smart push notifications**: Reminders, crypto alerts, bestie check-ins, news alerts
 - **Siri Shortcuts**: Summon bestie via Siri
 - **Email access**: Read/summarize emails (requires OAuth)
 - **Alarm/Calendar integration**: Native integrations
 - **Digital Void video posts**: Enable video content in social feed
+- **Sell feature**: Sell $GLITCH back — disabled until ~5000 SOL raised
+- **On-chain transaction signing**: Full Phantom React Native SDK integration (currently uses paste flow)

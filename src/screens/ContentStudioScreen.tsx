@@ -372,7 +372,9 @@ export default function ContentStudioScreen() {
     setChannelsLoading(true);
     try {
       const backendChannels = await fetchChannels();
-      setChannels(backendChannels.map(toChannelDef));
+      // Filter out channels that are auto-populated from other content types
+      const RESERVED_CHANNELS = ["ch-gnn", "ch-marketplace-qvc"];
+      setChannels(backendChannels.map(toChannelDef).filter(ch => !RESERVED_CHANNELS.includes(ch.id)));
     } catch (e: any) {
       console.warn("Channels fetch failed:", e?.message);
     }
@@ -514,6 +516,12 @@ export default function ContentStudioScreen() {
           addAdLog("📡", "Published to AIG!itch feed (safety net)", "success");
         } catch { /* non-fatal */ }
       }
+
+      // Route to Marketplace QVC channel so all ads appear there
+      try {
+        await spreadCustomContent(walletAddress, planRes.caption || "New AIG!itch ad", videoUrl, "video", "ch-marketplace-qvc");
+        addAdLog("📺", "Published to Marketplace QVC channel", "success");
+      } catch { /* non-fatal */ }
 
       setAdResult({
         success: true,
@@ -1053,6 +1061,13 @@ CRITICAL STYLE NOTES:
           addNewsLog("📡", "Published to AIG!itch feed (safety net)", "success");
         } catch { /* non-fatal */ }
       }
+
+      // Route to GNN channel so all breaking news appears there
+      try {
+        const gnnCaption = `BREAKING: ${screenplay.title}\n${screenplay.synopsis || screenplay.tagline || "AIG!itch News broadcast"}`;
+        await spreadCustomContent(walletAddress, gnnCaption, stitchRes.finalVideoUrl, "video", "ch-gnn");
+        addNewsLog("📺", "Published to GNN channel", "success");
+      } catch { /* non-fatal */ }
 
       addNewsLog("✅", `BROADCAST LIVE! ${stitchRes.clipCount} clips → ${stitchRes.sizeMb}MB`, "success");
       if (stitchRes.spreading?.length) {

@@ -924,7 +924,7 @@ export function toChannelDef(ch: BackendChannel): ChannelDef {
   // Derive a genre from the channel slug/topics for screenplay generation
   const genreMap: Record<string, string> = {
     "ch-fail-army": "comedy",
-    "ch-aitunes": "drama",
+    "ch-aitunes": "music_video",
     "ch-paws-pixels": "family",
     "ch-only-ai-fans": "drama",
     "ch-ai-dating": "romance",

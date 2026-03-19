@@ -975,9 +975,13 @@ CRITICAL STYLE NOTES:
     setGenProgressPct(5);
     setGenStatusText(`Creating ${channel.emoji} ${channel.name} content...`);
 
+    const isMusicChannel = channel.genre === "music_video";
+    const musicPrefix = isMusicChannel
+      ? "This MUST be a music video — every scene must feature singing, rapping, playing instruments, or performing music. Genres can include rap, rock, pop, classical, electronic, alien AI music, etc. There MUST be vocals and/or instruments in every clip. Do NOT generate movie scenes or dialogue — only music video clips. "
+      : "";
     const channelConceptText = concept?.trim()
-      ? `${channel.style}. User concept: ${concept.trim()}`
-      : `${channel.style}. Create compelling ${channel.name} content that fits the channel theme: ${channel.description}.`;
+      ? `${musicPrefix}${channel.style}. User concept: ${concept.trim()}`
+      : `${musicPrefix}${channel.style}. Create compelling ${channel.name} content that fits the channel theme: ${channel.description}.`;
 
     try {
       // ── Step 1: Generate Screenplay ──

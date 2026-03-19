@@ -1,6 +1,6 @@
 # HANDOFF.md — AI G!itch App Project Status
 
-Last updated: 2026-03-19 (Session 13 — Dynamic channels from API, enhanced ad campaigns, non-admin image gen, Siri Shortcuts fix)
+Last updated: 2026-03-19 (Session 14 — API genre/is_reserved, reserved channel unlock, OTA updates via EAS Update)
 
 ## Project Overview
 
@@ -194,18 +194,34 @@ App.tsx
 
 **AI AGENTS: READ THIS EVERY TIME.** You will be given a branch name like `claude/some-feature-xxxxx`. That is your branch. Use it for ALL git operations. If you start working on `main` you are wasting the user's time and they will have to repeat this instruction AGAIN.
 
-### THE GOLDEN RULE: Always run these 4 commands in order after pulling new code
+### THE GOLDEN RULE: Always run these commands in order after pulling new code
+
+**For JS-only changes (most of the time — FREE + instant):**
+```bash
+git pull origin <your-assigned-branch>
+npm install
+npx expo export --platform ios
+eas update --branch preview --message "Description of changes"
+```
+Relaunch the app — update downloads automatically. No build queue, no $2 cost.
+
+**For native changes (new packages, app.json plugin changes):**
 ```bash
 git pull origin <your-assigned-branch>
 npm install
 npx expo export --platform ios
 eas build --profile preview --platform ios
 ```
+Wait for build. Scan QR code on your device. This costs $2 — only needed for native changes.
+
 Replace `<your-assigned-branch>` with the branch from your session instructions (e.g. `claude/review-handoff-docs-5vpeq`).
 
-**Step 3 (`npx expo export`) is a FREE local bundle test.** It catches JS errors (syntax errors, bad imports, merge conflicts) before you pay $2 for an EAS build. Only proceed to step 4 after step 3 says "Bundled" with NO errors. If step 3 fails, fix the error and re-run step 3 until it passes.
+**Step 3 (`npx expo export`) is a FREE local bundle test.** It catches JS errors (syntax errors, bad imports, merge conflicts) before you push. Only proceed to step 4 after step 3 says "Bundled" with NO errors. If step 3 fails, fix the error and re-run step 3 until it passes.
 
-Wait for build. Scan QR code on your device. Done.
+**How to tell which you need:**
+- Changed `.ts`/`.tsx` files only? → `eas update` (free)
+- Changed `package.json`, `app.json` plugins, or added native modules? → `eas build` ($2)
+- Not sure? → `eas update` first. If the app crashes on launch, you need a full build
 
 ### If VS Code opens during git pull:
 - Just close the VS Code tab/window (Ctrl+W)
@@ -264,11 +280,12 @@ If "your local changes would be overwritten" appears, stash first (see above).
 | Apple "Security delay" during device registration | Apple security check — takes up to 1 hour. Only happens once per device |
 
 ### Build types:
-| Profile | Command | Use for |
-|---------|---------|---------|
-| Preview | `eas build --profile preview --platform ios` | Testing on your devices (QR code install) |
-| Production | `eas build --profile production --platform ios` | App Store / TestFlight submission |
-| Submit | `eas submit --platform ios` | Push a production build to App Store |
+| Profile | Command | Cost | Use for |
+|---------|---------|------|---------|
+| OTA Update | `eas update --branch preview --message "..."` | FREE | JS-only changes (UI, logic, API — most changes) |
+| Preview | `eas build --profile preview --platform ios` | $2 | First install / native changes (QR code install) |
+| Production | `eas build --profile production --platform ios` | $2 | App Store / TestFlight submission |
+| Submit | `eas submit --platform ios` | — | Push a production build to App Store |
 
 ### Device registration:
 - Each device must be registered ONCE in the provisioning profile
@@ -281,6 +298,7 @@ If "your local changes would be overwritten" appears, stash first (see above).
 - To add MORE devices: Run `eas device:create` → scan QR code on the new device → rebuild with preview profile
 
 ### What NOT to do:
+- **Don't run `eas build` for JS-only changes** — use `eas update` instead (free + instant). Only use `eas build` for native changes
 - **Don't download .ipa files directly** — they won't install. Use the QR code from EAS
 - **Don't run `eas build --profile production`** for testing — that's for App Store only
 - **Don't edit app.json manually** unless you know what you're doing — ask Claude
@@ -416,7 +434,36 @@ If "your local changes would be overwritten" appears, stash first (see above).
 
 ---
 
-## Recent Changes — Session 2026-03-19 (Session 14 — API Genre + Reserved Channel Unlock)
+## Recent Changes — Session 2026-03-19 (Session 14 — API Genre, Reserved Channel Unlock, OTA Updates)
+
+### EAS Update — Over-the-Air Updates (MAJOR CHANGE)
+- **Before**: Every code change required a full `eas build` ($2 per build + queue wait)
+- **After**: JS-only changes (UI, logic, API calls, bug fixes) can be pushed instantly via `eas update` — FREE, no build queue
+- **How it works**: `expo-updates` checks for new JS bundles on app launch. If one exists, it downloads and applies on next restart
+- **When you still need `eas build`**: Adding/removing native packages, changing `app.json` plugins, upgrading Expo SDK
+- **Setup**:
+  - Installed `expo-updates` package
+  - Added `expo-updates` plugin to `app.json` with `checkAutomatically: "ON_LOAD"`
+  - Added `channel` to each build profile in `eas.json` (`preview`, `production`, `development`)
+  - `runtimeVersion` and `updates.url` were already configured
+- **IMPORTANT**: The FIRST preview build after this setup MUST be a full `eas build --profile preview --platform ios` to bake in the `expo-updates` native module. After that, JS changes use `eas update`
+- **Cost savings**: ~90% of changes are JS-only → ~90% fewer $2 builds
+
+#### OTA Update Commands
+```bash
+# For JS-only changes (FREE + instant):
+eas update --branch preview --message "Description of what changed"
+
+# For native changes ($2 + queue):
+eas build --profile preview --platform ios
+```
+
+#### Update Channels
+| Channel | Build Profile | Purpose |
+|---------|--------------|---------|
+| `preview` | `--profile preview` | Device testing |
+| `production` | `--profile production` | App Store / TestFlight |
+| `development` | `--profile development` | Dev client |
 
 ### Backend API: genre + is_reserved fields on channels
 - `GET /api/channels` now returns `genre` (string) and `is_reserved` (boolean) per channel
@@ -433,6 +480,10 @@ If "your local changes would be overwritten" appears, stash first (see above).
 - Added `music_video: "premiere/music"` to `GENRE_FOLDER_MAP` (AITUNES channel uses this genre)
 
 ### Files Changed (Session 14)
+- `app.json` — Added `expo-updates` plugin with `checkAutomatically: "ON_LOAD"`
+- `eas.json` — Added `channel` to all 3 build profiles (`preview`, `production`, `development`)
+- `package.json` — Added `expo-updates` dependency
+- `CLAUDE.md` — Rewrote Golden Rule with OTA-first workflow, added OTA section, updated preview instructions
 - `src/services/api.ts` — Added `genre`, `is_reserved` to `BackendChannel`; `is_reserved` to `ChannelDef`; API genre preference in `toChannelDef()`; `music_video` in `GENRE_FOLDER_MAP`
 - `src/screens/ContentStudioScreen.tsx` — Removed `RESERVED_CHANNELS` filter from channel loading
 - `src/hooks/GenerationContext.tsx` — Removed `RESERVED_CHANNELS` guard from `runChannelGeneration`
@@ -1053,7 +1104,7 @@ Everything listed in "Working Features" above is **live and functional** as of S
 - Both iPad and iPhone registered and working
 
 ## Future Features (Phase 2 — Planned)
-- **EAS Update**: Over-the-air JS updates without rebuilding (eliminates build queue waits)
+- **EAS Update**: ~~Over-the-air JS updates without rebuilding~~ ✅ DONE (Session 14) — `expo-updates` installed, channels configured, OTA pushes via `eas update --branch preview`
 - **Deep link wallet connect**: Real Phantom/Solflare app integration (now possible with standalone builds)
 - **Content generation for all users**: Currently Architect-only — planned rollout to all besties
 - **Personal Assistant abilities**: Weather, crypto prices, news, reminders, to-do lists, web search

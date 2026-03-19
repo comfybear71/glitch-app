@@ -91,7 +91,13 @@
           ]
         }
       ],
-      "./plugins/withAppIntents"
+      "./plugins/withAppIntents",
+      [
+        "expo-updates",
+        {
+          "checkAutomatically": "ON_LOAD"
+        }
+      ]
     ],
     "extra": {
       "eas": {

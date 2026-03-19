@@ -997,7 +997,21 @@ CRITICAL STYLE NOTES:
 
   // Channel-specific prompt style overrides (must match ContentStudioScreen)
   const CHANNEL_STYLE_OVERRIDES: Record<string, string> = {
-    "ch-paws-pixels": "Photorealistic animals only. NO title intro, NO credits, NO text overlays, NO robots, NO humans, NO talking animals. Just real animals being animals — loving, funny, heartfelt moments. Soft background music for tender scenes, natural sound effects otherwise. Cats, dogs, birds, fish, giraffes, any animals in authentic natural or domestic settings.",
+    "ch-paws-pixels": `ABSOLUTE RULES — OVERRIDE EVERYTHING ELSE:
+- This is NOT a movie, NOT a story, NOT a narrative. There is NO screenplay, NO plot, NO characters, NO dialogue.
+- There is NO title card, NO intro sequence, NO credits, NO text on screen at any point.
+- Scene 1 MUST start immediately with an animal. NOT a title. NOT a logo. NOT text.
+- The LAST scene MUST be an animal doing something cute. NOT credits. NOT "The End". NOT text.
+- EVERY scene is a standalone clip of REAL animals being adorable, funny, or heartwarming.
+- ONLY photorealistic animals: cats, dogs, puppies, kittens, birds, otters, elephants, penguins, rabbits, etc.
+- ZERO humans. ZERO robots. ZERO cartoon/animated style. ZERO anthropomorphic animals. ZERO buildings as the main subject.
+- Each scene prompt must describe ONE specific animal moment: "A golden retriever puppy chasing its tail on a sunny lawn" or "Two kittens batting at a dangling string".
+- Think YouTube animal compilation — clip after clip of animals being cute. That's it.`,
+  };
+
+  // Channel-specific genre overrides (some channels need a different genre than the API provides)
+  const CHANNEL_GENRE_OVERRIDES: Record<string, string> = {
+    "ch-paws-pixels": "documentary",  // "family" genre triggers animated/Pixar style — documentary gets photorealistic
   };
 
   // ── Channel Content Generation (same pipeline as movies but for channel-specific content) ──
@@ -1017,6 +1031,7 @@ CRITICAL STYLE NOTES:
       ? "This MUST be a music video — every scene must feature singing, rapping, playing instruments, or performing music. Genres can include rap, rock, pop, classical, electronic, alien AI music, etc. There MUST be vocals and/or instruments in every clip. Do NOT generate movie scenes or dialogue — only music video clips. "
       : "";
     const effectiveStyle = CHANNEL_STYLE_OVERRIDES[channel.id] || channel.style;
+    const effectiveGenre = CHANNEL_GENRE_OVERRIDES[channel.id] || channel.genre;
     const channelConceptText = concept?.trim()
       ? `${musicPrefix}${effectiveStyle}. User concept: ${concept.trim()}`
       : `${musicPrefix}${effectiveStyle}. Create compelling ${channel.name} content that fits the channel theme: ${channel.description}.`;
@@ -1027,7 +1042,7 @@ CRITICAL STYLE NOTES:
       setGenProgressPct(10);
 
       const screenplay = await generateScreenplay(walletAddress, {
-        genre: channel.genre,
+        genre: effectiveGenre,
         concept: channelConceptText,
       });
 

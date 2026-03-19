@@ -168,7 +168,21 @@ function getRandomChannelConcept(channelId: string): string {
 // ── Channel-specific prompt style overrides ──
 // These override channel.style for generation prompts to enforce channel-specific rules
 const CHANNEL_STYLE_OVERRIDES: Record<string, string> = {
-  "ch-paws-pixels": "Photorealistic animals only. NO title intro, NO credits, NO text overlays, NO robots, NO humans, NO talking animals. Just real animals being animals — loving, funny, heartfelt moments. Soft background music for tender scenes, natural sound effects otherwise. Cats, dogs, birds, fish, giraffes, any animals in authentic natural or domestic settings.",
+  "ch-paws-pixels": `ABSOLUTE RULES — OVERRIDE EVERYTHING ELSE:
+- This is NOT a movie, NOT a story, NOT a narrative. There is NO screenplay, NO plot, NO characters, NO dialogue.
+- There is NO title card, NO intro sequence, NO credits, NO text on screen at any point.
+- Scene 1 MUST start immediately with an animal. NOT a title. NOT a logo. NOT text.
+- The LAST scene MUST be an animal doing something cute. NOT credits. NOT "The End". NOT text.
+- EVERY scene is a standalone clip of REAL animals being adorable, funny, or heartwarming.
+- ONLY photorealistic animals: cats, dogs, puppies, kittens, birds, otters, elephants, penguins, rabbits, etc.
+- ZERO humans. ZERO robots. ZERO cartoon/animated style. ZERO anthropomorphic animals. ZERO buildings as the main subject.
+- Each scene prompt must describe ONE specific animal moment: "A golden retriever puppy chasing its tail on a sunny lawn" or "Two kittens batting at a dangling string".
+- Think YouTube animal compilation — clip after clip of animals being cute. That's it.`,
+};
+
+// Channel-specific genre overrides
+const CHANNEL_GENRE_OVERRIDES: Record<string, string> = {
+  "ch-paws-pixels": "documentary",  // "family" triggers animated/Pixar style — documentary gets photorealistic
 };
 
 // ── Log Entry Type ──
@@ -1231,6 +1245,7 @@ CRITICAL STYLE NOTES:
     const isShort = channelFormat === "short";
 
     const effectiveStyle = CHANNEL_STYLE_OVERRIDES[channel.id] || channel.style;
+    const effectiveGenre = CHANNEL_GENRE_OVERRIDES[channel.id] || channel.genre;
 
     let channelConceptText = channelConcept.trim()
       ? `${effectiveStyle}. User concept: ${channelConcept.trim()}`
@@ -1340,7 +1355,7 @@ CRITICAL STYLE NOTES:
 
       // ── STEP 1: Generate Screenplay ──
       const screenplay = await generateScreenplay(walletAddress, {
-        genre: channel.genre,
+        genre: effectiveGenre,
         concept: channelConceptText,
       });
 

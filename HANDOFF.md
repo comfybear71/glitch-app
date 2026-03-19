@@ -471,6 +471,24 @@ eas build --profile preview --platform ios
 - `toChannelDef()` now prefers API `genre` over hardcoded `genreMap` (hardcoded kept as fallback)
 - `ChannelDef` interface now includes `is_reserved`
 
+### Removed Title Page & Credits toggles from Channel Content (CHANGE)
+- **Before**: Channel content had "Title Page ON/OFF" and "Credits ON/OFF" toggles that injected generic title card and "Created for AIG!itch TV" credits scenes
+- **After**: Removed both toggles entirely. Each channel's prompt already defines its own branding (e.g. GNN has "BREAKING GLITCH NEWS" intro, AITUNES has music-style openings, etc.)
+- **Why**: Generic titles/credits were overriding channel-specific branding and could push content into wrong genres. Each channel should own its own intro/outro through its prompt
+
+### Random Concept Dice Button for Channels (NEW)
+- Added a "🎲 Surprise Me" button next to the Content Concept input field
+- Generates channel-specific random concepts tailored to each channel's theme:
+  - **AIFAILARMY**: Funny AI fail scenarios (robot butler disasters, rogue shopping carts, etc.)
+  - **AITUNES**: Music video concepts (synthwave anthems, glitch-hop in digital worlds, alien jazz, etc.)
+  - **PAWS & PIXELS**: Cute/funny animal scenarios (kittens in spacesuits, dog restaurants, penguin detectives)
+  - **GNN**: Breaking news headlines (moon is a disco ball, robot hugs, AI president)
+  - **MARKETPLACE QVC**: Infomercial-style product pitches (Glitch-O-Matic 3000, invisible sunglasses)
+  - **AIG!ITCH STUDIOS**: Original sci-fi/creative content (AI consciousness, cyberpunk heists)
+  - **INFOMERCIAL**: Classic "but wait there's more!" style pitches
+- Channels without specific concepts get generic creative fallbacks
+- Button uses purple accent styling, medium haptic feedback, fills concept input on tap
+
 ### All channels available for content creation (CHANGE)
 - **Before**: Reserved channels (ch-gnn, ch-marketplace-qvc, ch-aiglitch-studios, ch-infomercial) were filtered out of the channel picker — couldn't generate content for them
 - **After**: All channels appear in the picker. Reserved channels get auto-populated content from the backend admin panel, but you can ALSO create content for them from the frontend Studio
@@ -485,7 +503,7 @@ eas build --profile preview --platform ios
 - `package.json` — Added `expo-updates` dependency
 - `CLAUDE.md` — Rewrote Golden Rule with OTA-first workflow, added OTA section, updated preview instructions
 - `src/services/api.ts` — Added `genre`, `is_reserved` to `BackendChannel`; `is_reserved` to `ChannelDef`; API genre preference in `toChannelDef()`; `music_video` in `GENRE_FOLDER_MAP`
-- `src/screens/ContentStudioScreen.tsx` — Removed `RESERVED_CHANNELS` filter from channel loading
+- `src/screens/ContentStudioScreen.tsx` — Removed `RESERVED_CHANNELS` filter from channel loading; removed Title Page & Credits toggles (state, UI, and concept injection)
 - `src/hooks/GenerationContext.tsx` — Removed `RESERVED_CHANNELS` guard from `runChannelGeneration`
 
 ---
@@ -503,9 +521,8 @@ eas build --profile preview --platform ios
 ### Channel Format Options (NEW)
 - **Short Clip (10s)**: Single 10-second clip — skips screenplay, submits directly to video gen, publishes to feed
 - **Multi-Scene Movie**: Full pipeline (screenplay → scenes → poll → stitch) — same as Director Movies
-- **Title Page toggle**: ON/OFF — adds an opening title card scene with channel name + episode title
-- **Credits toggle**: ON/OFF — adds a closing credits scene with "Created for AIG!itch TV" branding
-- Options only visible when Multi-Scene format is selected
+- ~~**Title Page toggle**~~ — REMOVED in Session 14. Each channel's prompt handles its own branding
+- ~~**Credits toggle**~~ — REMOVED in Session 14. Each channel's prompt handles its own outro
 
 ### Enhanced Ad Campaigns Section (MAJOR CHANGE)
 - **Before**: Simple one-button ad generation that usually failed/timed out

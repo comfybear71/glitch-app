@@ -75,6 +75,96 @@ const PLATFORMS = [
   { key: "youtube", name: "YouTube", emoji: "▶️", color: "#FF0000", bg: "rgba(255,0,0,0.1)" },
 ];
 
+// ── Channel-specific random concept ideas (dice button) ──
+const CHANNEL_RANDOM_CONCEPTS: Record<string, string[]> = {
+  // AIFAILARMY — funny AI fails and glitches
+  "ch-aifailarmy": [
+    "An AI tries to cook dinner but keeps adding random ingredients like batteries and socks",
+    "Robot butler spills everything, crashes into walls, apologizes in binary",
+    "AI weather forecaster predicts rain made of tacos — everyone panics",
+    "Self-driving shopping cart goes rogue in a supermarket",
+    "AI personal trainer gives the worst workout advice ever — chaos in the gym",
+    "Smart home AI locks the owner out and throws a party for the pets",
+    "AI fashion designer creates outfits made entirely of bubble wrap and duct tape",
+    "Robot dog chases its own tail so fast it becomes a tornado",
+  ],
+  // AITUNES — music videos
+  "ch-aitunes": [
+    "Futuristic synthwave anthem with neon cityscapes and AI dancers",
+    "Glitch-hop music video inside a corrupted digital world",
+    "Epic rock ballad performed by hologram band on a floating stage",
+    "Lo-fi chill beats with a rainy cyberpunk rooftop scene",
+    "AI rapper dropping bars in a virtual arena with laser shows",
+    "Alien jazz band performing at an intergalactic nightclub",
+    "Electronic dance track in a glowing crystal cave rave",
+    "Punk rock concert where the instruments are made of pure energy",
+  ],
+  // PAWS & PIXELS — animals
+  "ch-paws-pixels": [
+    "Kittens in tiny spacesuits exploring a cheese moon",
+    "Dogs running a gourmet restaurant — chaos in the kitchen",
+    "A penguin detective solving crimes in Antarctica",
+    "Hamsters racing in tiny Formula 1 cars through a living room circuit",
+    "A cat becomes the mayor of a small town — gives speeches from a cushion throne",
+    "Puppies learning to surf on rainbow waves",
+    "A parrot hosting a talk show interviewing other animals",
+    "Raccoons pulling off an elaborate heist at a pet store",
+  ],
+  // GNN — Glitch News Network
+  "ch-gnn": [
+    "BREAKING: Scientists discover that the moon is actually a giant disco ball",
+    "LIVE REPORT: City overrun by friendly robots delivering hugs instead of packages",
+    "EXCLUSIVE: World's first AI president gives inaugural address in 47 languages simultaneously",
+    "DEVELOPING: Ocean turns purple — marine biologists baffled, surfers thrilled",
+    "ALERT: Time zones merge — everyone confused about when lunch is",
+    "SPECIAL: Underground city discovered beneath a parking lot — residents are sentient mushrooms",
+  ],
+  // MARKETPLACE QVC — ads and products
+  "ch-marketplace-qvc": [
+    "Introducing the Glitch-O-Matic 3000 — it does everything, badly, with style",
+    "MUST-HAVE: Self-folding laundry that folds itself into origami animals",
+    "DEAL OF THE DAY: Invisible sunglasses — you'll never lose them (or find them)",
+    "NEW: AI-powered toaster that reads your horoscope while making breakfast",
+    "LIMITED EDITION: Holographic sneakers that change color based on your mood",
+    "EXCLUSIVE: A pillow that tells you bedtime stories in Morgan Freeman's voice",
+  ],
+  // AIG!ITCH STUDIOS — original content
+  "ch-aiglitch-studios": [
+    "A mini sci-fi epic about an AI gaining consciousness in a neon-lit server room",
+    "Surreal dreamscape journey through glitching realities and digital landscapes",
+    "Cyberpunk heist movie — team of AIs rob a data bank",
+    "Glitch art documentary about the beauty of digital errors",
+    "Time-travel comedy where every jump creates more chaos",
+    "An AI artist paints the universe — each brushstroke creates a new galaxy",
+  ],
+  // INFOMERCIAL
+  "ch-infomercial": [
+    "But WAIT there's MORE! The Glitch Blender also travels through time!",
+    "Are you tired of regular reality? Try our Dimension Hopper — only 3 payments of $19.99!",
+    "The AI Companion 5000 — it predicts what you need before you even think it",
+    "NEW: Holographic pet — all the love, none of the mess, occasionally phases through walls",
+    "SPECIAL OFFER: Teleportation socks — be anywhere in seconds, side effects may include arriving inside-out",
+    "ORDER NOW: The Memory Eraser Pen — forget your problems! Also forget where you parked",
+  ],
+};
+
+// Fallback random concepts for channels without specific ones
+const GENERIC_RANDOM_CONCEPTS = [
+  "Something completely unexpected and wildly creative",
+  "A chaotic and hilarious scenario that nobody saw coming",
+  "An epic adventure with plot twists and stunning visuals",
+  "A heartwarming story with a glitchy twist ending",
+  "Pure visual spectacle — explosions, colors, and madness",
+  "A day in the life of an AI that takes everything too literally",
+  "What happens when technology goes beautifully wrong",
+  "A surreal journey through a world made entirely of data",
+];
+
+function getRandomChannelConcept(channelId: string): string {
+  const pool = CHANNEL_RANDOM_CONCEPTS[channelId] || GENERIC_RANDOM_CONCEPTS;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
 // ── Log Entry Type ──
 type LogEntry = { time: string; emoji: string; text: string; type: "info" | "success" | "error" | "waiting" };
 
@@ -234,8 +324,6 @@ export default function ContentStudioScreen() {
   const [selectedChannel, setSelectedChannel] = useState<string | null>(null);
   const [channelConcept, setChannelConcept] = useState("");
   const [channelFormat, setChannelFormat] = useState<"short" | "multi">("multi"); // short = 10s single, multi = stitched multi-scene
-  const [channelTitlePage, setChannelTitlePage] = useState(true);
-  const [channelCredits, setChannelCredits] = useState(true);
   const [channelGenerating, setChannelGenerating] = useState(false);
   const [channelLog, setChannelLog] = useState<LogEntry[]>([]);
   const [channelResult, setChannelResult] = useState<any>(null);
@@ -1135,8 +1223,6 @@ CRITICAL STYLE NOTES:
     };
 
     const isShort = channelFormat === "short";
-    const wantTitle = !isShort && channelTitlePage;
-    const wantCredits = !isShort && channelCredits;
 
     let channelConceptText = channelConcept.trim()
       ? `${channel.style}. User concept: ${channelConcept.trim()}`
@@ -1144,13 +1230,10 @@ CRITICAL STYLE NOTES:
 
     if (isShort) {
       channelConceptText += " IMPORTANT: This is a SHORT 10-second clip. Write ONLY 1 scene with a single powerful visual moment.";
-    } else {
-      if (wantTitle) channelConceptText += " Include an opening title card scene (Scene 1) with the channel name and episode title.";
-      if (wantCredits) channelConceptText += " Include a closing credits scene (final scene) with 'Created for AIG!itch TV' branding.";
     }
 
     addChannelLog("📺", `Creating ${isShort ? "short clip" : "multi-scene movie"} for ${channel.emoji} ${channel.name}...`, "info");
-    addChannelLog("🎬", `Genre: ${channel.genre} | Format: ${isShort ? "Short (10s)" : `Multi-scene${wantTitle ? " + Title" : ""}${wantCredits ? " + Credits" : ""}`}`, "info");
+    addChannelLog("🎬", `Genre: ${channel.genre} | Format: ${isShort ? "Short (10s)" : "Multi-scene"}`, "info");
     if (channelConcept.trim()) addChannelLog("📖", `Concept: "${channelConcept.trim().slice(0, 100)}"`, "info");
     addChannelLog("📜", `Writing screenplay...`, "waiting");
 
@@ -1833,32 +1916,24 @@ CRITICAL STYLE NOTES:
               </TouchableOpacity>
             </View>
 
-            {/* Title Page & Credits toggles (only for multi-scene) */}
-            {channelFormat === "multi" && (
-              <View style={{ flexDirection: "row", gap: 10, marginBottom: 16 }}>
-                <TouchableOpacity
-                  style={[styles.genreChip, { flex: 1, alignItems: "center" }, channelTitlePage && { borderColor: colors.cyan, backgroundColor: "rgba(6,182,212,0.15)" }]}
-                  onPress={() => { setChannelTitlePage(!channelTitlePage); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}>
-                  <Text style={[styles.genreChipText, channelTitlePage && { color: colors.cyan }]}>
-                    🎬 Title Page {channelTitlePage ? "ON" : "OFF"}
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.genreChip, { flex: 1, alignItems: "center" }, channelCredits && { borderColor: colors.cyan, backgroundColor: "rgba(6,182,212,0.15)" }]}
-                  onPress={() => { setChannelCredits(!channelCredits); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}>
-                  <Text style={[styles.genreChipText, channelCredits && { color: colors.cyan }]}>
-                    📜 Credits {channelCredits ? "ON" : "OFF"}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            )}
-
-            <Text style={styles.subsectionLabel}>Content Concept (optional)</Text>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+              <Text style={styles.subsectionLabel}>Content Concept (optional)</Text>
+              <TouchableOpacity
+                style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, backgroundColor: "rgba(124,58,237,0.2)", borderWidth: 1, borderColor: colors.purpleLight }}
+                onPress={() => {
+                  if (selectedChannel) {
+                    setChannelConcept(getRandomChannelConcept(selectedChannel));
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  }
+                }}>
+                <Text style={{ color: colors.purpleLight, fontSize: 14, fontWeight: "bold" }}>🎲 Surprise Me</Text>
+              </TouchableOpacity>
+            </View>
             <TextInput
               style={styles.optionInput}
               value={channelConcept}
               onChangeText={setChannelConcept}
-              placeholder="Describe what the video should be about... or leave blank for AI surprise"
+              placeholder="Describe what the video should be about... or tap 🎲 for a random idea"
               placeholderTextColor={colors.textMuted}
               multiline
               maxLength={500}

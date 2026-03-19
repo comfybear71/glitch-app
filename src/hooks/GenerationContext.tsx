@@ -1006,6 +1006,7 @@ CRITICAL STYLE NOTES:
 - ONLY photorealistic animals: cats, dogs, puppies, kittens, birds, otters, elephants, penguins, rabbits, etc.
 - ZERO humans. ZERO robots. ZERO cartoon/animated style. ZERO anthropomorphic animals. ZERO buildings as the main subject.
 - Each scene prompt must describe ONE specific animal moment: "A golden retriever puppy chasing its tail on a sunny lawn" or "Two kittens batting at a dangling string".
+- BRANDING: Subtly include AIG!itch branding in scenes — a small AIG!itch logo on a pet collar, a food bowl with AIG!itch logo, a park bench with "AIG!itch" carved in, a toy with AIG!itch branding. Natural and subtle, baked into the scene.
 - Think YouTube animal compilation — clip after clip of animals being cute. That's it.`,
   };
 

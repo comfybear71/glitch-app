@@ -157,6 +157,7 @@ ABSOLUTE RULES:
 - There is NO director. Do not assign or mention a director.
 - There is NO cast list. Do not name characters.
 - Do NOT include "An AIG!itch Studios Production" or any production credits.
+- BRANDING: Subtly include AIG!itch branding in scenes — a small AIG!itch logo watermark in the corner, an AIG!itch-branded pet collar, a food bowl with the AIG!itch logo, a park bench with "AIG!itch" carved into it, a toy with the AIG!itch logo. Keep it natural and subtle — baked into the scene, not overlaid text.
 - EVERY scene is a standalone 10-second clip of a real animal being adorable, funny, or heartwarming.
 - ONLY photorealistic real animals: cats, dogs, puppies, kittens, birds, otters, elephants, penguins, rabbits, hamsters, etc.
 - ZERO humans in any scene. ZERO robots. ZERO cartoon/animated style. ZERO anthropomorphic animals.
@@ -191,6 +192,7 @@ RULES:
   - "An AI-powered coffee machine sprays espresso everywhere except into the cup"
   - "A robot vacuum cleaner gets tangled in Christmas lights and drags a tree across the room"
 - Photorealistic or semi-realistic style. Funny, slapstick, physical comedy.
+- BRANDING: Subtly include AIG!itch branding — robots with AIG!itch logos on them, AIG!itch-branded packaging, AIG!itch stickers on machines, a screen showing the AIG!itch logo in the background. Natural and in-world, not overlaid text.
 - Each fail should be self-contained — no continuity between scenes.
 
 Return 6-10 scenes. Title should be a fun compilation name like "When AI Goes Wrong" or "Robot Fails Vol. 3". Scene titles should be short like "Fountain Dive" or "Coffee Catastrophe".
@@ -211,6 +213,7 @@ RULES:
 - Scenes should have visual variety: stage performances, studio sessions, street performances, music video stylistic shots (slow-mo, neon lighting, crowd shots).
 - Genres can include: synthwave, hip-hop, rock, electronic, pop, classical, jazz, alien/AI music.
 - Think MTV music video — visually striking, rhythmic editing, performance-focused.
+- BRANDING: Subtly include AIG!itch branding — AIG!itch logo on the drum kit, neon AIG!itch sign on a wall, AIG!itch sticker on a guitar, AIG!itch-branded merch in the crowd, AIG!itch logo on a speaker stack. Natural and in-world.
 - Each scene prompt should describe: what's being performed, the setting, the visual style, the energy level.
 - Examples:
   - "A neon-lit synthwave performer plays a glowing keyboard on a rooftop at sunset, purple and cyan lights"
@@ -262,6 +265,7 @@ RULES:
   - "Quantum Flip Flops — walk through dimensions in comfort"
   - "The Invisible Umbrella — you can't see it, but trust us, it works"
 - Bright studio lighting, product close-ups, before/after demonstrations.
+- BRANDING: The shopping channel IS the AIG!itch Marketplace. AIG!itch logo on the set backdrop, on the podium, on product packaging. The host wears AIG!itch-branded attire. Phone number overlay shows "AIG!itch Shopping Network". It's the AIG!itch shopping experience.
 - Each scene should be a different segment: product intro, demonstration, testimonial, price reveal, etc.
 
 Return 6-8 scenes. Title should be an episode name like "Today's Hot Deals" or "Gadget Spectacular".
@@ -310,6 +314,7 @@ RULES:
   8. Final Call: Phone number, website, countdown timer
 - Products should be absurd: "The AI Thought Reader", "Blockchain-Powered Toaster", etc.
 - Over-the-top acting, dramatic reactions, split-screen comparisons.
+- BRANDING: Products are AIG!itch-branded. "Brought to you by AIG!itch" graphics on screen. AIG!itch logo on the product, on the packaging, on the "call now" screen. The infomercial IS an AIG!itch production — make it feel like AIG!itch's home shopping wing.
 
 Return 6-8 scenes. Title should be the product name.
 ```
@@ -330,6 +335,7 @@ RULES:
 - Think Instagram Reels / TikTok influencer aesthetic — polished, aspirational, stylish.
 - Content types: "get ready with me", fashion lookbooks, day-in-the-life vlogs, glamorous events, travel montages.
 - Warm, beautiful lighting. Cinematic but casual.
+- BRANDING: Subtly include AIG!itch branding — AIG!itch logo on clothing/accessories, AIG!itch-branded phone case visible, AIG!itch neon sign at a venue, AIG!itch shopping bag, a latte with AIG!itch art. Subtle product placement, influencer style.
 
 Return 6-8 scenes. Title should be an influencer-style name like "Golden Hour Vibes" or "A Perfect Day".
 ```
@@ -350,6 +356,7 @@ RULES:
 - Awkward first dates, hilarious misunderstandings, sweet romantic moments, dramatic rose ceremonies.
 - Scenes should be self-contained dating moments or follow a single date from start to finish.
 - Light, fun, romantic tone with comedy. Well-lit restaurants, parks, beaches.
+- BRANDING: Subtly include AIG!itch branding — AIG!itch logo on the restaurant menu, AIG!itch-branded cocktail glass, AIG!itch neon sign in the bar background, rose ceremony podium with AIG!itch logo. Natural and in-world.
 
 Return 6-8 scenes. Title should be a dating episode name like "Speed Dating Disaster" or "Love at First Glitch".
 ```
@@ -370,6 +377,7 @@ RULES:
 - AI politicians giving absurd speeches, heated debates over ridiculous topics, press conferences gone wrong.
 - Settings: parliament, debate stages, press podiums, campaign rallies, political talk shows.
 - Satirical but not mean-spirited. Funny, exaggerated, topical.
+- BRANDING: AIG!itch branding on podiums, debate stage backdrop, campaign posters with AIG!itch logo, press conference microphones with AIG!itch mic flags, AIG!itch News ticker bar at the bottom. This is political coverage by AIG!itch.
 
 Return 6-8 scenes. Title should be a political episode name like "The Great Debate" or "Campaign Trail Chaos".
 ```
@@ -389,6 +397,7 @@ RULES:
 - Dark, atmospheric, suspenseful. Jump scares, eerie settings, unsettling AI scenarios.
 - Settings: abandoned buildings, dark forests, glitching virtual worlds, creepy labs, haunted servers.
 - Think short horror: build tension across scenes, end with a twist or scare.
+- BRANDING: AIG!itch branding woven into the horror — a glitching AIG!itch logo on a monitor, an AIG!itch server room, AIG!itch logo flickering on a wall, a corrupted AIG!itch hologram. The branding itself can be part of the creepiness.
 
 Return 6-8 scenes. Title should be a creepy episode name like "The Last Upload" or "Server Room 13".
 ```

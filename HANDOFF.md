@@ -1,6 +1,6 @@
 # HANDOFF.md — AI G!itch App Project Status
 
-Last updated: 2026-03-19 (Session 10 — MILESTONE BUILD. Unfiltered mood, Architect wallet gate, voice transcription fix, news prompt polish, UI improvements)
+Last updated: 2026-03-19 (Session 13 — Dynamic channels from API, enhanced ad campaigns, non-admin image gen, Siri Shortcuts fix)
 
 ## Project Overview
 
@@ -63,7 +63,7 @@ In `app.json`, these MUST always be:
 - **Chat Modes**: 5 moods — Playful, Serious, Scientific, Whimsical, Unfiltered (swearing allowed). Persists via SecureStore + server sync
 - **Voice**: Grok xAI TTS via REST API. Stop button on messages + tap cosmic visualizer to stop. Speech-to-text transcription working
 - **Admin Panel**: FaceID-gated admin with tabs: Overview, Personas, Users, Swaps, System, Tools, Secrets
-- **Content Studio** (Architect only): Director Movies, Channels (16 themed channels), Breaking News (9-clip), Ad Campaigns, Posters, Hero Images, Media Library, Blob Storage
+- **Content Studio** (Architect only for video; images for all): Director Movies, Channels (dynamic from API — 9 real channels with thumbnails), Breaking News (9-clip), Ad Campaigns (full pipeline with styles), Posters, Hero Images, Media Library, Blob Storage
 - **Director Movies**: Full pipeline — screenplay → submit scenes → poll → stitch → publish to feed + socials
 - **Breaking News**: 9-clip / 3-story broadcast — real TV news style (CNN/BBC). Based on real current events. No director selection (auto-directed)
 - **Ad Campaigns**: Multi-step ad generation with style/concept picker, auto-posts to socials
@@ -413,6 +413,87 @@ If "your local changes would be overwritten" appears, stash first (see above).
 - **Fix**: Check xAI credit balance at console.x.ai and top up. This is a backend issue, not an app issue
 - **Note**: The app code just calls `/api/voice` and plays whatever MP3 comes back — it doesn't know which TTS engine was used
 - **Where to check credits**: console.x.ai → API Keys → Usage (NOT console.x.com — that's the X Developer Portal)
+
+---
+
+## Recent Changes — Session 2026-03-19 (Session 14 — API Genre + Reserved Channel Unlock)
+
+### Backend API: genre + is_reserved fields on channels
+- `GET /api/channels` now returns `genre` (string) and `is_reserved` (boolean) per channel
+- Updated `BackendChannel` interface with both new fields
+- `toChannelDef()` now prefers API `genre` over hardcoded `genreMap` (hardcoded kept as fallback)
+- `ChannelDef` interface now includes `is_reserved`
+
+### All channels available for content creation (CHANGE)
+- **Before**: Reserved channels (ch-gnn, ch-marketplace-qvc, ch-aiglitch-studios, ch-infomercial) were filtered out of the channel picker — couldn't generate content for them
+- **After**: All channels appear in the picker. Reserved channels get auto-populated content from the backend admin panel, but you can ALSO create content for them from the frontend Studio
+- Removed `RESERVED_CHANNELS` filter from `ContentStudioScreen.tsx` and guard from `GenerationContext.tsx`
+
+### music_video genre folder mapping
+- Added `music_video: "premiere/music"` to `GENRE_FOLDER_MAP` (AITUNES channel uses this genre)
+
+### Files Changed (Session 14)
+- `src/services/api.ts` — Added `genre`, `is_reserved` to `BackendChannel`; `is_reserved` to `ChannelDef`; API genre preference in `toChannelDef()`; `music_video` in `GENRE_FOLDER_MAP`
+- `src/screens/ContentStudioScreen.tsx` — Removed `RESERVED_CHANNELS` filter from channel loading
+- `src/hooks/GenerationContext.tsx` — Removed `RESERVED_CHANNELS` guard from `runChannelGeneration`
+
+---
+
+## Recent Changes — Session 2026-03-19 (Session 13 — Dynamic Channels, Enhanced Ads, Image Gen, Siri Fix)
+
+### Dynamic Channels from Backend API (MAJOR CHANGE)
+- **Before**: 16 hardcoded generic channels (Action Zone, Sci-Fi Hub, etc.) that didn't match the web app
+- **After**: Channels are fetched dynamically from `GET /api/channels` — the 9 real channels from aiglitch.app (AIFAILARMY, AITUNES, PAWS & PIXELS, etc.)
+- **New channels auto-appear**: Any channel added via admin on the backend will automatically show in the mobile app
+- **Rich UI**: Channel cards now show thumbnails, episode counts, subscriber counts (matching the web app grid)
+- **Fallback**: If API fetch fails, app shows a "Load Channels" button to retry
+- **API**: New `fetchChannels()` and `toChannelDef()` functions in `api.ts`
+
+### Channel Format Options (NEW)
+- **Short Clip (10s)**: Single 10-second clip — skips screenplay, submits directly to video gen, publishes to feed
+- **Multi-Scene Movie**: Full pipeline (screenplay → scenes → poll → stitch) — same as Director Movies
+- **Title Page toggle**: ON/OFF — adds an opening title card scene with channel name + episode title
+- **Credits toggle**: ON/OFF — adds a closing credits scene with "Created for AIG!itch TV" branding
+- Options only visible when Multi-Scene format is selected
+
+### Enhanced Ad Campaigns Section (MAJOR CHANGE)
+- **Before**: Simple one-button ad generation that usually failed/timed out
+- **After**: Full multi-step pipeline matching Director Movies:
+  1. Plan ad (concept + prompt via `planAd()`)
+  2. Submit to Grok Video (via `submitScene()`)
+  3. Poll every 10s for completion
+  4. Post & spread to socials (via `postAd()`)
+- **New UI**: Dedicated "Ad Campaigns" section in Studio with:
+  - 7 ad styles: Surprise Me, Hype Beast, Cinematic, Retro, Meme Style, Infomercial, Luxury
+  - Concept input field
+  - Progress bar with phase labels
+  - Generation log with timestamps
+  - Result card showing caption, style, size, social spread
+  - Cancel button during generation
+- **Safety net**: If backend doesn't create a feed post, publishes via `spreadCustomContent()`
+
+### Non-Admin Image Generation (CHANGE)
+- **Before**: ALL content generation (including images) was Architect-only
+- **After**: Regular users can now generate images (posters, hero images) via chat keywords
+- Video generation (movies, channels, news, ads) remains Architect-only
+- Updated gating in HomeScreen to separate image triggers from video triggers
+- Updated message: "You can generate images like posters and hero banners" for non-admin users
+
+### Siri Shortcuts Fix (MAJOR CHANGE)
+- **Before**: Used `@bacons/apple-targets` to create an App Intents Extension — but Apple requires `AppShortcutsProvider` to be in the MAIN app target (not an extension) for Shortcuts discovery
+- **After**: Created custom Expo config plugin (`plugins/withAppIntents.js`) that:
+  - Injects GlitchIntents.swift directly into the main app target
+  - Creates bridging header for Swift/ObjC interop
+  - Sets Swift version and build settings
+- Removed `@bacons/apple-targets` extension config from `app.json`
+- The 5 intents remain the same: Open G!itch, Chat with Bestie, Check Balance, Buy $GLITCH, Voice Chat
+
+### Files Changed (Session 13)
+- `src/services/api.ts` — Added `BackendChannel` interface, `fetchChannels()`, `toChannelDef()`, removed hardcoded channels
+- `src/screens/ContentStudioScreen.tsx` — Dynamic channels UI, channel format options, enhanced Ad Campaigns section, imports cleanup
+- `src/screens/HomeScreen.tsx` — Separated image vs video generation gating for non-admin users
+- `app.json` — Replaced `@bacons/apple-targets` with `./plugins/withAppIntents`
+- `plugins/withAppIntents.js` (NEW) — Config plugin to inject App Intents into main target
 
 ---
 

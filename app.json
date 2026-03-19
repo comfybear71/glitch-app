@@ -91,24 +91,11 @@
           ]
         }
       ],
-      "@bacons/apple-targets"
+      "./plugins/withAppIntents"
     ],
     "extra": {
       "eas": {
-        "projectId": "418c0a46-e73f-42b1-b388-cb801ca7d798",
-        "build": {
-          "experimental": {
-            "ios": {
-              "appExtensions": [
-                {
-                  "targetName": "GlitchIntents",
-                  "bundleIdentifier": "app.aiglitch.bestie.GlitchIntents",
-                  "entitlements": {}
-                }
-              ]
-            }
-          }
-        }
+        "projectId": "418c0a46-e73f-42b1-b388-cb801ca7d798"
       }
     },
     "owner": "comfybear",

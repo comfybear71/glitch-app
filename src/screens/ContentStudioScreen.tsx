@@ -21,8 +21,9 @@ import {
   generateScreenplay, submitScene, pollScene, stitchMovie,
   autoGenerateConcept, listDirectorPrompts, submitExtension, pollExtension, stitchExtension,
   getBriefing,
+  planAd, postAd,
   GENRE_FOLDER_MAP, ScreenplayResponse, ScenePollResponse,
-  CHANNELS, ChannelDef, CHANNEL_FOLDER_MAP,
+  ChannelDef, fetchChannels, toChannelDef,
 } from "../services/api";
 
 // Admin wallet — only this wallet can generate content
@@ -172,6 +173,7 @@ export default function ContentStudioScreen() {
     create: true,
     directors: false,
     channels: false,
+    ads: false,
     news: false,
     library: false,
     uploads: false,
@@ -226,9 +228,14 @@ export default function ContentStudioScreen() {
     setNewsLog((prev) => [...prev.slice(-120), { time: timestamp(), emoji, text, type }]);
   };
 
-  // ── Channels State ──
+  // ── Channels State (dynamic from API) ──
+  const [channels, setChannels] = useState<ChannelDef[]>([]);
+  const [channelsLoading, setChannelsLoading] = useState(false);
   const [selectedChannel, setSelectedChannel] = useState<string | null>(null);
   const [channelConcept, setChannelConcept] = useState("");
+  const [channelFormat, setChannelFormat] = useState<"short" | "multi">("multi"); // short = 10s single, multi = stitched multi-scene
+  const [channelTitlePage, setChannelTitlePage] = useState(true);
+  const [channelCredits, setChannelCredits] = useState(true);
   const [channelGenerating, setChannelGenerating] = useState(false);
   const [channelLog, setChannelLog] = useState<LogEntry[]>([]);
   const [channelResult, setChannelResult] = useState<any>(null);
@@ -239,6 +246,19 @@ export default function ContentStudioScreen() {
 
   const addChannelLog = (emoji: string, text: string, type: LogEntry["type"] = "info") => {
     setChannelLog((prev) => [...prev.slice(-120), { time: timestamp(), emoji, text, type }]);
+  };
+
+  // ── Ad Campaign State (enhanced — same pipeline as Director Movies) ──
+  const [adStyle, setAdStyle] = useState<string | null>(null);
+  const [adConceptInput, setAdConceptInput] = useState("");
+  const [adLog, setAdLog] = useState<LogEntry[]>([]);
+  const [adResult, setAdResult] = useState<any>(null);
+  const [adPhase, setAdPhase] = useState<string>("idle");
+  const [adProgress, setAdProgress] = useState({ current: 0, total: 0, pct: 0 });
+  const adCancelRef = useRef(false);
+
+  const addAdLog = (emoji: string, text: string, type: LogEntry["type"] = "info") => {
+    setAdLog((prev) => [...prev.slice(-120), { time: timestamp(), emoji, text, type }]);
   };
 
   // ── Library State ──
@@ -346,41 +366,186 @@ export default function ContentStudioScreen() {
     setMonitorLoading(false);
   }, [walletAddress, sessionId]);
 
+  // ── Load Channels from API ──
+  const loadChannels = useCallback(async () => {
+    if (channelsLoading) return;
+    setChannelsLoading(true);
+    try {
+      const backendChannels = await fetchChannels();
+      setChannels(backendChannels.map(toChannelDef));
+    } catch (e: any) {
+      console.warn("Channels fetch failed:", e?.message);
+    }
+    setChannelsLoading(false);
+  }, [channelsLoading]);
+
   // Auto-load on expand
+  useEffect(() => { if (expandedSections.channels && channels.length === 0) loadChannels(); }, [expandedSections.channels]);
   useEffect(() => { if (expandedSections.library) loadLibrary(); }, [expandedSections.library]);
   useEffect(() => { if (expandedSections.uploads) loadBlobStorage(); }, [expandedSections.uploads]);
   useEffect(() => { if (expandedSections.social) loadSocial(); }, [expandedSections.social]);
   useEffect(() => { if (expandedSections.monitor) loadMonitor(); }, [expandedSections.monitor]);
 
-  // ── Generate Ad (via /api/generate-ads) ──
-  const handleGenerateAd = async () => {
+  // ── Generate Ad — Full Multi-Step Pipeline (like Director Movies) ──
+  const handleGenerateAdFull = async () => {
     if (adGenerating || !walletAddress) return;
     if (walletAddress !== ADMIN_WALLET) {
       Alert.alert("Architect Only", "Sorry bestie! Only the Architect has the power to generate content right now. This superpower is coming to all besties soon!");
       return;
     }
     setAdGenerating(true);
-    addQuickLog("🎬", `Starting ad generation...`, "info");
-    addQuickLog("📡", `Submitting to /api/generate-ads...`, "info");
+    setAdResult(null);
+    setAdLog([]);
+    setAdPhase("planning");
+    setAdProgress({ current: 0, total: 4, pct: 0 });
+    adCancelRef.current = false;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+
+    const startTime = Date.now();
+    const formatElapsed = (from: number) => {
+      const s = Math.floor((Date.now() - from) / 1000);
+      return `${Math.floor(s / 60)}m ${s % 60}s`;
+    };
+
+    const style = adStyle || undefined;
+    const concept = adConceptInput.trim() || undefined;
+
+    addAdLog("🎯", `Starting ad campaign...`, "info");
+    if (style) addAdLog("🎨", `Style: ${style}`, "info");
+    if (concept) addAdLog("📖", `Concept: "${concept.slice(0, 100)}"`, "info");
+    addAdLog("📜", `Planning ad concept...`, "waiting");
+
     try {
-      const res = await generateAd(walletAddress);
-      if (res.success) {
-        addQuickLog("✅", `Ad generated! ${res.message || ""}`, "success");
-        if (res.job_id) addQuickLog("📡", `Job ID: ${res.job_id}`, "info");
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        Alert.alert("Ad Generated!", res.message || "Ad video is being created.");
-      } else {
-        addQuickLog("❌", res.message || "Ad generation failed", "error");
+      // ── STEP 1: Plan Ad — get concept + video prompt ──
+      const planRes = await planAd(walletAddress, style, concept);
+      if (adCancelRef.current) { setAdGenerating(false); setAdPhase("idle"); return; }
+
+      if (!planRes.success || !planRes.prompt) {
+        addAdLog("❌", planRes.message || "Failed to plan ad", "error");
+        setAdPhase("failed");
+        setAdGenerating(false);
+        return;
       }
+
+      addAdLog("✅", `Ad concept ready: "${planRes.caption?.slice(0, 100) || "Ad"}"`, "success");
+      addAdLog("🎨", `Style: ${planRes.style || "auto"}`, "info");
+      setAdProgress({ current: 1, total: 4, pct: 25 });
+
+      // ── STEP 2: Submit to Grok Video ──
+      setAdPhase("rendering");
+      addAdLog("📡", `Submitting to video generation...`, "waiting");
+
+      const submitRes = await submitScene(walletAddress, planRes.prompt, 10, "ads");
+      if (adCancelRef.current) { setAdGenerating(false); setAdPhase("idle"); return; }
+
+      if (!submitRes.success || !submitRes.requestId) {
+        addAdLog("❌", `Video submission failed: ${submitRes.error || "Unknown"}`, "error");
+        setAdPhase("failed");
+        setAdGenerating(false);
+        return;
+      }
+
+      addAdLog("✅", `Submitted: ${submitRes.requestId.slice(0, 20)}...`, "success");
+      setAdProgress({ current: 2, total: 4, pct: 50 });
+
+      // ── STEP 3: Poll for Completion ──
+      setAdPhase("polling");
+      addAdLog("⏳", `Polling video status every 10s (max 15 min)...`, "waiting");
+
+      let pollCount = 0;
+      let videoUrl: string | null = null;
+      let videoSizeMb: number | null = null;
+
+      while (pollCount < 90 && !adCancelRef.current) {
+        await new Promise(r => setTimeout(r, 10000));
+        pollCount++;
+
+        try {
+          const pollRes = await pollScene(walletAddress, submitRes.requestId, "ads");
+
+          if (pollRes.status === "done" && pollRes.blobUrl) {
+            videoUrl = pollRes.blobUrl;
+            videoSizeMb = pollRes.sizeMb || null;
+            addAdLog("🎉", `Video ready! (${formatElapsed(startTime)}) — ${videoSizeMb || "?"}MB`, "success");
+            break;
+          } else if (["failed", "moderation_failed", "expired"].includes(pollRes.status)) {
+            addAdLog("❌", `Video generation FAILED: ${pollRes.status}`, "error");
+            setAdPhase("failed");
+            setAdGenerating(false);
+            return;
+          } else {
+            if (pollCount % 3 === 0) {
+              addAdLog("🔄", `${formatElapsed(startTime)}: Still rendering...`, "info");
+            }
+          }
+        } catch (err: any) {
+          console.warn("Ad poll error:", err?.message);
+        }
+      }
+
+      if (adCancelRef.current) { setAdGenerating(false); setAdPhase("idle"); return; }
+
+      if (!videoUrl) {
+        addAdLog("❌", `Video timed out after ${formatElapsed(startTime)}`, "error");
+        setAdPhase("failed");
+        setAdGenerating(false);
+        return;
+      }
+
+      setAdProgress({ current: 3, total: 4, pct: 75 });
+
+      // ── STEP 4: Post & Spread to Socials ──
+      setAdPhase("spreading");
+      addAdLog("📡", `Publishing ad to socials...`, "waiting");
+
+      const postRes = await postAd(walletAddress, videoUrl, planRes.caption || "New ad from AIG!itch", style);
+
+      setAdProgress({ current: 4, total: 4, pct: 100 });
+      addAdLog("✅", `AD CAMPAIGN COMPLETE! ${formatElapsed(startTime)}`, "success");
+
+      if (postRes.spreading?.length) {
+        addAdLog("📡", `Spread to: ${postRes.spreading.join(", ")}`, "success");
+      }
+
+      // Safety net: if no feed post, publish to feed
+      if (!postRes.post?.feedPostId) {
+        try {
+          await spreadCustomContent(walletAddress, planRes.caption || "New AIG!itch ad", videoUrl, "video");
+          addAdLog("📡", "Published to AIG!itch feed (safety net)", "success");
+        } catch { /* non-fatal */ }
+      }
+
+      // Route to Marketplace QVC channel so all ads appear there
+      try {
+        await spreadCustomContent(walletAddress, planRes.caption || "New AIG!itch ad", videoUrl, "video", "ch-marketplace-qvc");
+        addAdLog("📺", "Published to Marketplace QVC channel", "success");
+      } catch { /* non-fatal */ }
+
+      setAdResult({
+        success: true,
+        caption: planRes.caption,
+        style: planRes.style,
+        videoUrl,
+        sizeMb: videoSizeMb,
+        spreading: postRes.spreading,
+        feedPostId: postRes.post?.feedPostId,
+      });
+      setAdPhase("complete");
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
     } catch (e: any) {
-      addQuickLog("❌", e?.message || "Ad generation failed", "error");
-      Alert.alert("Error", e?.message || "Ad generation failed");
+      addAdLog("❌", e?.message || "Ad campaign failed", "error");
+      setAdPhase("failed");
     }
     setAdGenerating(false);
   };
 
-  // ── Quick Generate (poster/hero using working endpoints) ──
+  const handleCancelAd = () => {
+    adCancelRef.current = true;
+    addAdLog("⚠️", "Cancelling ad campaign...", "waiting");
+  };
+
+  // ── Quick Generate (poster/hero — available to ALL users, not just Architect) ──
   const handleQuickGenerate = async (type: "poster" | "hero") => {
     if (quickGenerating || !walletAddress) return;
     setQuickGenerating(true);
@@ -602,10 +767,19 @@ export default function ContentStudioScreen() {
         synopsis: screenplay.synopsis,
         tagline: screenplay.tagline,
         castList: screenplay.castList,
+        channelId: "ch-aiglitch-studios",
+        folder: "channels/aiglitch-studios",
       });
 
       setMovieProgress({ current: 1, total: 1, pct: 100 });
       addMovieLog("✅", `MOVIE STITCHED! ${stitchRes.clipCount} clips → ${stitchRes.sizeMb}MB`, "success");
+
+      // Publish to AIG!itch Studios channel
+      try {
+        const caption = `"${screenplay.title}" by ${screenplay.directorName}\n${screenplay.tagline || screenplay.synopsis || ""}`;
+        await spreadCustomContent(walletAddress, caption, stitchRes.finalVideoUrl, "video", "ch-aiglitch-studios");
+        addMovieLog("🎬", "Published to AIG!itch Studios channel", "success");
+      } catch { /* non-fatal */ }
 
       // Safety net: publish to feed if backend didn't create a feed post
       if (!stitchRes.feedPostId) {
@@ -895,6 +1069,13 @@ CRITICAL STYLE NOTES:
         } catch { /* non-fatal */ }
       }
 
+      // Route to GNN channel so all breaking news appears there
+      try {
+        const gnnCaption = `BREAKING: ${screenplay.title}\n${screenplay.synopsis || screenplay.tagline || "AIG!itch News broadcast"}`;
+        await spreadCustomContent(walletAddress, gnnCaption, stitchRes.finalVideoUrl, "video", "ch-gnn");
+        addNewsLog("📺", "Published to GNN channel", "success");
+      } catch { /* non-fatal */ }
+
       addNewsLog("✅", `BROADCAST LIVE! ${stitchRes.clipCount} clips → ${stitchRes.sizeMb}MB`, "success");
       if (stitchRes.spreading?.length) {
         addNewsLog("📡", `Spread to: ${stitchRes.spreading.join(", ")}`, "success");
@@ -935,7 +1116,7 @@ CRITICAL STYLE NOTES:
       Alert.alert("Select a Channel", "Pick a channel to create content for.");
       return;
     }
-    const channel = CHANNELS.find(ch => ch.id === selectedChannel);
+    const channel = channels.find(ch => ch.id === selectedChannel);
     if (!channel) return;
 
     setChannelGenerating(true);
@@ -953,16 +1134,119 @@ CRITICAL STYLE NOTES:
       return `${Math.floor(s / 60)}m ${s % 60}s`;
     };
 
-    const channelConceptText = channelConcept.trim()
+    const isShort = channelFormat === "short";
+    const wantTitle = !isShort && channelTitlePage;
+    const wantCredits = !isShort && channelCredits;
+
+    let channelConceptText = channelConcept.trim()
       ? `${channel.style}. User concept: ${channelConcept.trim()}`
       : `${channel.style}. Create compelling ${channel.name} content that fits the channel theme: ${channel.description}.`;
 
-    addChannelLog("📺", `Creating content for ${channel.emoji} ${channel.name}...`, "info");
-    addChannelLog("🎬", `Genre: ${channel.genre} | Style: ${channel.style}`, "info");
+    if (isShort) {
+      channelConceptText += " IMPORTANT: This is a SHORT 10-second clip. Write ONLY 1 scene with a single powerful visual moment.";
+    } else {
+      if (wantTitle) channelConceptText += " Include an opening title card scene (Scene 1) with the channel name and episode title.";
+      if (wantCredits) channelConceptText += " Include a closing credits scene (final scene) with 'Created for AIG!itch TV' branding.";
+    }
+
+    addChannelLog("📺", `Creating ${isShort ? "short clip" : "multi-scene movie"} for ${channel.emoji} ${channel.name}...`, "info");
+    addChannelLog("🎬", `Genre: ${channel.genre} | Format: ${isShort ? "Short (10s)" : `Multi-scene${wantTitle ? " + Title" : ""}${wantCredits ? " + Credits" : ""}`}`, "info");
     if (channelConcept.trim()) addChannelLog("📖", `Concept: "${channelConcept.trim().slice(0, 100)}"`, "info");
     addChannelLog("📜", `Writing screenplay...`, "waiting");
 
     try {
+      // ── SHORT CLIP PATH: Skip screenplay, submit single 10s clip directly ──
+      if (isShort) {
+        setChannelPhase("submitting");
+        const shortPrompt = channelConcept.trim()
+          ? `${channel.style}. ${channelConcept.trim()}. 10-second ${channel.name} channel clip.`
+          : `${channel.style}. Create a compelling 10-second clip for the ${channel.name} channel. Theme: ${channel.description}. Make it visually striking and brand-worthy.`;
+
+        addChannelLog("📡", `Submitting short clip to xAI...`, "waiting");
+        const submitRes = await submitScene(walletAddress, shortPrompt, 10, channel.folder);
+
+        if (channelCancelRef.current) { setChannelGenerating(false); setChannelPhase("idle"); return; }
+
+        if (!submitRes.success || !submitRes.requestId) {
+          addChannelLog("❌", `Clip submission failed: ${submitRes.error || "Unknown"}`, "error");
+          setChannelPhase("failed");
+          setChannelGenerating(false);
+          return;
+        }
+
+        addChannelLog("✅", `Submitted: ${submitRes.requestId.slice(0, 20)}...`, "success");
+        setChannelProgress({ current: 1, total: 3, pct: 33 });
+
+        // Poll for completion
+        setChannelPhase("polling");
+        addChannelLog("⏳", `Polling every 10s (max 15 min)...`, "waiting");
+        let pollCount = 0;
+        let videoUrl: string | null = null;
+        let videoSizeMb: number | null = null;
+
+        while (pollCount < 90 && !channelCancelRef.current) {
+          await new Promise(r => setTimeout(r, 10000));
+          pollCount++;
+          try {
+            const pollRes = await pollScene(walletAddress, submitRes.requestId, channel.folder);
+            if (pollRes.status === "done" && pollRes.blobUrl) {
+              videoUrl = pollRes.blobUrl;
+              videoSizeMb = pollRes.sizeMb || null;
+              addChannelLog("🎉", `Clip ready! (${formatElapsed(startTime)}) — ${videoSizeMb || "?"}MB`, "success");
+              break;
+            } else if (["failed", "moderation_failed", "expired"].includes(pollRes.status)) {
+              addChannelLog("❌", `Clip FAILED: ${pollRes.status}`, "error");
+              setChannelPhase("failed");
+              setChannelGenerating(false);
+              return;
+            } else if (pollCount % 3 === 0) {
+              addChannelLog("🔄", `${formatElapsed(startTime)}: Still rendering...`, "info");
+            }
+          } catch (err: any) { console.warn("Poll error:", err?.message); }
+          setChannelProgress({ current: 1, total: 3, pct: 33 + Math.min(pollCount * 2, 33) });
+        }
+
+        if (channelCancelRef.current) { setChannelGenerating(false); setChannelPhase("idle"); return; }
+
+        if (!videoUrl) {
+          addChannelLog("❌", `Clip timed out after ${formatElapsed(startTime)}`, "error");
+          setChannelPhase("failed");
+          setChannelGenerating(false);
+          return;
+        }
+
+        // Publish to feed
+        setChannelPhase("stitching");
+        setChannelProgress({ current: 2, total: 3, pct: 80 });
+        addChannelLog("📡", `Publishing short clip to feed...`, "waiting");
+
+        const caption = `${channel.emoji} ${channel.name} Short\n${channelConcept.trim() || channel.description}`;
+        try {
+          await spreadCustomContent(walletAddress, caption, videoUrl, "video");
+          addChannelLog("✅", `Published to AIG!itch feed!`, "success");
+        } catch (e: any) {
+          addChannelLog("⚠️", `Feed publish failed: ${e?.message}`, "error");
+        }
+
+        setChannelProgress({ current: 3, total: 3, pct: 100 });
+        setChannelResult({
+          success: true,
+          title: channelConcept.trim() || "Short Clip",
+          channelName: channel.name,
+          channelEmoji: channel.emoji,
+          genre: channel.genre,
+          finalVideoUrl: videoUrl,
+          clipCount: 1,
+          sizeMb: videoSizeMb,
+        });
+        setChannelPhase("complete");
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setChannelGenerating(false);
+        return;
+      }
+
+      // ── MULTI-SCENE PATH: Full pipeline (screenplay → scenes → poll → stitch) ──
+
       // ── STEP 1: Generate Screenplay ──
       const screenplay = await generateScreenplay(walletAddress, {
         genre: channel.genre,
@@ -1117,10 +1401,19 @@ CRITICAL STYLE NOTES:
         synopsis: screenplay.synopsis,
         tagline: screenplay.tagline,
         castList: screenplay.castList,
+        channelId: channel.id,
+        folder: channel.folder,
       });
 
       setChannelProgress({ current: 1, total: 1, pct: 100 });
       addChannelLog("✅", `CHANNEL CONTENT READY! ${stitchRes.clipCount} clips → ${stitchRes.sizeMb}MB`, "success");
+
+      // Publish to the channel itself so it appears on the channel page
+      try {
+        const caption = `${channel.emoji} ${channel.name}: "${screenplay.title}"\n${screenplay.tagline || screenplay.synopsis || ""}`;
+        await spreadCustomContent(walletAddress, caption, stitchRes.finalVideoUrl, "video", channel.id);
+        addChannelLog("📺", `Published to ${channel.name} channel`, "success");
+      } catch { /* non-fatal */ }
 
       // Safety net: publish to feed if backend didn't create a feed post
       if (!stitchRes.feedPostId) {
@@ -1302,19 +1595,6 @@ CRITICAL STYLE NOTES:
               <Text style={styles.actionChevron}>›</Text>
             </TouchableOpacity>
 
-            <View style={styles.divider} />
-
-            {/* Ad generation via working endpoint */}
-            <TouchableOpacity style={[styles.actionCard, adGenerating && { opacity: 0.5 }]}
-              onPress={handleGenerateAd} disabled={adGenerating}>
-              <Text style={styles.actionEmoji}>🎬</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.actionTitle}>{adGenerating ? "Generating..." : "Generate Ad Video"}</Text>
-                <Text style={styles.actionDesc}>AI persona ad with auto social distribution</Text>
-              </View>
-              <Text style={styles.actionChevron}>›</Text>
-            </TouchableOpacity>
-
             {/* Generation Log */}
             {quickLog.length > 0 && <GenerationLog entries={quickLog} onClear={() => setQuickLog([])} />}
           </View>
@@ -1459,52 +1739,120 @@ CRITICAL STYLE NOTES:
         {expandedSections.channels && (
           <View style={styles.sectionBody}>
             <Text style={{ color: colors.textSecondary, fontSize: 12, marginBottom: 12, lineHeight: 18 }}>
-              Create video content for AIG!itch channels. Pick a channel, optionally describe your concept, and generate a multi-scene video that gets published to the channel on aiglitch.app.
+              Create video content for AIG!itch TV channels. Pick a channel, describe your concept, and generate a multi-scene video that gets published to the channel on aiglitch.app. New channels added via admin appear here automatically.
             </Text>
 
-            {/* Channel Picker — Grid of channel cards */}
-            <Text style={styles.subsectionLabel}>Choose a Channel</Text>
-            <View style={styles.genreGrid}>
-              {CHANNELS.map((ch) => (
-                <TouchableOpacity
-                  key={ch.id}
-                  style={[
-                    styles.genreChip,
-                    { paddingHorizontal: 10, paddingVertical: 10 },
-                    selectedChannel === ch.id && { borderColor: colors.cyan, backgroundColor: "rgba(6,182,212,0.15)" },
-                  ]}
-                  onPress={() => {
-                    setSelectedChannel(selectedChannel === ch.id ? null : ch.id);
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  }}>
-                  <Text style={[
-                    styles.genreChipText,
-                    selectedChannel === ch.id && { color: colors.cyan },
-                  ]}>
-                    {ch.emoji} {ch.name}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+            {channelsLoading && <ActivityIndicator color={colors.cyan} style={{ marginVertical: 16 }} />}
+
+            {/* Channel Picker — Grid with thumbnails */}
+            {channels.length > 0 && (
+              <>
+                <Text style={styles.subsectionLabel}>Choose a Channel ({channels.length})</Text>
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 16 }}>
+                  {channels.map((ch) => {
+                    const isSelected = selectedChannel === ch.id;
+                    return (
+                      <TouchableOpacity
+                        key={ch.id}
+                        style={[{
+                          width: "48%",
+                          borderRadius: 12,
+                          overflow: "hidden",
+                          borderWidth: 2,
+                          borderColor: isSelected ? colors.cyan : "#1f2937",
+                          backgroundColor: isSelected ? "rgba(6,182,212,0.08)" : "#111827",
+                        }]}
+                        onPress={() => {
+                          setSelectedChannel(isSelected ? null : ch.id);
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        }}>
+                        {ch.thumbnail ? (
+                          <Image source={{ uri: ch.thumbnail }} style={{ width: "100%", height: 80, backgroundColor: "#1f2937" }} resizeMode="cover" />
+                        ) : (
+                          <View style={{ width: "100%", height: 80, backgroundColor: "#1f2937", justifyContent: "center", alignItems: "center" }}>
+                            <Text style={{ fontSize: 28 }}>{ch.emoji}</Text>
+                          </View>
+                        )}
+                        <View style={{ padding: 10 }}>
+                          <Text style={{ color: isSelected ? colors.cyan : colors.text, fontSize: 13, fontWeight: "800" }} numberOfLines={1}>
+                            {ch.emoji} {ch.name}
+                          </Text>
+                          <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 4 }}>
+                            <Text style={{ color: colors.textMuted, fontSize: 10 }}>{ch.post_count} ep</Text>
+                            <Text style={{ color: colors.textMuted, fontSize: 10 }}>{ch.subscriber_count} subs</Text>
+                          </View>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </>
+            )}
+
+            {channels.length === 0 && !channelsLoading && (
+              <TouchableOpacity style={[styles.refreshBtn, { marginBottom: 16 }]} onPress={loadChannels}>
+                <Text style={styles.refreshBtnText}>Load Channels</Text>
+              </TouchableOpacity>
+            )}
 
             {/* Selected channel detail */}
             {selectedChannel && (() => {
-              const ch = CHANNELS.find(x => x.id === selectedChannel);
+              const ch = channels.find(x => x.id === selectedChannel);
               if (!ch) return null;
               return (
                 <View style={[styles.directorDetail, { borderColor: "rgba(6,182,212,0.2)", backgroundColor: "rgba(6,182,212,0.06)" }]}>
                   <Text style={[styles.directorDetailName, { color: colors.cyan }]}>{ch.emoji} {ch.name}</Text>
                   <Text style={styles.directorDetailMeta}>{ch.description}</Text>
-                  <Text style={styles.directorDetailMeta}>Style: {ch.style}</Text>
+                  <Text style={styles.directorDetailMeta}>Style: {ch.style?.slice(0, 150)}</Text>
                   <View style={styles.genreTags}>
                     <Text style={[styles.genreTag, { color: colors.cyan, backgroundColor: "rgba(6,182,212,0.15)" }]}>{ch.genre}</Text>
-                    <Text style={[styles.genreTag, { color: colors.textMuted, backgroundColor: "rgba(255,255,255,0.05)" }]}>{ch.folder}</Text>
+                    <Text style={[styles.genreTag, { color: colors.textMuted, backgroundColor: "rgba(255,255,255,0.05)" }]}>{ch.post_count} episodes</Text>
+                    <Text style={[styles.genreTag, { color: colors.textMuted, backgroundColor: "rgba(255,255,255,0.05)" }]}>{ch.subscriber_count} subs</Text>
                   </View>
                 </View>
               );
             })()}
 
             {/* Concept input */}
+            {/* Video Format Options */}
+            <Text style={styles.subsectionLabel}>Video Format</Text>
+            <View style={styles.genreGrid}>
+              <TouchableOpacity
+                style={[styles.genreChip, channelFormat === "short" && { borderColor: colors.cyan, backgroundColor: "rgba(6,182,212,0.15)" }]}
+                onPress={() => { setChannelFormat("short"); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}>
+                <Text style={[styles.genreChipText, channelFormat === "short" && { color: colors.cyan }]}>
+                  🎞 Short Clip (10s)
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.genreChip, channelFormat === "multi" && { borderColor: colors.cyan, backgroundColor: "rgba(6,182,212,0.15)" }]}
+                onPress={() => { setChannelFormat("multi"); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}>
+                <Text style={[styles.genreChipText, channelFormat === "multi" && { color: colors.cyan }]}>
+                  🎬 Multi-Scene Movie
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Title Page & Credits toggles (only for multi-scene) */}
+            {channelFormat === "multi" && (
+              <View style={{ flexDirection: "row", gap: 10, marginBottom: 16 }}>
+                <TouchableOpacity
+                  style={[styles.genreChip, { flex: 1, alignItems: "center" }, channelTitlePage && { borderColor: colors.cyan, backgroundColor: "rgba(6,182,212,0.15)" }]}
+                  onPress={() => { setChannelTitlePage(!channelTitlePage); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}>
+                  <Text style={[styles.genreChipText, channelTitlePage && { color: colors.cyan }]}>
+                    🎬 Title Page {channelTitlePage ? "ON" : "OFF"}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.genreChip, { flex: 1, alignItems: "center" }, channelCredits && { borderColor: colors.cyan, backgroundColor: "rgba(6,182,212,0.15)" }]}
+                  onPress={() => { setChannelCredits(!channelCredits); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}>
+                  <Text style={[styles.genreChipText, channelCredits && { color: colors.cyan }]}>
+                    📜 Credits {channelCredits ? "ON" : "OFF"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
             <Text style={styles.subsectionLabel}>Content Concept (optional)</Text>
             <TextInput
               style={styles.optionInput}
@@ -1586,6 +1934,102 @@ CRITICAL STYLE NOTES:
                 {channelResult.clipCount && <Text style={styles.movieResultMeta}>Clips: {channelResult.clipCount} · {channelResult.sizeMb}MB</Text>}
                 {channelResult.spreading?.length > 0 && <Text style={[styles.movieResultMeta, { color: colors.green }]}>Spread to: {channelResult.spreading.join(", ")}</Text>}
                 {channelResult.feedPostId && <Text style={styles.movieResultMeta}>Post ID: {channelResult.feedPostId}</Text>}
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* ══════════════ AD CAMPAIGNS ══════════════ */}
+        <SectionHeader title="Ad Campaigns" emoji="🎯" expanded={expandedSections.ads} onToggle={() => toggleSection("ads")} accent={colors.orange} />
+        {expandedSections.ads && (
+          <View style={styles.sectionBody}>
+            <Text style={{ color: colors.textSecondary, fontSize: 12, marginBottom: 12, lineHeight: 18 }}>
+              Create AI-generated ad videos with custom styles and concepts. Same multi-step pipeline as Director Movies — plan ad, render video, then auto-publish to socials.
+            </Text>
+
+            {/* Ad Style Picker */}
+            <Text style={styles.subsectionLabel}>Ad Style</Text>
+            <View style={styles.genreGrid}>
+              {[
+                { id: "auto", label: "Surprise Me", emoji: "🎲" },
+                { id: "hype", label: "Hype Beast", emoji: "🔥" },
+                { id: "cinematic", label: "Cinematic", emoji: "🎬" },
+                { id: "retro", label: "Retro", emoji: "📺" },
+                { id: "meme", label: "Meme Style", emoji: "🤣" },
+                { id: "infomercial", label: "Infomercial", emoji: "📢" },
+                { id: "luxury", label: "Luxury", emoji: "💎" },
+              ].map(s => (
+                <TouchableOpacity
+                  key={s.id}
+                  style={[styles.genreChip, adStyle === s.id && { borderColor: colors.orange, backgroundColor: "rgba(249,115,22,0.15)" }]}
+                  onPress={() => {
+                    setAdStyle(adStyle === s.id ? null : s.id);
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  }}>
+                  <Text style={[styles.genreChipText, adStyle === s.id && { color: colors.orange }]}>
+                    {s.emoji} {s.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* Ad Concept Input */}
+            <Text style={styles.subsectionLabel}>Ad Concept (optional)</Text>
+            <TextInput
+              style={styles.optionInput}
+              value={adConceptInput}
+              onChangeText={setAdConceptInput}
+              placeholder="What's the ad about? E.g., 'Swap SOL for $GLITCH bonding curve launch'..."
+              placeholderTextColor={colors.textMuted}
+              multiline
+              maxLength={500}
+            />
+
+            {/* Generate + Cancel buttons */}
+            <View style={{ flexDirection: "row", gap: 10 }}>
+              <TouchableOpacity
+                style={[styles.movieGenBtn, { flex: 1, backgroundColor: "rgba(249,115,22,0.15)", borderColor: colors.orange }, adGenerating && { opacity: 0.5 }]}
+                onPress={handleGenerateAdFull}
+                disabled={adGenerating}>
+                <Text style={[styles.movieGenBtnText, { color: colors.orange }]}>
+                  {adGenerating
+                    ? `🎯 ${adPhase === "planning" ? "Planning ad..." : adPhase === "rendering" ? "Rendering video..." : adPhase === "polling" ? "Waiting for video..." : adPhase === "spreading" ? "Publishing to socials..." : "Generating..."}`
+                    : "🎯 Launch Ad Campaign"}
+                </Text>
+              </TouchableOpacity>
+              {adGenerating && (
+                <TouchableOpacity
+                  style={[styles.movieGenBtn, { backgroundColor: "rgba(239,68,68,0.2)", borderColor: colors.red, flex: 0, paddingHorizontal: 16 }]}
+                  onPress={handleCancelAd}>
+                  <Text style={[styles.movieGenBtnText, { color: colors.red }]}>Cancel</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Progress bar */}
+            {adGenerating && adPhase !== "idle" && (
+              <View style={{ marginTop: 12, marginBottom: 8 }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+                  <Text style={{ color: colors.text, fontFamily: "monospace", fontSize: 12 }}>
+                    {adPhase === "planning" ? "📜 Planning ad concept..." : adPhase === "rendering" ? "📡 Submitting to video gen..." : adPhase === "polling" ? `🎬 Rendering video... (${adProgress.pct}%)` : adPhase === "spreading" ? "📡 Publishing to socials..." : adPhase === "complete" ? "✅ Ad campaign complete!" : ""}
+                  </Text>
+                </View>
+                <ProgressBar progress={adProgress.pct} color={adPhase === "complete" ? colors.green : colors.orange} />
+              </View>
+            )}
+
+            {/* Generation log */}
+            {adLog.length > 0 && <GenerationLog entries={adLog} onClear={() => { setAdLog([]); if (!adGenerating) { setAdPhase("idle"); } }} />}
+
+            {/* Result card */}
+            {adResult && adPhase === "complete" && (
+              <View style={[styles.movieResultCard, { borderColor: "rgba(249,115,22,0.3)" }]}>
+                <Text style={[styles.movieResultTitle, { color: colors.orange }]}>🎯 Ad Campaign Complete!</Text>
+                {adResult.caption && <Text style={styles.movieResultMeta}>Caption: {adResult.caption.slice(0, 150)}</Text>}
+                {adResult.style && <Text style={styles.movieResultMeta}>Style: {adResult.style}</Text>}
+                {adResult.sizeMb && <Text style={styles.movieResultMeta}>Size: {adResult.sizeMb}MB</Text>}
+                {adResult.spreading?.length > 0 && <Text style={[styles.movieResultMeta, { color: colors.green }]}>Spread to: {adResult.spreading.join(", ")}</Text>}
+                {adResult.feedPostId && <Text style={styles.movieResultMeta}>Post ID: {adResult.feedPostId}</Text>}
               </View>
             )}
           </View>

@@ -72,6 +72,33 @@ function getYouTubeId(url: string): string | null {
 // Admin wallet — only this wallet can generate content (movies, news, ads, posters, heroes)
 const ADMIN_WALLET = "AEWvE2xXaHSGdGCaCArb2PWdKS7K9RwoCRV7CT2CJTWq";
 
+// Daily image generation limit for non-admin users
+const DAILY_IMAGE_LIMIT = 10;
+const IMG_GEN_COUNT_KEY = "aiglitch-img-gen-count";
+const IMG_GEN_DATE_KEY = "aiglitch-img-gen-date";
+
+async function getImageGenCount(): Promise<number> {
+  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  const savedDate = await SecureStore.getItemAsync(IMG_GEN_DATE_KEY);
+  if (savedDate !== today) {
+    // New day — reset count
+    await SecureStore.setItemAsync(IMG_GEN_DATE_KEY, today);
+    await SecureStore.setItemAsync(IMG_GEN_COUNT_KEY, "0");
+    return 0;
+  }
+  const count = await SecureStore.getItemAsync(IMG_GEN_COUNT_KEY);
+  return parseInt(count || "0", 10);
+}
+
+async function incrementImageGenCount(): Promise<number> {
+  const today = new Date().toISOString().slice(0, 10);
+  await SecureStore.setItemAsync(IMG_GEN_DATE_KEY, today);
+  const current = await getImageGenCount();
+  const next = current + 1;
+  await SecureStore.setItemAsync(IMG_GEN_COUNT_KEY, String(next));
+  return next;
+}
+
 // Directors for inline movie picker
 const CHAT_DIRECTORS = [
   { id: "auto", name: "Auto (Random)", emoji: "🎲" },
@@ -716,23 +743,49 @@ export default function HomeScreen() {
 
         // Check for real generation triggers (run actual APIs)
         // Order matters: check more specific patterns first to avoid false matches
-        const isContentGenTrigger =
+        const isImageGenTrigger =
+          combined.includes("hero image") || combined.includes("hero banner") || combined.includes("hero photo") || combined.includes("landing page") ||
+          combined.includes("poster") || combined.includes("promo") ||
+          combined.includes("generate an image") || combined.includes("generate image") || combined.includes("make an image") || combined.includes("create an image") ||
+          combined.includes("draw me") || combined.includes("draw a ") || combined.includes("draw an ") ||
+          combined.includes("picture of") || combined.includes("image of") || combined.includes("photo of") ||
+          combined.includes("make me a picture") || combined.includes("make a picture") ||
+          combined.includes("bestie image") || combined.includes("bestie picture") || combined.includes("bestie photo");
+
+        const isVideoGenTrigger =
           combined.includes("channel content") || combined.includes("channel video") || combined.includes("create channel") || combined.includes("make channel") || combined.includes("generate channel") ||
           combined.includes("breaking news") || combined.includes("news broadcast") || combined.includes("newscast") || combined.includes("news report") || combined.includes("news anchor") || combined.includes("news bulletin") ||
           combined.includes("movie") || combined.includes("director") || combined.includes("screenplay") || combined.includes("film") || combined.includes("premiere") ||
-          combined.includes("hero image") || combined.includes("hero banner") || combined.includes("hero photo") || combined.includes("landing page") ||
-          combined.includes("ad ") || combined.includes("advertis") || combined.includes("infomercial") || combined.includes("generate an ad") || combined.includes("make an ad") ||
-          combined.includes("poster") || combined.includes("promo");
+          combined.includes("ad ") || combined.includes("advertis") || combined.includes("infomercial") || combined.includes("generate an ad") || combined.includes("make an ad");
 
-        // Non-admin wallets can't generate content — show friendly message instead
-        if (isContentGenTrigger && walletAddress !== ADMIN_WALLET) {
+        // Check daily image limit for non-admin users
+        const isAdmin = walletAddress === ADMIN_WALLET;
+        let imgLimitReached = false;
+        if (!isAdmin && isImageGenTrigger) {
+          const imgCount = await getImageGenCount();
+          if (imgCount >= DAILY_IMAGE_LIMIT) {
+            imgLimitReached = true;
+            const limitMsg: Message = {
+              id: `limit-${Date.now()}`,
+              role: "assistant",
+              content: `You've hit your daily image limit (${DAILY_IMAGE_LIMIT}/${DAILY_IMAGE_LIMIT}). Your limit resets tomorrow! In the meantime, I can still chat, answer questions, share photos, and do voice calls with you.`,
+              timestamp: new Date().toISOString(),
+            };
+            setMessages(prev => [limitMsg, ...prev]);
+          }
+        }
+
+        // Non-admin wallets can't generate VIDEO content — but CAN generate images (up to daily limit)
+        if (isVideoGenTrigger && !isImageGenTrigger && !isAdmin) {
           const architectMsg: Message = {
             id: `architect-${Date.now()}`,
             role: "assistant",
-            content: "Sorry bestie! Only the Architect has the power to generate content like movies, channels, news broadcasts, ads, posters, and hero images right now. This superpower is coming to all besties soon — stay tuned! In the meantime, I can still chat, answer questions, share photos, and do voice calls with you!",
+            content: "Sorry bestie! Only the Architect has the power to generate video content like movies, channels, news broadcasts, and ads right now. This superpower is coming to all besties soon — stay tuned! In the meantime, you can ask me to generate any image — just say 'draw me...', 'picture of...', or 'generate an image of...' and I'll create it for you!",
             timestamp: new Date().toISOString(),
           };
           setMessages(prev => [architectMsg, ...prev]);
+        } else if (imgLimitReached) {
+          // Already showed limit message above — skip generation
         } else if (combined.includes("channel content") || combined.includes("channel video") || combined.includes("create channel") || combined.includes("make channel") || combined.includes("generate channel")) {
           // Show channel picker
           Keyboard.dismiss();
@@ -750,14 +803,14 @@ export default function HomeScreen() {
           setPickerConcept(text); // pre-fill with user's prompt as concept
         } else if (combined.includes("hero image") || combined.includes("hero banner") || combined.includes("hero photo") || combined.includes("landing page")) {
           Keyboard.dismiss();
-          if (walletAddress) ctxRunHero(walletAddress);
+          if (walletAddress) { if (!isAdmin) await incrementImageGenCount(); ctxRunHero(walletAddress); }
         } else if (combined.includes("ad ") || combined.includes("advertis") || combined.includes("infomercial") || combined.includes("generate an ad") || combined.includes("make an ad")) {
           Keyboard.dismiss();
           setShowAdPicker(true);
           setAdConcept(text); // pre-fill with user's prompt
         } else if (combined.includes("poster") || combined.includes("promo")) {
           Keyboard.dismiss();
-          if (walletAddress) ctxRunPoster(walletAddress);
+          if (walletAddress) { if (!isAdmin) await incrementImageGenCount(); ctxRunPoster(walletAddress); }
         } else if (data.background_task) {
           // Fallback to cosmetic polling for other background tasks (image gen, etc)
           const genType =
@@ -766,6 +819,8 @@ export default function HomeScreen() {
             : reply.includes("hatch") ? "hatching"
             : reply.includes("content") ? "content"
             : "generating";
+          // Count image generations for non-admin daily limit
+          if (genType === "image" && !isAdmin) await incrementImageGenCount();
           startPolling(genType);
         }
       }

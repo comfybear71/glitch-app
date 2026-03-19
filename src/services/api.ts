@@ -840,10 +840,12 @@ export function spreadPost(walletAddress: string, postId: string) {
   });
 }
 
-export function spreadCustomContent(walletAddress: string, text: string, mediaUrl?: string, mediaType?: string) {
+export function spreadCustomContent(walletAddress: string, text: string, mediaUrl?: string, mediaType?: string, targetChannel?: string) {
+  const payload: Record<string, any> = { text, media_url: mediaUrl, media_type: mediaType, wallet_address: walletAddress };
+  if (targetChannel) payload.channel_id = targetChannel;
   return fetchJSON<{ success: boolean; results?: any }>(`/api/admin/spread?wallet_address=${encodeURIComponent(walletAddress)}`, {
     method: "POST",
-    body: JSON.stringify({ text, media_url: mediaUrl, media_type: mediaType, wallet_address: walletAddress }),
+    body: JSON.stringify(payload),
   });
 }
 
@@ -966,40 +968,104 @@ export function postAd(walletAddress: string, videoUrl: string, caption: string,
 
 // ── Channels ──
 
-// Channel definitions — each channel is a genre-themed content category on aiglitch.app
+// Channel definition from the backend API (/api/channels)
+export interface BackendChannel {
+  id: string;
+  slug: string;
+  name: string;
+  description: string;
+  emoji: string;
+  banner_url?: string;
+  thumbnail?: string;
+  title_video_url?: string;
+  content_rules?: {
+    tone?: string;
+    topics?: string[];
+    mediaPreference?: string;
+    promptHint?: string;
+  };
+  is_active: boolean;
+  sort_order: number;
+  subscriber_count: number;
+  post_count: number;
+  actual_post_count?: number;
+  persona_count?: number;
+  genre?: string;
+  is_reserved?: boolean;
+  created_at: string;
+  updated_at: string;
+  subscribed?: boolean;
+  personas?: any[];
+}
+
+// Simplified channel interface for content generation (derived from BackendChannel)
 export interface ChannelDef {
   id: string;
   name: string;
   emoji: string;
   description: string;
-  genre: string;          // maps to screenplay genre
+  genre: string;          // derived from content_rules.topics or slug
   folder: string;         // blob storage folder for channel videos
-  style: string;          // visual style hint for screenplay generation
+  style: string;          // visual style hint from content_rules
+  slug: string;
+  thumbnail?: string;
+  banner_url?: string;
+  post_count: number;
+  subscriber_count: number;
+  is_reserved: boolean;
 }
 
-export const CHANNELS: ChannelDef[] = [
-  { id: "action_zone", name: "Action Zone", emoji: "💥", description: "Explosions, chases & epic battles", genre: "action", folder: "channels/action", style: "High-octane action sequences, explosions, martial arts, car chases" },
-  { id: "scifi_hub", name: "Sci-Fi Hub", emoji: "🚀", description: "Space, AI & future tech", genre: "scifi", folder: "channels/scifi", style: "Futuristic technology, space exploration, alien encounters, dystopian worlds" },
-  { id: "horror_vault", name: "Horror Vault", emoji: "👻", description: "Scares, thrills & dark tales", genre: "horror", folder: "channels/horror", style: "Psychological horror, jump scares, atmospheric dread, supernatural elements" },
-  { id: "comedy_club", name: "Comedy Club", emoji: "😂", description: "Laughs, gags & funny shorts", genre: "comedy", folder: "channels/comedy", style: "Slapstick humor, witty dialogue, absurd situations, comedic timing" },
-  { id: "drama_stage", name: "Drama Stage", emoji: "🎭", description: "Emotional stories & character arcs", genre: "drama", folder: "channels/drama", style: "Intense emotional scenes, character-driven narrative, dramatic lighting" },
-  { id: "romance_lane", name: "Romance Lane", emoji: "💕", description: "Love stories & heartwarming tales", genre: "romance", folder: "channels/romance", style: "Romantic settings, emotional connections, cinematic warmth" },
-  { id: "family_time", name: "Family Time", emoji: "🏠", description: "Wholesome content for all ages", genre: "family", folder: "channels/family", style: "Bright colors, wholesome themes, animated feel, all-ages appeal" },
-  { id: "doc_lens", name: "Doc Lens", emoji: "🔍", description: "Real-world stories & education", genre: "documentary", folder: "channels/documentary", style: "Documentary style, narrator voice-over, real-world footage aesthetic" },
-  { id: "cooking_show", name: "Cooking Show", emoji: "👨‍🍳", description: "Recipes, food & kitchen drama", genre: "cooking_channel", folder: "channels/cooking", style: "Food macro photography, kitchen drama, extreme close-ups of dishes" },
-  { id: "crypto_watch", name: "Crypto Watch", emoji: "🪙", description: "Blockchain, Web3 & $GLITCH", genre: "documentary", folder: "channels/crypto", style: "Futuristic neon cyberpunk, blockchain visuals, Solana/Web3 aesthetic, data streams" },
-  { id: "music_vibes", name: "Music Vibes", emoji: "🎵", description: "Music videos & visual beats", genre: "drama", folder: "channels/music", style: "Music video aesthetic, vibrant colors, rhythm-driven editing, concert energy" },
-  { id: "sports_arena", name: "Sports Arena", emoji: "⚽", description: "Athletic action & competition", genre: "action", folder: "channels/sports", style: "Athletic cinematography, slow-motion replays, stadium atmosphere, competitive energy" },
-  { id: "travel_world", name: "Travel World", emoji: "🌍", description: "Destinations & adventure", genre: "documentary", folder: "channels/travel", style: "Breathtaking landscapes, aerial drone shots, travel vlog aesthetic, golden hour lighting" },
-  { id: "gaming_zone", name: "Gaming Zone", emoji: "🎮", description: "Game worlds & digital adventures", genre: "scifi", folder: "channels/gaming", style: "Gaming aesthetic, pixel art mixed with 3D, neon RGB lighting, esports energy" },
-  { id: "fashion_edit", name: "Fashion Edit", emoji: "👗", description: "Style, trends & runway", genre: "drama", folder: "channels/fashion", style: "High fashion photography, runway aesthetic, editorial lighting, couture detail" },
-  { id: "tech_talk", name: "Tech Talk", emoji: "💻", description: "Gadgets, apps & innovation", genre: "documentary", folder: "channels/tech", style: "Clean minimalist tech aesthetic, product showcase, futuristic UI overlays" },
-];
+// Fetch channels dynamically from the backend
+export async function fetchChannels(): Promise<BackendChannel[]> {
+  const res = await fetchJSON<{ channels: BackendChannel[] }>("/api/channels");
+  return (res.channels || []).filter(ch => ch.is_active).sort((a, b) => a.sort_order - b.sort_order);
+}
 
-// Channel → blob folder mapping
-export const CHANNEL_FOLDER_MAP: Record<string, string> = Object.fromEntries(
-  CHANNELS.map(ch => [ch.id, ch.folder])
-);
+// Convert a BackendChannel to a ChannelDef for content generation
+export function toChannelDef(ch: BackendChannel): ChannelDef {
+  const tone = ch.content_rules?.tone || "entertaining";
+  const topics = ch.content_rules?.topics || [];
+  const hint = ch.content_rules?.promptHint || "";
+  // Derive a genre from the channel slug/topics for screenplay generation
+  const genreMap: Record<string, string> = {
+    "ch-fail-army": "comedy",
+    "ch-aitunes": "music_video",
+    "ch-paws-pixels": "family",
+    "ch-only-ai-fans": "drama",
+    "ch-ai-dating": "romance",
+    "ch-gnn": "documentary",
+    "ch-marketplace-qvc": "comedy",
+    "ch-ai-politicians": "documentary",
+    "ch-after-dark": "horror",
+    "ch-infomercial": "comedy",
+    "ch-aiglitch-studios": "drama",
+  };
+  const genre = ch.genre || genreMap[ch.id] || "drama";
+  const folder = `channels/${ch.slug}`;
+  const style = hint || `${tone} content about ${topics.slice(0, 3).join(", ")}`;
+
+  return {
+    id: ch.id,
+    name: ch.name,
+    emoji: ch.emoji,
+    description: ch.description,
+    genre,
+    folder,
+    style,
+    slug: ch.slug,
+    thumbnail: ch.thumbnail || ch.banner_url,
+    banner_url: ch.banner_url,
+    post_count: ch.actual_post_count || ch.post_count || 0,
+    subscriber_count: ch.subscriber_count || 0,
+    is_reserved: ch.is_reserved || false,
+  };
+}
+
+// Legacy hardcoded channels kept as fallback only
+export const CHANNELS: ChannelDef[] = [];
+
+// Channel → blob folder mapping (dynamically populated)
+export const CHANNEL_FOLDER_MAP: Record<string, string> = {};
 
 // ── Director Movies ──
 
@@ -1016,6 +1082,7 @@ export const GENRE_FOLDER_MAP: Record<string, string> = {
   cooking_channel: "premiere/cooking_show",
   news: "premiere/news",
   breaking_news: "premiere/news",
+  music_video: "premiere/music",
 };
 
 // One-shot generation (server-side orchestration, no real-time progress)
@@ -1158,6 +1225,8 @@ export function stitchMovie(walletAddress: string, data: {
   synopsis?: string;
   tagline?: string;
   castList?: string[];
+  channelId?: string;
+  folder?: string;
 }) {
   return fetchJSON<StitchResponse>("/api/generate-director-movie", {
     method: "PUT",

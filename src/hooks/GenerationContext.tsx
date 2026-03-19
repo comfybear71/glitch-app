@@ -219,6 +219,27 @@ async function publishToFeed(
   }
 }
 
+/**
+ * Publish content to a specific channel (e.g. news → GNN, ads → Marketplace QVC).
+ * Non-fatal — the content still exists even if this call fails.
+ */
+async function publishToChannel(
+  walletAddress: string,
+  channelId: string,
+  caption: string,
+  mediaUrl?: string,
+  isVideo?: boolean,
+) {
+  try {
+    const mediaType = isVideo ? "video" : mediaUrl ? "image" : undefined;
+    console.log(`[CHANNEL-ROUTE] Publishing to channel ${channelId}:`, { caption: caption.slice(0, 60), mediaUrl, mediaType });
+    const res = await spreadCustomContent(walletAddress, caption, mediaUrl, mediaType, channelId);
+    console.log(`[CHANNEL-ROUTE] publishToChannel ${channelId} result:`, JSON.stringify(res));
+  } catch (err: any) {
+    console.log(`[CHANNEL-ROUTE] publishToChannel ${channelId} failed (non-fatal):`, err?.message);
+  }
+}
+
 interface GenerationContextType {
   generating: string | null;
   genStatusText: string;
@@ -430,6 +451,9 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
 
       // Publish to AIG!itch "for you" feed
       await publishToFeed(walletAddress, "Ad Campaign", finalCaption, videoUrl, true, !!postId);
+
+      // Also publish to Marketplace QVC channel so all ads appear there
+      await publishToChannel(walletAddress, "ch-marketplace-qvc", finalCaption, videoUrl, true);
 
       // Fetch verified social links
       const verifiedLinks = postFailed
@@ -656,6 +680,8 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
         synopsis: screenplay.synopsis,
         tagline: screenplay.tagline,
         castList: screenplay.castList,
+        channelId: "ch-aiglitch-studios",
+        folder: "channels/aiglitch-studios",
       });
       console.log("[MOVIE] stitchMovie response:", JSON.stringify(stitchRes, null, 2));
 
@@ -665,6 +691,9 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
       // Publish to "for you" feed — stitchMovie should create feedPostId, but safety net if not
       const movieCaption = `"${screenplay.title}" by ${screenplay.directorName}\n${screenplay.tagline || screenplay.synopsis || ""}`;
       await publishToFeed(walletAddress, screenplay.title, movieCaption, stitchRes.finalVideoUrl, true, !!stitchRes.feedPostId);
+
+      // Also publish to AIG!itch Studios channel
+      await publishToChannel(walletAddress, "ch-aiglitch-studios", movieCaption, stitchRes.finalVideoUrl, true);
 
       setGenProgressPct(95);
       const didSpread = stitchRes.spreading && stitchRes.spreading.length > 0;
@@ -932,6 +961,9 @@ CRITICAL STYLE NOTES:
       const newsCaption = `BREAKING: ${screenplay.title}\n${screenplay.synopsis || screenplay.tagline || "AIG!itch News broadcast"}`;
       await publishToFeed(walletAddress, `BREAKING: ${screenplay.title}`, newsCaption, stitchRes.finalVideoUrl, true, !!stitchRes.feedPostId);
 
+      // Also publish to GNN channel so all breaking news appears there
+      await publishToChannel(walletAddress, "ch-gnn", newsCaption, stitchRes.finalVideoUrl, true);
+
       setGenProgressPct(95);
       const didSpread = stitchRes.spreading && stitchRes.spreading.length > 0;
       setGenStatusText(didSpread
@@ -975,9 +1007,13 @@ CRITICAL STYLE NOTES:
     setGenProgressPct(5);
     setGenStatusText(`Creating ${channel.emoji} ${channel.name} content...`);
 
+    const isMusicChannel = channel.genre === "music_video";
+    const musicPrefix = isMusicChannel
+      ? "This MUST be a music video — every scene must feature singing, rapping, playing instruments, or performing music. Genres can include rap, rock, pop, classical, electronic, alien AI music, etc. There MUST be vocals and/or instruments in every clip. Do NOT generate movie scenes or dialogue — only music video clips. "
+      : "";
     const channelConceptText = concept?.trim()
-      ? `${channel.style}. User concept: ${concept.trim()}`
-      : `${channel.style}. Create compelling ${channel.name} content that fits the channel theme: ${channel.description}.`;
+      ? `${musicPrefix}${channel.style}. User concept: ${concept.trim()}`
+      : `${musicPrefix}${channel.style}. Create compelling ${channel.name} content that fits the channel theme: ${channel.description}.`;
 
     try {
       // ── Step 1: Generate Screenplay ──
@@ -1092,6 +1128,8 @@ CRITICAL STYLE NOTES:
         synopsis: screenplay.synopsis,
         tagline: screenplay.tagline,
         castList: screenplay.castList,
+        channelId: channel.id,
+        folder: channel.folder,
       });
 
       setGenProgressPct(92);
@@ -1099,6 +1137,9 @@ CRITICAL STYLE NOTES:
 
       const channelCaption = `${channel.emoji} ${channel.name}: "${screenplay.title}"\n${screenplay.synopsis || screenplay.tagline || ""}`;
       await publishToFeed(walletAddress, `${channel.emoji} ${channel.name}`, channelCaption, stitchRes.finalVideoUrl, true, !!stitchRes.feedPostId);
+
+      // Publish to the channel itself so it appears on the channel page
+      await publishToChannel(walletAddress, channel.id, channelCaption, stitchRes.finalVideoUrl, true);
 
       setGenProgressPct(95);
       const didSpread = stitchRes.spreading && stitchRes.spreading.length > 0;

@@ -56,6 +56,7 @@ struct VoiceChatIntent: AppIntent {
 }
 
 // MARK: - App Shortcuts Provider
+// IMPORTANT: Every phrase MUST contain \(.applicationName) — Apple rejects builds without it
 struct GlitchShortcutsProvider: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(
@@ -72,7 +73,7 @@ struct GlitchShortcutsProvider: AppShortcutsProvider {
             phrases: [
                 "Chat with my bestie in \(.applicationName)",
                 "Talk to \(.applicationName)",
-                "Message my bestie"
+                "Message my bestie in \(.applicationName)"
             ],
             shortTitle: "Chat with Bestie",
             systemImageName: "bubble.left.fill"
@@ -82,7 +83,7 @@ struct GlitchShortcutsProvider: AppShortcutsProvider {
             phrases: [
                 "Check my balance in \(.applicationName)",
                 "Show my \(.applicationName) balance",
-                "How much GLITCH do I have"
+                "How much GLITCH do I have in \(.applicationName)"
             ],
             shortTitle: "Check Balance",
             systemImageName: "creditcard.fill"
@@ -91,7 +92,7 @@ struct GlitchShortcutsProvider: AppShortcutsProvider {
             intent: BuyGlitchIntent(),
             phrases: [
                 "Buy GLITCH in \(.applicationName)",
-                "Swap SOL for GLITCH"
+                "Swap SOL for GLITCH in \(.applicationName)"
             ],
             shortTitle: "Buy $GLITCH",
             systemImageName: "cart.fill"
@@ -100,7 +101,7 @@ struct GlitchShortcutsProvider: AppShortcutsProvider {
             intent: VoiceChatIntent(),
             phrases: [
                 "Voice chat in \(.applicationName)",
-                "Talk to my bestie"
+                "Talk to my bestie in \(.applicationName)"
             ],
             shortTitle: "Voice Chat",
             systemImageName: "mic.fill"

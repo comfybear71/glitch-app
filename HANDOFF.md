@@ -1,6 +1,6 @@
 # HANDOFF.md — AI G!itch App Project Status
 
-Last updated: 2026-03-19 (Session 14 — API genre/is_reserved, reserved channel unlock, OTA updates via EAS Update)
+Last updated: 2026-03-19 (Session 15 — Paws & Pixels prompt fix, channel-specific style overrides, testing & QA)
 
 ## Project Overview
 
@@ -431,6 +431,41 @@ If "your local changes would be overwritten" appears, stash first (see above).
 - **Fix**: Check xAI credit balance at console.x.ai and top up. This is a backend issue, not an app issue
 - **Note**: The app code just calls `/api/voice` and plays whatever MP3 comes back — it doesn't know which TTS engine was used
 - **Where to check credits**: console.x.ai → API Keys → Usage (NOT console.x.com — that's the X Developer Portal)
+
+---
+
+## Recent Changes — Session 2026-03-19 (Session 15 — Paws & Pixels Fix, Channel Style Overrides, QA Testing)
+
+### Paws & Pixels Channel — Photorealistic Animals Fix (CRITICAL FIX)
+- **Problem**: Generated Paws & Pixels clips contained humans instead of animals. Generic title cards and credits were also being injected
+- **Root cause**: The channel's style prompt was too generic — it didn't explicitly prohibit humans or enforce photorealistic animal-only content
+- **Fix**: Added `CHANNEL_STYLE_OVERRIDES` lookup in both `GenerationContext.tsx` and `ContentStudioScreen.tsx`:
+  - Paws & Pixels override: "Photorealistic animals only. NO title intro, NO credits, NO text overlays, NO robots, NO humans, NO talking animals. Just real animals being animals — loving, funny, heartfelt moments."
+  - Override takes precedence over the channel's default `style` from the API
+  - Other channels unaffected (fall through to their normal style)
+- **Files changed**: `src/hooks/GenerationContext.tsx`, `src/screens/ContentStudioScreen.tsx`
+
+### Channel-Specific Style Override System (NEW)
+- Added `CHANNEL_STYLE_OVERRIDES` dictionary keyed by `channel.id` (e.g., `"ch-paws-pixels"`)
+- When generating channel content, checks for an override before using the API-provided `channel.style`
+- Allows fine-tuning individual channel prompts without changing the backend
+- Easy to extend: just add another entry like `"ch-some-channel": "custom style prompt"`
+
+### QA Testing — OTA Update Workflow Validated
+- Successfully pushed JS changes via `eas update --branch preview`
+- User confirmed the OTA update was received on device (app restart picked up changes)
+- Tested single-clip Paws & Pixels generation — clip generated but:
+  - Humans still appeared in initial test (before the prompt fix was pushed)
+  - Social posting may not be working for single clips — under investigation
+- Longer clip generation test in progress
+
+### Known Issues Being Investigated (Session 15)
+- **Humans in Paws & Pixels**: Prompt fix has been pushed but not yet confirmed on device (user testing longer clip)
+- **Social posting for single clips**: User reported a single clip didn't post to socials — needs further testing to confirm
+
+### Files Changed (Session 15)
+- `src/hooks/GenerationContext.tsx` — Added `CHANNEL_STYLE_OVERRIDES` with Paws & Pixels photorealistic animal override
+- `src/screens/ContentStudioScreen.tsx` — Added matching `CHANNEL_STYLE_OVERRIDES` for Studio tab generation path
 
 ---
 

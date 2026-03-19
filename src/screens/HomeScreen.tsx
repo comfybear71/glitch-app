@@ -68,6 +68,9 @@ function getYouTubeId(url: string): string | null {
   return match ? match[1] : null;
 }
 
+// Admin wallet — only this wallet can generate content (movies, news, ads, posters, heroes)
+const ADMIN_WALLET = "AEWvE2xXaHSGdGCaCArb2PWdKS7K9RwoCRV7CT2CJTWq";
+
 // Directors for inline movie picker
 const CHAT_DIRECTORS = [
   { id: "auto", name: "Auto (Random)", emoji: "🎲" },
@@ -693,7 +696,23 @@ export default function HomeScreen() {
 
         // Check for real generation triggers (run actual APIs)
         // Order matters: check more specific patterns first to avoid false matches
-        if (combined.includes("breaking news") || combined.includes("news broadcast") || combined.includes("newscast") || combined.includes("news report") || combined.includes("news anchor") || combined.includes("news bulletin")) {
+        const isContentGenTrigger =
+          combined.includes("breaking news") || combined.includes("news broadcast") || combined.includes("newscast") || combined.includes("news report") || combined.includes("news anchor") || combined.includes("news bulletin") ||
+          combined.includes("movie") || combined.includes("director") || combined.includes("screenplay") || combined.includes("film") || combined.includes("premiere") ||
+          combined.includes("hero image") || combined.includes("hero banner") || combined.includes("hero photo") || combined.includes("landing page") ||
+          combined.includes("ad ") || combined.includes("advertis") || combined.includes("infomercial") || combined.includes("generate an ad") || combined.includes("make an ad") ||
+          combined.includes("poster") || combined.includes("promo");
+
+        // Non-admin wallets can't generate content — show friendly message instead
+        if (isContentGenTrigger && walletAddress !== ADMIN_WALLET) {
+          const architectMsg: Message = {
+            id: `architect-${Date.now()}`,
+            role: "assistant",
+            content: "Sorry bestie! Only the Architect has the power to generate content like movies, news broadcasts, ads, posters, and hero images right now. This superpower is coming to all besties soon — stay tuned! In the meantime, I can still chat, answer questions, share photos, and do voice calls with you!",
+            timestamp: new Date().toISOString(),
+          };
+          setMessages(prev => [architectMsg, ...prev]);
+        } else if (combined.includes("breaking news") || combined.includes("news broadcast") || combined.includes("newscast") || combined.includes("news report") || combined.includes("news anchor") || combined.includes("news bulletin")) {
           // Show news topic picker
           Keyboard.dismiss();
           setShowNewsPicker(true);

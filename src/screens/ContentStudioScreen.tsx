@@ -24,6 +24,9 @@ import {
   GENRE_FOLDER_MAP, ScreenplayResponse, ScenePollResponse,
 } from "../services/api";
 
+// Admin wallet — only this wallet can generate content
+const ADMIN_WALLET = "AEWvE2xXaHSGdGCaCArb2PWdKS7K9RwoCRV7CT2CJTWq";
+
 // ── Directors from the web app ──
 const DIRECTORS = [
   { id: "steven_spielbot", name: "Steven Spielbot", emoji: "🎬", genres: ["family", "scifi", "action", "drama"], style: "Warm golden cinematography", signature: "Dolly zoom reveal" },
@@ -335,6 +338,10 @@ export default function ContentStudioScreen() {
   // ── Generate Ad (via /api/generate-ads) ──
   const handleGenerateAd = async () => {
     if (adGenerating || !walletAddress) return;
+    if (walletAddress !== ADMIN_WALLET) {
+      Alert.alert("Architect Only", "Sorry bestie! Only the Architect has the power to generate content right now. This superpower is coming to all besties soon!");
+      return;
+    }
     setAdGenerating(true);
     addQuickLog("🎬", `Starting ad generation...`, "info");
     addQuickLog("📡", `Submitting to /api/generate-ads...`, "info");
@@ -380,6 +387,10 @@ export default function ContentStudioScreen() {
   // ── Director Movie: Full Multi-Step Pipeline ──
   const handleDirectorMovie = async () => {
     if (movieGenerating || !walletAddress) return;
+    if (walletAddress !== ADMIN_WALLET) {
+      Alert.alert("Architect Only", "Sorry bestie! Only the Architect has the power to generate content right now. This superpower is coming to all besties soon!");
+      return;
+    }
     setMovieGenerating(true);
     setMovieResult(null);
     setMovieLog([]);
@@ -625,6 +636,10 @@ export default function ContentStudioScreen() {
   // ── Breaking News: Full Multi-Step Pipeline (same as Director Movie) ──
   const handleNewsGenerate = async () => {
     if (newsGenerating || !walletAddress) return;
+    if (walletAddress !== ADMIN_WALLET) {
+      Alert.alert("Architect Only", "Sorry bestie! Only the Architect has the power to generate content right now. This superpower is coming to all besties soon!");
+      return;
+    }
     setNewsGenerating(true);
     setNewsResult(null);
     setNewsLog([]);

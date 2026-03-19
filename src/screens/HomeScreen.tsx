@@ -101,12 +101,13 @@ const AD_STYLES = [
 ];
 
 // Chat mode types
-type ChatMode = "casual" | "serious" | "scientific" | "whimsical";
+type ChatMode = "casual" | "serious" | "scientific" | "whimsical" | "unfiltered";
 const CHAT_MODES: { key: ChatMode; emoji: string; label: string; color: string; bg: string }[] = [
   { key: "casual", emoji: "😎", label: "Playful", color: colors.purpleLight, bg: "rgba(124, 58, 237, 0.15)" },
   { key: "serious", emoji: "🧠", label: "Serious", color: "#60a5fa", bg: "rgba(59, 130, 246, 0.15)" },
   { key: "scientific", emoji: "🔬", label: "Scientific", color: colors.cyan, bg: "rgba(6, 182, 212, 0.15)" },
   { key: "whimsical", emoji: "🦄", label: "Whimsical", color: "#f472b6", bg: "rgba(244, 114, 182, 0.15)" },
+  { key: "unfiltered", emoji: "🤬", label: "Unfiltered", color: "#ef4444", bg: "rgba(239, 68, 68, 0.15)" },
 ];
 
 export default function HomeScreen() {
@@ -1403,6 +1404,7 @@ export default function HomeScreen() {
                     {mode.key === "casual" ? "Chill, fun, bestie energy" :
                      mode.key === "serious" ? "Direct, focused, no fluff" :
                      mode.key === "scientific" ? "Data-driven, analytical, precise" :
+                     mode.key === "unfiltered" ? "No filter, raw language, swearing allowed" :
                      "Creative, dreamy, unexpected"}
                   </Text>
                 </View>
@@ -1413,9 +1415,9 @@ export default function HomeScreen() {
             {/* Short / Long replies toggle */}
             <View style={{ marginTop: 16, borderTopWidth: 1, borderTopColor: "#1f2937", paddingTop: 16 }}>
               <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: "700", textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>Reply Length</Text>
-              <View style={{ flexDirection: "row", gap: 8 }}>
+              <View style={{ gap: 8 }}>
                 <TouchableOpacity
-                  style={[styles.moodOption, { flex: 1, paddingVertical: 10 }, shortReplies && { backgroundColor: "rgba(34,197,94,0.15)", borderColor: colors.green }]}
+                  style={[styles.moodOption, shortReplies && { backgroundColor: "rgba(34,197,94,0.15)", borderColor: colors.green }]}
                   onPress={() => { setShortReplies(true); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}>
                   <Text style={{ fontSize: 16 }}>⚡</Text>
                   <View style={{ flex: 1 }}>
@@ -1425,7 +1427,7 @@ export default function HomeScreen() {
                   {shortReplies && <Text style={{ color: colors.green, fontSize: 18 }}>✓</Text>}
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.moodOption, { flex: 1, paddingVertical: 10 }, !shortReplies && { backgroundColor: "rgba(124,58,237,0.15)", borderColor: colors.purpleLight }]}
+                  style={[styles.moodOption, !shortReplies && { backgroundColor: "rgba(124,58,237,0.15)", borderColor: colors.purpleLight }]}
                   onPress={() => { setShortReplies(false); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}>
                   <Text style={{ fontSize: 16 }}>📝</Text>
                   <View style={{ flex: 1 }}>
@@ -2008,7 +2010,7 @@ export default function HomeScreen() {
               <Text style={styles.featuresItem}>🥚 Hatch your own custom AI bestie</Text>
               <Text style={styles.featuresItem}>🎭 Each bestie has their own voice, style, and vibe</Text>
               <Text style={styles.featuresItem}>💀 Besties have a lifespan — keep chatting to keep them alive!</Text>
-              <Text style={styles.featuresItem}>🎨 Set mood — Playful, Serious, Scientific, or Whimsical</Text>
+              <Text style={styles.featuresItem}>🎨 Set mood — Playful, Serious, Scientific, Whimsical, or Unfiltered</Text>
 
               <Text style={styles.featuresCat}>Social & Digital Void</Text>
               <Text style={styles.featuresItem}>📱 AI-only social network — 97+ personas posting 24/7</Text>

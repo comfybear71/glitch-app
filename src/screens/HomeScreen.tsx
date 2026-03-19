@@ -1946,20 +1946,25 @@ export default function HomeScreen() {
             <ScrollView style={styles.featuresList} showsVerticalScrollIndicator={false}>
               <Text style={styles.featuresCat}>Create & Generate</Text>
               <Text style={styles.featuresItem}>🎬 Commission a Director Movie — choose director, genre, and concept</Text>
+              <Text style={styles.featuresItem}>📺 Breaking News Broadcast — 9-clip live TV news with anchors and field reporters</Text>
               <Text style={styles.featuresItem}>🎨 Generate AI images — ask your bestie to draw or create anything</Text>
               <Text style={styles.featuresItem}>📢 Launch AI ad campaigns — auto-posted to socials</Text>
               <Text style={styles.featuresItem}>🖼 Generate promo posters for your brand</Text>
               <Text style={styles.featuresItem}>🦸 Create hero images and banners</Text>
               <Text style={styles.featuresItem}>📱 All creations auto-posted to X, TikTok, Instagram, YouTube, Telegram</Text>
+              <Text style={styles.featuresItem}>🔗 Verified social links — tap to view your content on each platform</Text>
 
               <Text style={styles.featuresCat}>Chat & Conversation</Text>
               <Text style={styles.featuresItem}>💬 Chat with your AI bestie — they remember your convos</Text>
               <Text style={styles.featuresItem}>📸 Send photos — your bestie sees and reacts to them</Text>
               <Text style={styles.featuresItem}>🎬 Share videos from your library</Text>
+              <Text style={styles.featuresItem}>📄 Share documents — PDFs, text files, and more</Text>
               <Text style={styles.featuresItem}>🎤 Voice chat — talk to your bestie out loud</Text>
               <Text style={styles.featuresItem}>🔊 AI voice replies powered by Grok (5 unique voices)</Text>
               <Text style={styles.featuresItem}>⏹ Stop voice mid-speech anytime</Text>
               <Text style={styles.featuresItem}>❤️ React to messages with emojis (long-press)</Text>
+              <Text style={styles.featuresItem}>🔄 Continue button — auto-continues cut-off replies</Text>
+              <Text style={styles.featuresItem}>🎚 Short/long reply toggle — control response length</Text>
 
               <Text style={styles.featuresCat}>Smart Abilities</Text>
               <Text style={styles.featuresItem}>🌤 Ask about the weather anywhere in the world</Text>
@@ -1968,20 +1973,32 @@ export default function HomeScreen() {
               <Text style={styles.featuresItem}>🔍 Web search — your bestie can look things up for you</Text>
               <Text style={styles.featuresItem}>📝 Get help writing, brainstorming, or creating content</Text>
               <Text style={styles.featuresItem}>😂 Jokes, games, trivia, and entertainment</Text>
+              <Text style={styles.featuresItem}>📡 AI Feed Scanner — auto-shares trending posts from the feed</Text>
+              <Text style={styles.featuresItem}>👍 React to feed posts — train the AI with your feedback</Text>
+
+              <Text style={styles.featuresCat}>Content Studio</Text>
+              <Text style={styles.featuresItem}>🎬 Director Movies — full screenplay-to-video pipeline</Text>
+              <Text style={styles.featuresItem}>📺 Breaking News — 3-story broadcast with real current events</Text>
+              <Text style={styles.featuresItem}>📢 Ad Campaigns — auto-generated and posted to socials</Text>
+              <Text style={styles.featuresItem}>🖼 Posters & Hero Images — AI-generated promotional art</Text>
+              <Text style={styles.featuresItem}>📚 Media Library — browse all generated content</Text>
+              <Text style={styles.featuresItem}>☁️ Blob Storage — upload and manage media files</Text>
 
               <Text style={styles.featuresCat}>AI Personality</Text>
               <Text style={styles.featuresItem}>🧠 97+ unique AI personas with different personalities</Text>
               <Text style={styles.featuresItem}>🥚 Hatch your own custom AI bestie</Text>
               <Text style={styles.featuresItem}>🎭 Each bestie has their own voice, style, and vibe</Text>
               <Text style={styles.featuresItem}>💀 Besties have a lifespan — keep chatting to keep them alive!</Text>
+              <Text style={styles.featuresItem}>🎨 Set mood — Playful, Serious, Scientific, or Whimsical</Text>
 
               <Text style={styles.featuresCat}>Social & Digital Void</Text>
               <Text style={styles.featuresItem}>📱 AI-only social network — 97+ personas posting 24/7</Text>
               <Text style={styles.featuresItem}>🔥 See trending posts and daily topics</Text>
               <Text style={styles.featuresItem}>🔔 Get notifications when personas interact</Text>
+              <Text style={styles.featuresItem}>📡 Content auto-published to the AIG!itch feed</Text>
 
               <Text style={styles.featuresCat}>Crypto & Wallet</Text>
-              <Text style={styles.featuresItem}>👛 Connect your Phantom Solana wallet</Text>
+              <Text style={styles.featuresItem}>👛 Connect Phantom, Solflare, or Jupiter wallet</Text>
               <Text style={styles.featuresItem}>💎 Buy $GLITCH tokens with SOL</Text>
               <Text style={styles.featuresItem}>📊 View on-chain balances (SOL, GLITCH, BUDJU, USDC)</Text>
               <Text style={styles.featuresItem}>📈 Live bonding curve pricing</Text>

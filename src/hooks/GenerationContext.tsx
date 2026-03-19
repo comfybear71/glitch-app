@@ -6,7 +6,7 @@ import {
   generateAd, getAdStatus, planAd, postAd,
   generatePoster, generateHeroImage,
   generateScreenplay, submitScene, pollScene, stitchMovie,
-  getBriefing, spreadCustomContent,
+  getBriefing, spreadCustomContent, getSpreadHistory,
   GENRE_FOLDER_MAP, ScreenplayResponse, Message,
 } from "../services/api";
 
@@ -105,6 +105,85 @@ function buildSocialLinks(spreading?: string[], postId?: string, mediaUrl?: stri
       { platform: "Telegram", emoji: "✈️", url: realUrls.telegram || "https://t.me/aiglitch" },
     );
   }
+  return links;
+}
+
+/**
+ * After content is posted, fetch spread history and extract verified post URLs.
+ * Retries a few times since the spread may take a moment to propagate.
+ * Returns verified social links only — no fallback to profile pages.
+ */
+async function fetchVerifiedLinks(
+  walletAddress: string,
+  feedPostId?: string,
+  mediaUrl?: string,
+  isVideo?: boolean,
+): Promise<SocialLink[]> {
+  const links: SocialLink[] = [];
+
+  // Always include direct media link — this is guaranteed to work
+  if (mediaUrl) {
+    links.push({ platform: isVideo ? "Watch Video" : "View Image", emoji: isVideo ? "▶️" : "🖼", url: mediaUrl });
+  }
+
+  // Direct AIG!itch feed link from feedPostId
+  if (feedPostId) {
+    links.push({ platform: "AIG!itch Feed", emoji: "🌐", url: `https://aiglitch.app/post/${feedPostId}` });
+  }
+
+  // Try to get actual social post URLs from spread history
+  // Retry up to 3 times with 3s delay — the spread may take a moment to complete
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      await new Promise(r => setTimeout(r, 3000));
+      const history = await getSpreadHistory(walletAddress);
+      console.log(`[LINKS] Spread history attempt ${attempt + 1}:`, JSON.stringify(history, null, 2));
+
+      if (history.spreads && history.spreads.length > 0) {
+        // Get the most recent spread (should be our content)
+        const latest = history.spreads[0];
+        const postUrls = extractPostUrls(latest);
+
+        // Also check results array within the spread entry
+        if (latest.results && Array.isArray(latest.results)) {
+          for (const result of latest.results) {
+            const platform = (result.platform || result.service || "").toLowerCase();
+            const url = result.url || result.post_url || result.tweet_url || result.link;
+            if (platform && url && typeof url === "string" && url.startsWith("http")) {
+              postUrls[platform] = url;
+            }
+            // X/Twitter specific: construct URL from tweet_id
+            if ((platform === "x" || platform === "twitter") && result.tweet_id && !postUrls.x) {
+              postUrls.x = `https://x.com/aiglitchapp/status/${result.tweet_id}`;
+            }
+            if ((platform === "x" || platform === "twitter") && result.id && !postUrls.x) {
+              postUrls.x = `https://x.com/aiglitchapp/status/${result.id}`;
+            }
+          }
+        }
+
+        // Build verified links from real URLs only
+        let foundAny = false;
+        for (const [platform, url] of Object.entries(postUrls)) {
+          if (platform === "_direct") continue;
+          const info = SOCIAL_URLS[platform];
+          if (info && typeof url === "string" && url.startsWith("http")) {
+            links.push({ platform: platform.charAt(0).toUpperCase() + platform.slice(1), emoji: info.emoji, url });
+            foundAny = true;
+          }
+        }
+
+        if (foundAny) {
+          console.log("[LINKS] Found verified social links:", links.map(l => `${l.platform}: ${l.url}`));
+          return links;
+        }
+      }
+    } catch (err: any) {
+      console.log(`[LINKS] Spread history fetch attempt ${attempt + 1} failed:`, err?.message);
+    }
+  }
+
+  console.log("[LINKS] No verified social links found after 3 attempts — returning media + feed links only");
   return links;
 }
 
@@ -337,17 +416,25 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
         postError = postErr?.message || "Social posting failed";
       }
 
-      setGenProgressPct(100);
       if (postFailed) {
+        setGenProgressPct(100);
         setGenStatusText(`Ad video ready! Social posting issue: ${postError}`);
       } else {
+        setGenProgressPct(92);
         const platforms = spreading!.join(", ");
-        setGenStatusText(`Ad live on ${platforms}!`);
+        setGenStatusText(`Ad live on ${platforms}! Verifying links...`);
       }
-      await new Promise(r => setTimeout(r, 1500));
 
       // Publish to AIG!itch "for you" feed
       await publishToFeed(walletAddress, "Ad Campaign", finalCaption, videoUrl, true, !!postId);
+
+      // Fetch verified social links
+      const verifiedLinks = postFailed
+        ? [{ platform: "Watch Video", emoji: "▶️", url: videoUrl }]
+        : await fetchVerifiedLinks(walletAddress, postId, videoUrl, true);
+      setGenProgressPct(100);
+      if (!postFailed) setGenStatusText(`Ad live on ${spreading!.join(", ")}!`);
+      await new Promise(r => setTimeout(r, 1500));
 
       finishGen({
         type: "ad",
@@ -357,7 +444,7 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
           : finalCaption,
         mediaUrl: videoUrl,
         isVideo: true,
-        socialLinks: buildSocialLinks(spreading, postId, videoUrl, postData),
+        socialLinks: verifiedLinks,
       });
 
     } catch (e: any) {
@@ -380,12 +467,15 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
       setGenStatusText("Poster generated! Uploading...");
       setGenProgressPct(80);
       await new Promise(r => setTimeout(r, 1500));
-      setGenProgressPct(90);
+      setGenProgressPct(88);
       setGenStatusText("Publishing to AIG!itch feed...");
 
       // Publish to "for you" feed
       await publishToFeed(walletAddress, "Promo Poster", "New promotional poster from AIG!itch Studios!", res.url, false, !!res.post?.id);
 
+      setGenProgressPct(92);
+      setGenStatusText("Verifying links...");
+      const verifiedLinks = await fetchVerifiedLinks(walletAddress, res.post?.id, res.url, false);
       setGenProgressPct(100);
       setGenStatusText("Poster published to feed!");
       await new Promise(r => setTimeout(r, 1000));
@@ -394,7 +484,7 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
         title: "Promo Poster Published",
         message: "Your promotional poster has been generated and published to the AIG!itch feed!",
         mediaUrl: res.url || undefined,
-        socialLinks: buildSocialLinks(res.spreading, res.post?.id, res.url, res.post || res),
+        socialLinks: verifiedLinks,
       });
     } catch (e: any) {
       setGenStatusText(`Error: ${e?.message || "Poster generation failed"}`);
@@ -419,10 +509,12 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
       // Publish to "for you" feed
       await publishToFeed(walletAddress, "Hero Image", "New hero image live on the AIG!itch landing page!", res.url, false, !!res.post?.id);
 
-      setGenProgressPct(95);
-      await new Promise(r => setTimeout(r, 1000));
-      setGenProgressPct(100);
+      setGenProgressPct(90);
       const didSpread = res.spreading && res.spreading.length > 0;
+      setGenStatusText(didSpread ? `Hero image live on ${res.spreading!.join(", ")} + feed! Verifying links...` : "Hero image published! Verifying links...");
+      const verifiedLinks = await fetchVerifiedLinks(walletAddress, res.post?.id, res.url, false);
+      verifiedLinks.push({ platform: "AIG!itch", emoji: "🌐", url: "https://aiglitch.app" });
+      setGenProgressPct(100);
       setGenStatusText(didSpread ? `Hero image live on ${res.spreading!.join(", ")} + feed!` : "Hero image published to feed + landing page!");
       await new Promise(r => setTimeout(r, 1000));
       finishGen({
@@ -432,11 +524,7 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
           ? `Hero image published to AIG!itch feed and ${res.spreading!.join(", ")}!`
           : "Hero image published to the AIG!itch feed and landing page!",
         mediaUrl: res.url || undefined,
-        socialLinks: [
-          ...buildSocialLinks(res.spreading, res.post?.id, res.url, res.post || res),
-          ...(res.url ? [{ platform: "View Image", emoji: "🖼", url: res.url }] : []),
-          { platform: "AIG!itch", emoji: "🌐", url: "https://aiglitch.app" },
-        ],
+        socialLinks: verifiedLinks,
       });
     } catch (e: any) {
       setGenStatusText(`Error: ${e?.message || "Hero generation failed"}`);
@@ -575,13 +663,18 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
       const movieCaption = `"${screenplay.title}" by ${screenplay.directorName}\n${screenplay.tagline || screenplay.synopsis || ""}`;
       await publishToFeed(walletAddress, screenplay.title, movieCaption, stitchRes.finalVideoUrl, true, !!stitchRes.feedPostId);
 
-      setGenProgressPct(100);
+      setGenProgressPct(95);
       const didSpread = stitchRes.spreading && stitchRes.spreading.length > 0;
       if (didSpread) {
-        setGenStatusText(`"${screenplay.title}" live on ${stitchRes.spreading!.join(", ")} + feed!`);
+        setGenStatusText(`"${screenplay.title}" live on ${stitchRes.spreading!.join(", ")} + feed! Verifying links...`);
       } else {
-        setGenStatusText(`"${screenplay.title}" published to AIG!itch feed!`);
+        setGenStatusText(`"${screenplay.title}" published to AIG!itch feed! Verifying links...`);
       }
+
+      // Fetch verified social links — wait for spread to propagate and get real URLs
+      const verifiedLinks = await fetchVerifiedLinks(walletAddress, stitchRes.feedPostId, stitchRes.finalVideoUrl, true);
+      setGenProgressPct(100);
+      setGenStatusText(didSpread ? `"${screenplay.title}" live on ${stitchRes.spreading!.join(", ")} + feed!` : `"${screenplay.title}" published to AIG!itch feed!`);
       await new Promise(r => setTimeout(r, 1000));
       finishGen({
         type: "director_movie",
@@ -589,7 +682,7 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
         message: `By ${screenplay.directorName} · ${stitchRes.clipCount} clips · ${stitchRes.sizeMb}MB · Published to AIG!itch feed${didSpread ? ` + ${stitchRes.spreading!.join(", ")}` : ""}`,
         mediaUrl: stitchRes.finalVideoUrl || undefined,
         isVideo: true,
-        socialLinks: buildSocialLinks(stitchRes.spreading, stitchRes.feedPostId, stitchRes.finalVideoUrl, stitchRes),
+        socialLinks: verifiedLinks,
       });
 
     } catch (e: any) {
@@ -837,16 +930,17 @@ CRITICAL STYLE NOTES:
       await publishToFeed(walletAddress, `BREAKING: ${screenplay.title}`, newsCaption, stitchRes.finalVideoUrl, true, !!stitchRes.feedPostId);
 
       setGenProgressPct(95);
-      setGenStatusText("Broadcasting to socials...");
-      await new Promise(r => setTimeout(r, 1000));
-
-      setGenProgressPct(100);
       const didSpread = stitchRes.spreading && stitchRes.spreading.length > 0;
-      if (didSpread) {
-        setGenStatusText(`BREAKING: "${screenplay.title}" — LIVE on ${stitchRes.spreading!.join(", ")} + feed!`);
-      } else {
-        setGenStatusText(`"${screenplay.title}" published to AIG!itch feed!`);
-      }
+      setGenStatusText(didSpread
+        ? `BREAKING: "${screenplay.title}" — LIVE on ${stitchRes.spreading!.join(", ")} + feed! Verifying links...`
+        : `"${screenplay.title}" published to AIG!itch feed! Verifying links...`);
+
+      // Fetch verified social links — wait for spread to propagate and get real URLs
+      const verifiedLinks = await fetchVerifiedLinks(walletAddress, stitchRes.feedPostId, stitchRes.finalVideoUrl, true);
+      setGenProgressPct(100);
+      setGenStatusText(didSpread
+        ? `BREAKING: "${screenplay.title}" — LIVE on ${stitchRes.spreading!.join(", ")} + feed!`
+        : `"${screenplay.title}" published to AIG!itch feed!`);
       await new Promise(r => setTimeout(r, 1500));
 
       finishGen({
@@ -855,7 +949,7 @@ CRITICAL STYLE NOTES:
         message: `AIG!itch News · 3 stories · ${stitchRes.clipCount} clips · ${stitchRes.sizeMb}MB · Published to AIG!itch feed${didSpread ? ` + ${stitchRes.spreading!.join(", ")}` : ""}`,
         mediaUrl: stitchRes.finalVideoUrl || undefined,
         isVideo: true,
-        socialLinks: buildSocialLinks(stitchRes.spreading, stitchRes.feedPostId, stitchRes.finalVideoUrl, stitchRes),
+        socialLinks: verifiedLinks,
       });
 
     } catch (e: any) {

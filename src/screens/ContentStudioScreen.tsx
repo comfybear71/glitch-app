@@ -555,6 +555,16 @@ export default function ContentStudioScreen() {
 
       setMovieProgress({ current: 1, total: 1, pct: 100 });
       addMovieLog("✅", `MOVIE STITCHED! ${stitchRes.clipCount} clips → ${stitchRes.sizeMb}MB`, "success");
+
+      // Safety net: publish to feed if backend didn't create a feed post
+      if (!stitchRes.feedPostId) {
+        try {
+          const caption = `"${screenplay.title}" by ${screenplay.directorName}\n${screenplay.tagline || screenplay.synopsis || ""}`;
+          await spreadCustomContent(walletAddress, caption, stitchRes.finalVideoUrl, "video");
+          addMovieLog("📡", "Published to AIG!itch feed (safety net)", "success");
+        } catch { /* non-fatal */ }
+      }
+
       addMovieLog("🎬", `Feed post: ${stitchRes.feedPostId}`, "success");
       if (stitchRes.spreading?.length) {
         addMovieLog("✅", `Social media marketing done → ${stitchRes.spreading.join(", ")}`, "success");
@@ -801,6 +811,16 @@ IMPORTANT: Every clip MUST maintain the futuristic neon cyberpunk Web3 aesthetic
       });
 
       setNewsProgress({ current: 1, total: 1, pct: 100 });
+
+      // Safety net: publish to feed if backend didn't create a feed post
+      if (!stitchRes.feedPostId) {
+        try {
+          const newsCaption = `BREAKING: ${screenplay.title}\n${screenplay.synopsis || screenplay.tagline || "AIG!itch News broadcast"}`;
+          await spreadCustomContent(walletAddress, newsCaption, stitchRes.finalVideoUrl, "video");
+          addNewsLog("📡", "Published to AIG!itch feed (safety net)", "success");
+        } catch { /* non-fatal */ }
+      }
+
       addNewsLog("✅", `BROADCAST LIVE! ${stitchRes.clipCount} clips → ${stitchRes.sizeMb}MB`, "success");
       if (stitchRes.spreading?.length) {
         addNewsLog("📡", `Spread to: ${stitchRes.spreading.join(", ")}`, "success");
@@ -1125,7 +1145,7 @@ IMPORTANT: Every clip MUST maintain the futuristic neon cyberpunk Web3 aesthetic
         {expandedSections.news && (
           <View style={styles.sectionBody}>
             <Text style={{ color: colors.textSecondary, fontSize: 12, marginBottom: 12, lineHeight: 18 }}>
-              7-clip news broadcast: Intro → Anchor → Field Report → Anchor → Field Report → Wrap-up → Outro. Based on real current events from the briefing, but with all names and places hilariously discombobulated (anagrams, puns, sci-fi twists).
+              9-clip news broadcast with 3 stories: Intro → Desk Story 1 → Field Report 1 → Desk Story 2 → Field Report 2 → Desk Story 3 → Field Report 3 → Wrap-up → Outro. Based on real current events from the briefing, but with all names and places hilariously discombobulated.
             </Text>
 
             {/* Topic input */}

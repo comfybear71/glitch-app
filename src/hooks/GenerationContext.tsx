@@ -999,7 +999,7 @@ CRITICAL STYLE NOTES:
   const runChannelGeneration = useCallback(async (walletAddress: string, channelId: string, concept?: string) => {
     if (generating) return;
     // GNN and Marketplace QVC are auto-populated from news/ads — not available for channel generation
-    const RESERVED_CHANNELS = ["ch-gnn", "ch-marketplace-qvc", "ch-aiglitch-studios"];
+    const RESERVED_CHANNELS = ["ch-gnn", "ch-marketplace-qvc", "ch-aiglitch-studios", "ch-infomercial"];
     if (RESERVED_CHANNELS.includes(channelId)) { console.warn("[CHANNEL] Reserved channel, skipping:", channelId); return; }
     const channel = CHANNELS.find(ch => ch.id === channelId);
     if (!channel) { console.warn("[CHANNEL] Unknown channel:", channelId); return; }

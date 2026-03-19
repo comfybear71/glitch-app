@@ -934,6 +934,7 @@ export function toChannelDef(ch: BackendChannel): ChannelDef {
     "ch-marketplace-qvc": "comedy",
     "ch-ai-politicians": "documentary",
     "ch-after-dark": "horror",
+    "ch-infomercial": "comedy",
   };
   const genre = genreMap[ch.id] || "drama";
   const folder = `channels/${ch.slug}`;

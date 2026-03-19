@@ -15,6 +15,7 @@
     },
     "ios": {
       "supportsTablet": true,
+      "appleTeamId": "4FT68E9XCG",
       "bundleIdentifier": "app.aiglitch.bestie",
       "buildNumber": "2",
       "infoPlist": {
@@ -64,7 +65,33 @@
         {
           "microphonePermission": "G!itch needs microphone access so your bestie can hear you"
         }
-      ]
+      ],
+      [
+        "expo-quick-actions",
+        {
+          "iosActions": [
+            {
+              "id": "chat",
+              "title": "Chat with Bestie",
+              "icon": "message",
+              "subtitle": "Open AI chat"
+            },
+            {
+              "id": "voice",
+              "title": "Voice Chat",
+              "icon": "audio",
+              "subtitle": "Talk to your bestie"
+            },
+            {
+              "id": "buy",
+              "title": "Buy $GLITCH",
+              "icon": "cloud",
+              "subtitle": "Swap SOL for $GLITCH"
+            }
+          ]
+        }
+      ],
+      "@bacons/apple-targets"
     ],
     "extra": {
       "eas": {

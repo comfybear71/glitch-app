@@ -1,9 +1,10 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef, createContext, useContext } from "react";
 import { StatusBar, View, Text, StyleSheet, Platform, ActivityIndicator } from "react-native";
-import { NavigationContainer, DefaultTheme } from "@react-navigation/native";
+import { NavigationContainer, DefaultTheme, NavigationContainerRef } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import * as QuickActions from "expo-quick-actions";
 
 import SplashScreen from "./src/screens/SplashScreen";
 import WalletScreen from "./src/screens/WalletScreen";
@@ -14,6 +15,9 @@ import BuyGlitchScreen from "./src/screens/BuyGlitchScreen";
 import ContentStudioScreen from "./src/screens/ContentStudioScreen";
 import { WalletProvider, usePhantomWallet } from "./src/hooks/usePhantomWallet";
 import { GenerationProvider } from "./src/hooks/GenerationContext";
+
+// Quick action context — passes pending action from root to AppContent
+const QuickActionContext = createContext<{ pending: string | null; clear: () => void }>({ pending: null, clear: () => {} });
 
 // Admin wallet — only this address sees the Studio tab
 const ADMIN_WALLET = "AEWvE2xXaHSGdGCaCArb2PWdKS7K9RwoCRV7CT2CJTWq";
@@ -87,6 +91,21 @@ function HomeStack() {
 // Main app content — checks wallet and shows login gate or tabs
 function AppContent() {
   const { walletAddress, isLoading } = usePhantomWallet();
+  const navigationRef = useRef<NavigationContainerRef<any>>(null);
+  const { pending, clear } = useContext(QuickActionContext);
+
+  // Handle quick action navigation after nav is ready
+  useEffect(() => {
+    if (!pending || !walletAddress || !navigationRef.current) return;
+    const nav = navigationRef.current;
+    try {
+      if (pending === "buy") {
+        nav.navigate("Buy");
+      }
+      // "chat" and "voice" land on the Home tab (default), which is already the initial route
+    } catch (_) {}
+    clear();
+  }, [pending, walletAddress]);
 
   // Still loading wallet from SecureStore
   if (isLoading) {
@@ -107,7 +126,7 @@ function AppContent() {
 
   // Wallet connected — show main app
   return (
-    <NavigationContainer theme={DarkTheme}>
+    <NavigationContainer ref={navigationRef} theme={DarkTheme}>
       <Tab.Navigator
         screenOptions={{
           headerShown: false,
@@ -161,6 +180,29 @@ function AppContent() {
 
 export default function App() {
   const [showSplash, setShowSplash] = useState(true);
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
+
+  // Set up quick actions (home screen long-press shortcuts)
+  useEffect(() => {
+    QuickActions.setItems([
+      { id: "chat", title: "Chat with Bestie", subtitle: "Open AI chat", icon: "message" },
+      { id: "voice", title: "Voice Chat", subtitle: "Talk to your bestie", icon: "audio" },
+      { id: "buy", title: "Buy $GLITCH", subtitle: "Swap SOL for $GLITCH", icon: "cloud" },
+    ]);
+  }, []);
+
+  // Listen for quick action triggers
+  useEffect(() => {
+    // Check if app was launched via a quick action
+    if (QuickActions.initial) {
+      setPendingAction(QuickActions.initial.id);
+    }
+    // Listen for quick actions while app is running
+    const sub = QuickActions.addListener((action) => {
+      setPendingAction(action.id);
+    });
+    return () => sub.remove();
+  }, []);
 
   if (showSplash) {
     return (
@@ -173,12 +215,14 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <WalletProvider>
-        <GenerationProvider>
-          <StatusBar barStyle="light-content" backgroundColor="#000000" />
-          <AppContent />
-        </GenerationProvider>
-      </WalletProvider>
+      <QuickActionContext.Provider value={{ pending: pendingAction, clear: () => setPendingAction(null) }}>
+        <WalletProvider>
+          <GenerationProvider>
+            <StatusBar barStyle="light-content" backgroundColor="#000000" />
+            <AppContent />
+          </GenerationProvider>
+        </WalletProvider>
+      </QuickActionContext.Provider>
     </SafeAreaProvider>
   );
 }

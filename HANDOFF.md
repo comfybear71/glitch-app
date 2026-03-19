@@ -416,6 +416,48 @@ If "your local changes would be overwritten" appears, stash first (see above).
 
 ---
 
+## Recent Changes — Session 2026-03-19 (Session 11 — Shortcuts & Action Button)
+
+### iOS Shortcuts & Action Button Support (NEW)
+
+Two new integrations that make G!itch accessible from the iOS home screen, Shortcuts app, and Action Button:
+
+#### 1. Home Screen Quick Actions (`expo-quick-actions`)
+- **Long-press the app icon** on the home screen to see 3 quick actions:
+  - "Chat with Bestie" — opens the app to the Home/chat screen
+  - "Voice Chat" — opens the app for voice chat
+  - "Buy $GLITCH" — navigates directly to the Buy tab
+- Actions defined both statically in `app.json` (available immediately after install) and dynamically in `App.tsx`
+- Quick action listener in `App.tsx` handles navigation via `QuickActionContext`
+
+#### 2. App Intents for Shortcuts & Action Button (`@bacons/apple-targets`)
+- **5 App Intents** registered via Swift code in `targets/intents/GlitchIntents.swift`:
+  - "Open G!itch" — basic app open
+  - "Chat with Bestie" — open chat
+  - "Check $GLITCH Balance" — view balances
+  - "Buy $GLITCH" — go to buy screen
+  - "Voice Chat with Bestie" — start voice chat
+- **Siri phrases** registered (e.g., "Chat with my bestie in G!itch", "Check my balance in G!itch")
+- **Action Button**: Go to Settings → Action Button → Shortcut → select any G!itch intent
+- **Shortcuts app**: G!itch actions appear when creating new shortcuts or automations
+- Uses `@bacons/apple-targets` config plugin with `app-intent` extension type
+- Requires EAS build (dev client) — does NOT work in Expo Go
+
+#### Files Changed (Session 11)
+- `app.json` — Added `expo-quick-actions` plugin with 3 static iOS actions, `@bacons/apple-targets` plugin, `ios.appleTeamId`
+- `App.tsx` — Quick action setup (`QuickActions.setItems`), listener, `QuickActionContext` for navigation
+- `targets/intents/expo-target.config.js` (NEW) — App Intent target configuration
+- `targets/intents/GlitchIntents.swift` (NEW) — 5 App Intents + `GlitchShortcutsProvider` with Siri phrases
+
+#### How to Assign G!itch to the Action Button
+1. Build and install the preview build
+2. Open **Settings → Action Button**
+3. Swipe to **Shortcut**
+4. Tap the shortcut selector and pick a G!itch action (e.g., "Chat with Bestie")
+5. Press the Action Button — G!itch opens to the selected action
+
+---
+
 ## Recent Changes — Session 2026-03-19 (Session 10 — MILESTONE BUILD)
 
 This session represents a **milestone checkpoint**. The app is feature-complete for Phase 1 and stable. All future development builds from this point.
@@ -889,7 +931,7 @@ Everything listed in "Working Features" above is **live and functional** as of S
 - **Content generation for all users**: Currently Architect-only — planned rollout to all besties
 - **Personal Assistant abilities**: Weather, crypto prices, news, reminders, to-do lists, web search
 - **Smart push notifications**: Reminders, crypto alerts, bestie check-ins, news alerts
-- **Siri Shortcuts**: Summon bestie via Siri
+- **Siri Shortcuts**: ~~Summon bestie via Siri~~ ✅ DONE (Session 11) — 5 App Intents with Siri phrases registered
 - **Email access**: Read/summarize emails (requires OAuth)
 - **Alarm/Calendar integration**: Native integrations
 - **Digital Void video posts**: Enable video content in social feed

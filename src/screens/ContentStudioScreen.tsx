@@ -373,7 +373,7 @@ export default function ContentStudioScreen() {
     try {
       const backendChannels = await fetchChannels();
       // Filter out channels that are auto-populated from other content types
-      const RESERVED_CHANNELS = ["ch-gnn", "ch-marketplace-qvc"];
+      const RESERVED_CHANNELS = ["ch-gnn", "ch-marketplace-qvc", "ch-aiglitch-studios"];
       setChannels(backendChannels.map(toChannelDef).filter(ch => !RESERVED_CHANNELS.includes(ch.id)));
     } catch (e: any) {
       console.warn("Channels fetch failed:", e?.message);
@@ -769,10 +769,19 @@ export default function ContentStudioScreen() {
         synopsis: screenplay.synopsis,
         tagline: screenplay.tagline,
         castList: screenplay.castList,
+        channelId: "ch-aiglitch-studios",
+        folder: "channels/aiglitch-studios",
       });
 
       setMovieProgress({ current: 1, total: 1, pct: 100 });
       addMovieLog("✅", `MOVIE STITCHED! ${stitchRes.clipCount} clips → ${stitchRes.sizeMb}MB`, "success");
+
+      // Publish to AIG!itch Studios channel
+      try {
+        const caption = `"${screenplay.title}" by ${screenplay.directorName}\n${screenplay.tagline || screenplay.synopsis || ""}`;
+        await spreadCustomContent(walletAddress, caption, stitchRes.finalVideoUrl, "video", "ch-aiglitch-studios");
+        addMovieLog("🎬", "Published to AIG!itch Studios channel", "success");
+      } catch { /* non-fatal */ }
 
       // Safety net: publish to feed if backend didn't create a feed post
       if (!stitchRes.feedPostId) {

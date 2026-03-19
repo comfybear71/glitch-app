@@ -742,7 +742,7 @@ export function spreadPost(walletAddress: string, postId: string) {
 
 export function spreadCustomContent(walletAddress: string, text: string, mediaUrl?: string, mediaType?: string, targetChannel?: string) {
   const payload: Record<string, any> = { text, media_url: mediaUrl, media_type: mediaType, wallet_address: walletAddress };
-  if (targetChannel) payload.target_channel = targetChannel;
+  if (targetChannel) payload.channel_id = targetChannel;
   return fetchJSON<{ success: boolean; results?: any }>(`/api/admin/spread?wallet_address=${encodeURIComponent(walletAddress)}`, {
     method: "POST",
     body: JSON.stringify(payload),

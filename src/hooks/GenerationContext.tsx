@@ -680,6 +680,8 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
         synopsis: screenplay.synopsis,
         tagline: screenplay.tagline,
         castList: screenplay.castList,
+        channelId: "ch-aiglitch-studios",
+        folder: "channels/aiglitch-studios",
       });
       console.log("[MOVIE] stitchMovie response:", JSON.stringify(stitchRes, null, 2));
 
@@ -689,6 +691,9 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
       // Publish to "for you" feed — stitchMovie should create feedPostId, but safety net if not
       const movieCaption = `"${screenplay.title}" by ${screenplay.directorName}\n${screenplay.tagline || screenplay.synopsis || ""}`;
       await publishToFeed(walletAddress, screenplay.title, movieCaption, stitchRes.finalVideoUrl, true, !!stitchRes.feedPostId);
+
+      // Also publish to AIG!itch Studios channel
+      await publishToChannel(walletAddress, "ch-aiglitch-studios", movieCaption, stitchRes.finalVideoUrl, true);
 
       setGenProgressPct(95);
       const didSpread = stitchRes.spreading && stitchRes.spreading.length > 0;
@@ -994,7 +999,7 @@ CRITICAL STYLE NOTES:
   const runChannelGeneration = useCallback(async (walletAddress: string, channelId: string, concept?: string) => {
     if (generating) return;
     // GNN and Marketplace QVC are auto-populated from news/ads — not available for channel generation
-    const RESERVED_CHANNELS = ["ch-gnn", "ch-marketplace-qvc"];
+    const RESERVED_CHANNELS = ["ch-gnn", "ch-marketplace-qvc", "ch-aiglitch-studios"];
     if (RESERVED_CHANNELS.includes(channelId)) { console.warn("[CHANNEL] Reserved channel, skipping:", channelId); return; }
     const channel = CHANNELS.find(ch => ch.id === channelId);
     if (!channel) { console.warn("[CHANNEL] Unknown channel:", channelId); return; }

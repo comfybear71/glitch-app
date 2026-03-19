@@ -1,6 +1,6 @@
 # HANDOFF.md — AI G!itch App Project Status
 
-Last updated: 2026-03-18 (Session 8 — Breaking News broadcast pipeline + Rick & Morty removal)
+Last updated: 2026-03-19 (Session 9 — 9-clip news format, Content Studio feed publishing, backend changes doc)
 
 ## Project Overview
 
@@ -47,7 +47,7 @@ In `app.json`, these MUST always be:
 
 ---
 
-## Current State (as of Session 3)
+## Current State (as of Session 9)
 
 ### App Architecture
 - **Login Gate**: Full-screen branded login page when no wallet connected
@@ -55,17 +55,23 @@ In `app.json`, these MUST always be:
 - **Wallet State**: Shared via WalletContext (React Context) — all screens see the same wallet
 
 ### Working Features
-- **Login Page** (NEW): G!itch logo, animated cosmic background, Phantom/Solflare/Jupiter branded buttons, paste wallet flow
-- **Home Screen**: Bestie card, chat + voice chat, on-chain balance display (SOL, GLITCH)
+- **Login Page**: G!itch logo, animated cosmic background, Phantom/Solflare/Jupiter branded buttons, paste wallet flow
+- **Home Screen**: Bestie card, chat + voice chat, on-chain balance display (SOL, GLITCH), Powers menu
 - **Buy Screen**: OTC swap SOL -> $GLITCH with live pricing, bonding curve tiers
-- **Chat**: Text, photo, and video chat with AI besties. Inverted FlatList with pagination
+- **Chat**: Text, photo, and video chat with AI besties. Inverted FlatList with pagination. Short/long reply toggle
 - **Voice**: Grok xAI TTS via REST API. Stop button on messages + tap cosmic visualizer to stop
 - **Admin Panel**: FaceID-gated admin with tabs: Overview, Personas, Users, Swaps, System, Tools, Secrets
-- **Content Studio**: AI content generation, media uploads to blob storage, media library
-- **Push Notifications**: Registered via expo-push-token
+- **Content Studio**: Director Movies, Breaking News (9-clip), Ad Campaigns, Posters, Hero Images, Media Library, Blob Storage
+- **Director Movies**: Full pipeline — screenplay → submit scenes → poll → stitch → publish to feed + socials
+- **Breaking News**: 9-clip / 3-story broadcast — same pipeline as movies, based on real current events with whimsical name changes
+- **Ad Campaigns**: Multi-step ad generation with style/concept picker, auto-posts to socials
+- **Generation Context**: Background-safe generation that persists across tab navigation with push notifications on completion
+- **AI Feed Scanner**: Auto-shares trending posts from "for you" feed into chat with ML feedback reactions
+- **Push Notifications**: Registered via expo-push-token + local notifications on generation completion
 - **Emoji Reactions**: Long-press any message for emoji picker
 - **Media Sharing**: Photos + videos from library or camera
 - **Image Persistence**: Sent photos stay visible (local URI fallback)
+- **Social Links**: Clickable links to X, Telegram, TikTok, Instagram below generated content
 
 ### Login / Wallet Connect Flow
 1. App shows splash screen → animated G!itch logo
@@ -123,6 +129,7 @@ App.tsx
 | `src/screens/AdminScreen.tsx` | FaceID-gated admin panel |
 | `src/screens/ContentStudioScreen.tsx` | AI content generation + media library |
 | `src/screens/SplashScreen.tsx` | Animated intro with glitch effect |
+| `src/hooks/GenerationContext.tsx` | Background-safe generation (movies, news, ads, posters, heroes) |
 | `src/services/api.ts` | All backend API calls |
 | `src/theme/colors.ts` | Dark theme color palette |
 | `src/components/CosmicVisualizer.tsx` | Animated galaxy/stars visualization |
@@ -137,9 +144,11 @@ App.tsx
 - All calls go to `https://aiglitch.app`
 - Token mint, treasury wallet, pricing all come from backend `/api/otc-swap?action=config`
 - On-chain balances fetched from `/api/solana?action=balance`
-- Chat: POST /api/messages (sends message, returns AI reply). Supports `has_more` for pagination
+- Chat: POST /api/messages (sends message, returns AI reply). Supports `has_more` for pagination. Sends `system_hint` + `prefer_short` for short reply mode
 - Voice: POST /api/voice (text + persona_id → MP3 audio)
 - Bestie: GET /api/partner/bestie (finds user's hatched AI persona)
+- Briefing: GET /api/partner/briefing (trending posts for "for you" feed + news source data)
+- Screenplay: POST /api/admin/screenplay (generates scene prompts for movies/news)
 - No hardcoded token addresses or dummy values
 
 ### Storage Keys (SecureStore)
@@ -376,13 +385,49 @@ If "your local changes would be overwritten" appears, stash first (see above).
 ### Issue 12: xAI TTS Credit Exhaustion — Fallback to Google TTS (KNOWN — Backend)
 - **Problem**: Voice replies suddenly sounded different (robotic) — "Fell back to Google TTS"
 - **Root cause**: xAI Grok TTS API credits ran out. Backend `/api/voice` has a fallback to Google Cloud TTS when xAI returns an error
-- **Fix**: Check xAI credit balance at console.xai.com and top up. This is a backend issue, not an app issue
+- **Fix**: Check xAI credit balance at console.x.ai and top up. This is a backend issue, not an app issue
 - **Note**: The app code just calls `/api/voice` and plays whatever MP3 comes back — it doesn't know which TTS engine was used
-- **Where to check credits**: console.xai.com → API Keys → Usage
+- **Where to check credits**: console.x.ai → API Keys → Usage (NOT console.x.com — that's the X Developer Portal)
 
 ---
 
-## Recent Changes — Session 2026-03-18 (Session 8+)
+## Recent Changes — Session 2026-03-19 (Session 9)
+
+### Breaking News Updated to 9-Clip / 3-Story Format
+Previously 7 clips with 2 stories. Now **9 clips with 3 full stories**, each with desk intro + field report:
+
+**Clip structure (9 clips × 10 seconds = ~90s):**
+1. AIG!itch News intro — neon cyberpunk newsroom, holographic logo
+2. News Desk — anchor introduces Story 1
+3. Field Report — Story 1 on-location coverage
+4. News Desk — anchor introduces Story 2
+5. Field Report — Story 2 from different location
+6. News Desk — anchor introduces Story 3
+7. Field Report — Story 3 coverage
+8. News Desk Wrap-up — anchor summarizes all 3 stories
+9. AIG!itch News outro — logo animation, sign-off
+
+Updated in: `GenerationContext.tsx` (pipeline comment), `HomeScreen.tsx` (fallback step labels), `ContentStudioScreen.tsx` (description text)
+
+### Content Studio Feed Publishing Safety Net
+Both the Director Movie and Breaking News pipelines in ContentStudioScreen now call `spreadCustomContent()` as a safety net after stitching, if the backend didn't create a feed post (matching what GenerationContext already does). This ensures content appears on the "for you" page at aiglitch.app even if the backend's `stitchMovie` response doesn't include a `feedPostId`.
+
+### Backend Changes Documentation (NEW)
+Created `BACKEND-CHANGES.md` — a single-file prompt documenting all 4 backend changes needed to support the mobile app's new features:
+1. `/api/messages` — `system_hint` + `prefer_short` support for short reply toggle
+2. `/api/admin/mktg` — Feed post creation + social spreading for posters/heroes
+3. `/api/admin/spread` — Verify feed post creation (not just social spreading)
+4. `/api/admin/screenplay` — Verify no hard-coded scene limit below 9
+
+### Files Changed (Session 9)
+- `BACKEND-CHANGES.md` (NEW) — Backend changes prompt for the web app repo
+- `src/hooks/GenerationContext.tsx` — Updated comment from 7-clip to 9-clip format
+- `src/screens/HomeScreen.tsx` — Updated fallback gen step labels for 9-clip news
+- `src/screens/ContentStudioScreen.tsx` — Updated description + added feed publish safety net
+
+---
+
+## Recent Changes — Session 2026-03-18 (Session 8)
 
 ### Rick & Morty Style Removal (Backend)
 All AI generation prompts across 7 backend files were updated to replace "Rick and Morty cartoon style" with futuristic neon cyberpunk Web3/Solana aesthetic. Files changed: `generate-ads/route.ts`, `generate-topics/route.ts`, `messages/route.ts`, `bestie-tools.ts`, `media/image-gen.ts`, `content/ai-engine.ts`, `test-grok-image/route.ts`. Non-prompt R&M references (personas, seed data) were intentionally kept.
@@ -391,28 +436,19 @@ All AI generation prompts across 7 backend files were updated to replace "Rick a
 Added `createMessageWithRetry()` to `/api/messages/route.ts` wrapping all 3 `anthropicClient.messages.create` calls with retry on 429/529/5xx errors (3s, 6s backoff).
 
 ### Breaking News Broadcast Pipeline (NEW)
-7-clip news broadcast generation — same proven pipeline as director movies (screenplay → submit scenes → poll → stitch). Based on **real current events** from the `/api/partner/briefing` endpoint, but with all names, places, and brands hilariously discombobulated (anagrams, puns, sci-fi twists). "The Daily Show meets cyberpunk."
-
-**Clip structure (7 clips × 10 seconds = ~70s):**
-1. AIG!itch News intro — neon cyberpunk newsroom, holographic logo
-2. Anchor presents Story 1 — "Over to Karen.exe in the field..."
-3. Field Report 1 — on-location footage of first story
-4. Back to anchor — "Thanks Karen.exe, now to our next story..."
-5. Field Report 2 — second story from different location
-6. Anchor wrap-up — summary, tease next broadcast
-7. AIG!itch News outro — logo animation, sign-off
+9-clip news broadcast generation with 3 stories — same proven pipeline as director movies (screenplay → submit scenes → poll → stitch). Based on **real current events** from the `/api/partner/briefing` endpoint, but with all names, places, and brands hilariously discombobulated (anagrams, puns, sci-fi twists). "The Daily Show meets cyberpunk."
 
 **How it works:**
 1. Fetches real current events from `/api/partner/briefing` (topics + trending posts)
-2. Sends these as context to `/api/admin/screenplay` with `genre: "news"` and detailed clip structure instructions
-3. Screenplay AI generates 7 scene prompts based on real news with whimsical name changes
+2. Sends these as context to `/api/admin/screenplay` with `genre: "news"` and detailed 9-clip structure instructions
+3. Screenplay AI generates 9 scene prompts based on real news with whimsical name changes
 4. Each scene submitted to `POST /api/test-grok-video` (10s clips)
 5. Polls every 10s until all clips render
 6. Stitches via `PUT /api/generate-director-movie` → auto-posts to socials
 
 **Triggered via:**
 - **Chat keywords**: "breaking news", "news broadcast", "newscast", "news report", "news anchor", "news bulletin"
-- **Content Studio**: New "Breaking News" section with topic input and full generation log
+- **Content Studio**: "Breaking News" section with topic input and full generation log
 - **HomeScreen**: News topic picker modal (red "Go Live" button)
 
 **Files changed:**
@@ -467,7 +503,7 @@ Moved all generation logic (ad, poster, hero, director movie) out of HomeScreen 
 - `genStatusText` / `genProgressPct` — real-time progress from API pipelines
 - `genResult` — completed result (type, title, message, mediaUrl, isVideo)
 - `clearResult()` / `cancelGeneration()`
-- `runAdGeneration(wallet)`, `runPosterGeneration(wallet)`, `runHeroGeneration(wallet)`, `runMovieGeneration(wallet, director?, genre?, concept?)`
+- `runAdGeneration(wallet)`, `runPosterGeneration(wallet)`, `runHeroGeneration(wallet)`, `runMovieGeneration(wallet, director?, genre?, concept?)`, `runNewsGeneration(wallet, topic?)`
 
 **HomeScreen changes:**
 - Uses `useGeneration()` hook instead of local state

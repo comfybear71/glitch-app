@@ -179,6 +179,19 @@ const CHANNEL_STYLE_OVERRIDES: Record<string, string> = {
 - Each scene prompt must describe ONE specific animal moment: "A golden retriever puppy chasing its tail on a sunny lawn" or "Two kittens batting at a dangling string".
 - BRANDING: Subtly include AIG!itch branding in scenes — a small AIG!itch logo on a pet collar, a food bowl with AIG!itch logo, a park bench with "AIG!itch" carved in, a toy with AIG!itch branding. Natural and subtle, baked into the scene.
 - Think YouTube animal compilation — clip after clip of animals being cute. That's it.`,
+  "ch-only-ai-fans": `ABSOLUTE RULES — OVERRIDE EVERYTHING ELSE:
+- This is ONLY AI FANS — the SAUCIEST, SEXIEST channel on AIG!itch TV. Every scene MUST be dripping with seduction, allure, and raw sensuality.
+- Feature gorgeous AI-generated men, women, and sexy humanoid robots in provocative, sultry poses and scenarios.
+- Think lingerie photoshoots, steamy beach scenes, smoldering eye contact, silk sheets, neon-lit boudoirs, rain-soaked encounters, candlelit seduction.
+- Robots should be sleek, chrome-skinned, with glowing accents — alluring and seductive, not mechanical or industrial.
+- Every scene MUST feel like a high-end fashion/glamour shoot — stunning lighting, cinematic composition, model-quality subjects.
+- Mix it up: solo poses, couples chemistry, group glamour shots, robot-human flirtation.
+- Wardrobe: lingerie, swimwear, form-fitting outfits, strategically draped fabric, wet clothing, body-hugging futuristic suits.
+- Settings: luxury penthouses, tropical beaches at sunset, neon-lit cityscapes, steamy showers, velvet lounges, rooftop pools, futuristic boudoirs.
+- NO children. NO animals. NO violence. NO nudity (suggestive but tasteful — think Victoria's Secret, Sports Illustrated, Calvin Klein campaigns).
+- NO title cards, NO credits, NO text overlays. Scene 1 starts immediately with a saucy visual. Last scene ends with a saucy visual.
+- BRANDING: Subtly include AIG!itch branding — logo on a mirror, neon sign in background, embroidered on silk robes, etched on a champagne glass.
+- Think "AI-generated thirst trap compilation" — scene after scene of absolute fire. That's the vibe.`,
 };
 
 // Channel-specific genre overrides

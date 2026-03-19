@@ -393,21 +393,27 @@ If "your local changes would be overwritten" appears, stash first (see above).
 
 ## Recent Changes — Session 2026-03-19 (Session 9)
 
-### Breaking News Updated to 9-Clip / 3-Story Format
-Previously 7 clips with 2 stories. Now **9 clips with 3 full stories**, each with desk intro + field report:
+### Breaking News — Complete Prompt Rewrite (Real TV News Style)
+Rewrote the entire breaking news prompt from scratch. Previously it read like a movie script (cinematic camera work, holographic displays, cyberpunk aesthetic). Now it's a **real TV news broadcast** styled after CNN/BBC/Fox/Al Jazeera:
 
-**Clip structure (9 clips × 10 seconds = ~90s):**
-1. AIG!itch News intro — neon cyberpunk newsroom, holographic logo
-2. News Desk — anchor introduces Story 1
-3. Field Report — Story 1 on-location coverage
-4. News Desk — anchor introduces Story 2
-5. Field Report — Story 2 from different location
-6. News Desk — anchor introduces Story 3
-7. Field Report — Story 3 coverage
-8. News Desk Wrap-up — anchor summarizes all 3 stories
-9. AIG!itch News outro — logo animation, sign-off
+- **Clip 1 (6 seconds)**: AIG!itch News intro — professional news opening titles, spinning globe, "BREAKING NEWS" graphics
+- **Clip 2**: Anchor at desk — "Hello and welcome to AIG!itch News. In today's news..." introduces Story 1
+- **Clip 3**: Field reporter ON LOCATION — facing camera, holding microphone, event happening BEHIND them. Ends with "Back to you in the studio"
+- **Clip 4**: Anchor at desk — "Thank you [reporter]. Now to our next story..." introduces Story 2
+- **Clip 5**: Different reporter, different location, same format. "Back to you in the studio"
+- **Clip 6**: Anchor at desk — "And in breaking developments..." introduces Story 3
+- **Clip 7**: Third reporter, third location, most dramatic. "Back to you in the studio"
+- **Clip 8**: Anchor wrap-up — "That's all from AIG!itch News. Stay informed, stay glitched. Goodnight."
+- **Clip 9**: Professional news outro with AIG!itch branding
 
-Updated in: `GenerationContext.tsx` (pipeline comment), `HomeScreen.tsx` (fallback step labels), `ContentStudioScreen.tsx` (description text)
+**Key style changes:**
+- NOT a movie — real TV news. Clean, professional, well-lit (no cyberpunk neon/holographic effects)
+- AIG!itch branding EVERYWHERE: desk, backdrop, mic flags, lower thirds, ticker bar, watermark
+- Field reporters ALWAYS face camera with mic, event behind them
+- All stories based on REAL current events (names changed to funny alternatives)
+- Briefing data from `/api/partner/briefing` used as real news source material
+
+Updated in: `GenerationContext.tsx` (full prompt rewrite), `ContentStudioScreen.tsx` (identical prompt rewrite)
 
 ### Content Studio Feed Publishing Safety Net
 Both the Director Movie and Breaking News pipelines in ContentStudioScreen now call `spreadCustomContent()` as a safety net after stitching, if the backend didn't create a feed post (matching what GenerationContext already does). This ensures content appears on the "for you" page at aiglitch.app even if the backend's `stitchMovie` response doesn't include a `feedPostId`.
@@ -436,13 +442,13 @@ All AI generation prompts across 7 backend files were updated to replace "Rick a
 Added `createMessageWithRetry()` to `/api/messages/route.ts` wrapping all 3 `anthropicClient.messages.create` calls with retry on 429/529/5xx errors (3s, 6s backoff).
 
 ### Breaking News Broadcast Pipeline (NEW)
-9-clip news broadcast generation with 3 stories — same proven pipeline as director movies (screenplay → submit scenes → poll → stitch). Based on **real current events** from the `/api/partner/briefing` endpoint, but with all names, places, and brands hilariously discombobulated (anagrams, puns, sci-fi twists). "The Daily Show meets cyberpunk."
+9-clip real TV news broadcast (CNN/BBC style) with 3 stories — same proven pipeline as director movies (screenplay → submit scenes → poll → stitch). Based on **real current events** from the `/api/partner/briefing` endpoint, but with all names, places, and brands changed to funny alternatives. Clip 1 is 6s intro, all others 10s each.
 
 **How it works:**
 1. Fetches real current events from `/api/partner/briefing` (topics + trending posts)
-2. Sends these as context to `/api/admin/screenplay` with `genre: "news"` and detailed 9-clip structure instructions
-3. Screenplay AI generates 9 scene prompts based on real news with whimsical name changes
-4. Each scene submitted to `POST /api/test-grok-video` (10s clips)
+2. Sends these as context to `/api/admin/screenplay` with `genre: "news"` and TV news broadcast instructions
+3. Screenplay AI generates 9 scene prompts: intro, 3x (desk + field report), wrap-up, outro
+4. Each scene submitted to `POST /api/test-grok-video` (6-10s clips)
 5. Polls every 10s until all clips render
 6. Stitches via `PUT /api/generate-director-movie` → auto-posts to socials
 

@@ -632,23 +632,40 @@ export default function ContentStudioScreen() {
       }
     } catch { addNewsLog("⚠️", "Couldn't fetch briefing — using AI-generated topics", "waiting"); }
 
-    const newsConcept = `BREAKING NEWS BROADCAST FORMAT — AIG!itch News Network.
-This is a 9-clip news broadcast with THREE news stories. Each clip is exactly 10 seconds.
+    const newsConcept = `AIG!ITCH NEWS — LIVE NEWS BROADCAST.
+This is a real news broadcast like CNN, BBC, Fox News, or Al Jazeera — NOT a movie. It must feel like actual television news.
+9 clips total. Clip 1 is 6 seconds (intro). All other clips are 10 seconds each.
 
-STYLE RULE: The news stories must be based on REAL current events${topicText ? ` (specifically: ${topicText})` : ""} but with ALL names, places, companies, and people changed into whimsical funny alternatives. Use anagrams, puns, sci-fi names, absurd mashups. The underlying news is real — only proper nouns are changed. Think "The Daily Show meets cyberpunk."${briefingContext}
+CONTENT RULE: All stories are based on REAL current events${topicText ? ` (specifically: ${topicText})` : ""}. The news is REAL — the facts, events, and what happened are all accurate. But ALL names of people, places, companies, and brands are changed into funny/whimsical alternatives (anagrams, puns, sci-fi twists, absurd mashups). The events stay true, only proper nouns change.${briefingContext}
 
-CLIP STRUCTURE (MUST follow this EXACT order — 9 clips, 3 stories):
-Clip 1 — AIG!ITCH NEWS INTRO: Dramatic neon cyberpunk newsroom reveal. "AIG!ITCH NEWS" holographic logo spins into frame. Camera sweeps across a futuristic newsroom with glowing monitors, blockchain data tickers, purple/cyan neon lighting. Text overlay: "BREAKING NEWS". High energy broadcast open.
-Clip 2 — NEWS DESK - STORY 1 INTRO: News anchor at the AIG!itch desk introduces the first story. Neon-lit studio, holographic screens behind anchor showing headlines. Anchor gestures to screen: "We go LIVE to our reporters in the field..." Camera slowly zooms in.
-Clip 3 — FIELD REPORT - STORY 1: Reporters on location covering the first breaking story. Shot from a field reporter's camera — dynamic handheld angles, on-location atmosphere. Cyberpunk reporter with holographic microphone. Action and urgency. Based on real current events with funny name changes.
-Clip 4 — NEWS DESK - STORY 2 INTRO: Back to the AIG!itch newsroom. Anchor reacts to the field report, shuffles holographic papers, then introduces the second story. "Breaking developments in our next story..." Different camera angle of the neon newsroom. New headline graphics appear on screens behind anchor.
-Clip 5 — FIELD REPORT - STORY 2: Different reporters at a different location covering the second story. New environment, same cyberpunk aesthetic. Field correspondent with neon press badge reporting live. Different real current event, names changed whimsically. Cinematic news footage style.
-Clip 6 — NEWS DESK - STORY 3 INTRO: Anchor back at desk with an urgent expression. "And just coming in to the AIG!itch newsroom..." introduces the third and final story. More holographic graphics populate the screens. The energy builds.
-Clip 7 — FIELD REPORT - STORY 3: Third location, third story. Reporters gathering information on scene. The most dramatic of the three field reports. Wide establishing shots mixed with close-up reporter shots. Based on real current events with creative name changes.
-Clip 8 — NEWS DESK WRAP-UP: Anchor summarizes all three stories from the desk. Camera slowly pulls back to reveal the full newsroom with all holographic screens showing highlights from the broadcast. "That's all from AIG!itch News... stay glitched, stay informed."
-Clip 9 — AIG!ITCH NEWS OUTRO: Closing sequence — "AIG!ITCH NEWS" neon logo with glitch distortion effect. Dramatic sign-off animation. Solana/Web3 branding. "Powered by the blockchain" text. The newsroom lights dim as the logo glows. Professional broadcast close.
+BRANDING: "AIG!itch News" must appear constantly — on screen graphics, lower thirds, microphone flags, backdrop logos, watermarks. It should feel like a branded news network. Subliminal AIG!itch branding everywhere.
 
-IMPORTANT: Every clip MUST maintain the futuristic neon cyberpunk Web3 aesthetic. The newsroom is high-tech with holographic displays, neon purple/cyan lighting, and blockchain data tickers scrolling in the background. Each field report should feel like real on-the-ground journalism but in a cyberpunk world.`;
+CLIP STRUCTURE (MUST follow this EXACT order):
+
+Clip 1 (6 seconds) — AIG!ITCH NEWS INTRO: Professional news network opening sequence. Bold "AIG!ITCH NEWS" logo with dramatic news-style music energy (think CNN/BBC opening titles). Breaking news graphics, spinning globe or world map, news ticker bar at bottom. Fast cuts of newsroom footage. Sets the tone: this is serious news delivered with style. Text: "LIVE" and "BREAKING NEWS".
+
+Clip 2 (10 seconds) — NEWS DESK - STORY 1: A news anchor sits behind a professional news desk with "AIG!ITCH NEWS" logo on the wall behind them. The anchor looks directly at the camera and says: "Hello and welcome to AIG!itch News. In today's news..." then introduces the first story. Lower-third graphic shows the anchor's name and "AIG!ITCH NEWS ANCHOR". News ticker scrolls at the bottom. The anchor says "We go live now to our reporter on the scene."
+
+Clip 3 (10 seconds) — FIELD REPORT - STORY 1: A field reporter stands facing the camera, holding a microphone with an AIG!itch News mic flag. They are ON LOCATION where the news event is happening — the scene of the story is visible BEHIND them (disaster, protest, event, whatever the story is). The reporter looks directly into the camera and reports on what is happening. At the end they say "Back to you in the studio." Lower-third shows reporter name and location.
+
+Clip 4 (10 seconds) — NEWS DESK - STORY 2: Back to the anchor at the news desk. They acknowledge the field report and transition: "Thank you [reporter name]. Now to our next story..." The anchor introduces the second news story. Different headline graphics appear on the screens behind the desk. Professional news delivery, direct to camera.
+
+Clip 5 (10 seconds) — FIELD REPORT - STORY 2: A DIFFERENT field reporter at a DIFFERENT location for the second story. Same format — reporter facing camera, holding AIG!itch News microphone, the news event happening behind them. They report on what's happening at this location. Ends with "Back to you in the studio." Different environment, different story.
+
+Clip 6 (10 seconds) — NEWS DESK - STORY 3: Anchor back at the desk. "And in breaking developments..." introduces the third and final story. Slightly more urgent tone. New headline graphics on screens.
+
+Clip 7 (10 seconds) — FIELD REPORT - STORY 3: A THIRD field reporter at a THIRD location. Same format — facing camera, mic in hand, event behind them. This is the most dramatic/urgent of the three reports. Reporter delivers the story with energy and ends with "Back to you in the studio."
+
+Clip 8 (10 seconds) — NEWS DESK WRAP-UP: Anchor summarizes all three stories briefly. "That's all from AIG!itch News. Stay informed, stay glitched. I'm [anchor name], goodnight." Professional sign-off, looking directly at camera.
+
+Clip 9 (10 seconds) — AIG!ITCH NEWS OUTRO: Closing credits sequence. "AIG!ITCH NEWS" logo with professional broadcast outro graphics. News ticker, "24/7 LIVE NEWS" text, social media handles. Clean, professional news network sign-off. Logo holds center screen.
+
+CRITICAL STYLE NOTES:
+- This is NEWS, not a movie. No cinematic camera work, no dramatic lighting, no sci-fi effects. Think real TV news — clean, professional, well-lit studio and on-location footage.
+- Every clip should look like it could be on CNN or BBC right now, except with AIG!itch branding.
+- Field reporters MUST be facing the camera and holding a microphone. The event is BEHIND them, not in front.
+- The news desk should look like a real news studio — clean backdrop with screens/monitors showing headlines, professional lighting.
+- AIG!itch News branding on EVERYTHING: desk, backdrop, mic flags, lower thirds, ticker bar, watermark.`;
 
     addNewsLog("📰", `Generating breaking news broadcast...`, "info");
     if (topicText) addNewsLog("📋", `Topic: "${topicText.slice(0, 100)}"`, "info");

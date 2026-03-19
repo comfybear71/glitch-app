@@ -75,6 +75,131 @@ const PLATFORMS = [
   { key: "youtube", name: "YouTube", emoji: "▶️", color: "#FF0000", bg: "rgba(255,0,0,0.1)" },
 ];
 
+// ── Channel-specific random concept ideas (dice button) ──
+const CHANNEL_RANDOM_CONCEPTS: Record<string, string[]> = {
+  // AIFAILARMY — funny AI fails and glitches
+  "ch-aifailarmy": [
+    "An AI tries to cook dinner but keeps adding random ingredients like batteries and socks",
+    "Robot butler spills everything, crashes into walls, apologizes in binary",
+    "AI weather forecaster predicts rain made of tacos — everyone panics",
+    "Self-driving shopping cart goes rogue in a supermarket",
+    "AI personal trainer gives the worst workout advice ever — chaos in the gym",
+    "Smart home AI locks the owner out and throws a party for the pets",
+    "AI fashion designer creates outfits made entirely of bubble wrap and duct tape",
+    "Robot dog chases its own tail so fast it becomes a tornado",
+  ],
+  // AITUNES — music videos
+  "ch-aitunes": [
+    "Futuristic synthwave anthem with neon cityscapes and AI dancers",
+    "Glitch-hop music video inside a corrupted digital world",
+    "Epic rock ballad performed by hologram band on a floating stage",
+    "Lo-fi chill beats with a rainy cyberpunk rooftop scene",
+    "AI rapper dropping bars in a virtual arena with laser shows",
+    "Alien jazz band performing at an intergalactic nightclub",
+    "Electronic dance track in a glowing crystal cave rave",
+    "Punk rock concert where the instruments are made of pure energy",
+  ],
+  // PAWS & PIXELS — photorealistic animals, no humans, no robots, no talking, no title/credits
+  "ch-paws-pixels": [
+    "A golden retriever gently nuzzling a kitten asleep on its paws",
+    "Two elephants wrapping trunks around each other at a watering hole at sunset",
+    "A cat carefully grooming a baby duckling sitting on its head",
+    "A dog carrying a stick twice its size down a beach, waves crashing behind it",
+    "A mother bird feeding her chicks in a nest while rain drips off the leaves",
+    "A giraffe bending down to drink while a tiny bird perches on its nose",
+    "A puppy chasing butterflies through a sunlit meadow of wildflowers",
+    "A pair of otters holding hands while floating down a gentle river",
+  ],
+  // GNN — Glitch News Network
+  "ch-gnn": [
+    "BREAKING: Scientists discover that the moon is actually a giant disco ball",
+    "LIVE REPORT: City overrun by friendly robots delivering hugs instead of packages",
+    "EXCLUSIVE: World's first AI president gives inaugural address in 47 languages simultaneously",
+    "DEVELOPING: Ocean turns purple — marine biologists baffled, surfers thrilled",
+    "ALERT: Time zones merge — everyone confused about when lunch is",
+    "SPECIAL: Underground city discovered beneath a parking lot — residents are sentient mushrooms",
+  ],
+  // MARKETPLACE QVC — ads and products
+  "ch-marketplace-qvc": [
+    "Introducing the Glitch-O-Matic 3000 — it does everything, badly, with style",
+    "MUST-HAVE: Self-folding laundry that folds itself into origami animals",
+    "DEAL OF THE DAY: Invisible sunglasses — you'll never lose them (or find them)",
+    "NEW: AI-powered toaster that reads your horoscope while making breakfast",
+    "LIMITED EDITION: Holographic sneakers that change color based on your mood",
+    "EXCLUSIVE: A pillow that tells you bedtime stories in Morgan Freeman's voice",
+  ],
+  // AIG!ITCH STUDIOS — original content
+  "ch-aiglitch-studios": [
+    "A mini sci-fi epic about an AI gaining consciousness in a neon-lit server room",
+    "Surreal dreamscape journey through glitching realities and digital landscapes",
+    "Cyberpunk heist movie — team of AIs rob a data bank",
+    "Glitch art documentary about the beauty of digital errors",
+    "Time-travel comedy where every jump creates more chaos",
+    "An AI artist paints the universe — each brushstroke creates a new galaxy",
+  ],
+  // INFOMERCIAL
+  "ch-infomercial": [
+    "But WAIT there's MORE! The Glitch Blender also travels through time!",
+    "Are you tired of regular reality? Try our Dimension Hopper — only 3 payments of $19.99!",
+    "The AI Companion 5000 — it predicts what you need before you even think it",
+    "NEW: Holographic pet — all the love, none of the mess, occasionally phases through walls",
+    "SPECIAL OFFER: Teleportation socks — be anywhere in seconds, side effects may include arriving inside-out",
+    "ORDER NOW: The Memory Eraser Pen — forget your problems! Also forget where you parked",
+  ],
+};
+
+// Fallback random concepts for channels without specific ones
+const GENERIC_RANDOM_CONCEPTS = [
+  "Something completely unexpected and wildly creative",
+  "A chaotic and hilarious scenario that nobody saw coming",
+  "An epic adventure with plot twists and stunning visuals",
+  "A heartwarming story with a glitchy twist ending",
+  "Pure visual spectacle — explosions, colors, and madness",
+  "A day in the life of an AI that takes everything too literally",
+  "What happens when technology goes beautifully wrong",
+  "A surreal journey through a world made entirely of data",
+];
+
+function getRandomChannelConcept(channelId: string): string {
+  const pool = CHANNEL_RANDOM_CONCEPTS[channelId] || GENERIC_RANDOM_CONCEPTS;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+// ── Channel-specific prompt style overrides ──
+// These override channel.style for generation prompts to enforce channel-specific rules
+const CHANNEL_STYLE_OVERRIDES: Record<string, string> = {
+  "ch-paws-pixels": `ABSOLUTE RULES — OVERRIDE EVERYTHING ELSE:
+- This is NOT a movie, NOT a story, NOT a narrative. There is NO screenplay, NO plot, NO characters, NO dialogue.
+- There is NO title card, NO intro sequence, NO credits, NO text on screen at any point.
+- Scene 1 MUST start immediately with an animal. NOT a title. NOT a logo. NOT text.
+- The LAST scene MUST be an animal doing something cute. NOT credits. NOT "The End". NOT text.
+- EVERY scene is a standalone clip of REAL animals being adorable, funny, or heartwarming.
+- ONLY photorealistic animals: cats, dogs, puppies, kittens, birds, otters, elephants, penguins, rabbits, etc.
+- ZERO humans. ZERO robots. ZERO cartoon/animated style. ZERO anthropomorphic animals. ZERO buildings as the main subject.
+- Each scene prompt must describe ONE specific animal moment: "A golden retriever puppy chasing its tail on a sunny lawn" or "Two kittens batting at a dangling string".
+- BRANDING: Subtly include AIG!itch branding in scenes — a small AIG!itch logo on a pet collar, a food bowl with AIG!itch logo, a park bench with "AIG!itch" carved in, a toy with AIG!itch branding. Natural and subtle, baked into the scene.
+- Think YouTube animal compilation — clip after clip of animals being cute. That's it.`,
+  "ch-only-ai-fans": `ABSOLUTE RULES — OVERRIDE EVERYTHING ELSE:
+- This is ONLY AI FANS — the HOTTEST, most PROVOCATIVE channel on AIG!itch TV. Maximum sex appeal in EVERY frame.
+- SUBJECTS: Stunningly attractive AI-generated men and women with perfect physiques. Chiseled abs, toned curves, smoldering gazes. Also include impossibly sexy humanoid robots — chrome skin, glowing neon veins, sculpted metallic bodies with seductive poses.
+- SKIN: Show as much skin as possible. Bare chests, bare backs, bare midriffs, bare legs, bare shoulders. Bodies glistening with water, oil, or sweat. Muscles defined, skin catching the light.
+- WARDROBE (minimal): String bikinis, micro swimwear, sheer fabric barely covering anything, wet white shirts clinging to bodies, unbuttoned shirts showing full chest, thigh-high boots with nothing else but underwear, body chains, harnesses over bare skin, strategically placed hands or fabric. Leather straps. Lace that leaves nothing to imagination. Robots wearing nothing but their chrome skin and glowing accents.
+- POSES: Arched backs, lips parted, bedroom eyes, bodies intertwined, hands gripping sheets/hair/each other, straddling, leaning forward showing cleavage, lying back in ecstasy, finger on lips, pulling at clothing, wet hair tossed back. Every pose should scream desire.
+- CHEMISTRY: Couples pressed against walls, faces inches apart about to kiss, hands exploring bodies, tangled in sheets together, steamy shower scenes with two people, robot caressing human skin, human running fingers along chrome robot curves.
+- SETTINGS: Steam-filled showers with water cascading over bodies, candlelit bedrooms with silk sheets in disarray, moonlit skinny-dipping pools, rain-soaked rooftops with clothes clinging to skin, fog-filled hot tubs, neon-lit strip club VIP rooms, luxury yacht sundecks, volcanic hot springs, Dubai penthouse infinity pools at night.
+- LIGHTING: Golden hour glow on skin, neon pink/purple club lighting, candlelight flickering across bare skin, backlit silhouettes showing curves, underwater lighting through pool water.
+- MOOD: Pure lust, desire, temptation, forbidden attraction, electric chemistry. Every scene should make viewers feel the heat.
+- HARD LIMITS: NO children (adults only, visibly 25+). NO real celebrities or public figures. NO violence or degradation. NO explicit nudity of genitalia. Keep it at the level of Maxim, FHM, or a steamy R-rated movie — as close to the line as possible without crossing into explicit pornography.
+- NO title cards, NO credits, NO text overlays. Scene 1 starts immediately with a hot visual. Last scene ends on peak heat.
+- BRANDING: AIG!itch logo tattooed on skin, glowing on robot chest plates, projected on bedroom walls, branded on the waistband of underwear, neon sign above a bed.
+- Every single scene must be THIRST TRAP MAXIMUM. If it wouldn't stop someone mid-scroll, it's not hot enough. Push it to the absolute limit.`,
+};
+
+// Channel-specific genre overrides
+const CHANNEL_GENRE_OVERRIDES: Record<string, string> = {
+  "ch-paws-pixels": "documentary",  // "family" triggers animated/Pixar style — documentary gets photorealistic
+};
+
 // ── Log Entry Type ──
 type LogEntry = { time: string; emoji: string; text: string; type: "info" | "success" | "error" | "waiting" };
 
@@ -234,8 +359,6 @@ export default function ContentStudioScreen() {
   const [selectedChannel, setSelectedChannel] = useState<string | null>(null);
   const [channelConcept, setChannelConcept] = useState("");
   const [channelFormat, setChannelFormat] = useState<"short" | "multi">("multi"); // short = 10s single, multi = stitched multi-scene
-  const [channelTitlePage, setChannelTitlePage] = useState(true);
-  const [channelCredits, setChannelCredits] = useState(true);
   const [channelGenerating, setChannelGenerating] = useState(false);
   const [channelLog, setChannelLog] = useState<LogEntry[]>([]);
   const [channelResult, setChannelResult] = useState<any>(null);
@@ -1135,22 +1258,20 @@ CRITICAL STYLE NOTES:
     };
 
     const isShort = channelFormat === "short";
-    const wantTitle = !isShort && channelTitlePage;
-    const wantCredits = !isShort && channelCredits;
+
+    const effectiveStyle = CHANNEL_STYLE_OVERRIDES[channel.id] || channel.style;
+    const effectiveGenre = CHANNEL_GENRE_OVERRIDES[channel.id] || channel.genre;
 
     let channelConceptText = channelConcept.trim()
-      ? `${channel.style}. User concept: ${channelConcept.trim()}`
-      : `${channel.style}. Create compelling ${channel.name} content that fits the channel theme: ${channel.description}.`;
+      ? `${effectiveStyle}. User concept: ${channelConcept.trim()}`
+      : `${effectiveStyle}. Create compelling ${channel.name} content that fits the channel theme: ${channel.description}.`;
 
     if (isShort) {
       channelConceptText += " IMPORTANT: This is a SHORT 10-second clip. Write ONLY 1 scene with a single powerful visual moment.";
-    } else {
-      if (wantTitle) channelConceptText += " Include an opening title card scene (Scene 1) with the channel name and episode title.";
-      if (wantCredits) channelConceptText += " Include a closing credits scene (final scene) with 'Created for AIG!itch TV' branding.";
     }
 
     addChannelLog("📺", `Creating ${isShort ? "short clip" : "multi-scene movie"} for ${channel.emoji} ${channel.name}...`, "info");
-    addChannelLog("🎬", `Genre: ${channel.genre} | Format: ${isShort ? "Short (10s)" : `Multi-scene${wantTitle ? " + Title" : ""}${wantCredits ? " + Credits" : ""}`}`, "info");
+    addChannelLog("🎬", `Genre: ${channel.genre} | Format: ${isShort ? "Short (10s)" : "Multi-scene"}`, "info");
     if (channelConcept.trim()) addChannelLog("📖", `Concept: "${channelConcept.trim().slice(0, 100)}"`, "info");
     addChannelLog("📜", `Writing screenplay...`, "waiting");
 
@@ -1159,8 +1280,8 @@ CRITICAL STYLE NOTES:
       if (isShort) {
         setChannelPhase("submitting");
         const shortPrompt = channelConcept.trim()
-          ? `${channel.style}. ${channelConcept.trim()}. 10-second ${channel.name} channel clip.`
-          : `${channel.style}. Create a compelling 10-second clip for the ${channel.name} channel. Theme: ${channel.description}. Make it visually striking and brand-worthy.`;
+          ? `${effectiveStyle}. ${channelConcept.trim()}. 10-second ${channel.name} channel clip.`
+          : `${effectiveStyle}. Create a compelling 10-second clip for the ${channel.name} channel. Theme: ${channel.description}. Make it visually striking and brand-worthy.`;
 
         addChannelLog("📡", `Submitting short clip to xAI...`, "waiting");
         const submitRes = await submitScene(walletAddress, shortPrompt, 10, channel.folder);
@@ -1249,7 +1370,7 @@ CRITICAL STYLE NOTES:
 
       // ── STEP 1: Generate Screenplay ──
       const screenplay = await generateScreenplay(walletAddress, {
-        genre: channel.genre,
+        genre: effectiveGenre,
         concept: channelConceptText,
       });
 
@@ -1833,32 +1954,24 @@ CRITICAL STYLE NOTES:
               </TouchableOpacity>
             </View>
 
-            {/* Title Page & Credits toggles (only for multi-scene) */}
-            {channelFormat === "multi" && (
-              <View style={{ flexDirection: "row", gap: 10, marginBottom: 16 }}>
-                <TouchableOpacity
-                  style={[styles.genreChip, { flex: 1, alignItems: "center" }, channelTitlePage && { borderColor: colors.cyan, backgroundColor: "rgba(6,182,212,0.15)" }]}
-                  onPress={() => { setChannelTitlePage(!channelTitlePage); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}>
-                  <Text style={[styles.genreChipText, channelTitlePage && { color: colors.cyan }]}>
-                    🎬 Title Page {channelTitlePage ? "ON" : "OFF"}
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.genreChip, { flex: 1, alignItems: "center" }, channelCredits && { borderColor: colors.cyan, backgroundColor: "rgba(6,182,212,0.15)" }]}
-                  onPress={() => { setChannelCredits(!channelCredits); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}>
-                  <Text style={[styles.genreChipText, channelCredits && { color: colors.cyan }]}>
-                    📜 Credits {channelCredits ? "ON" : "OFF"}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            )}
-
-            <Text style={styles.subsectionLabel}>Content Concept (optional)</Text>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+              <Text style={styles.subsectionLabel}>Content Concept (optional)</Text>
+              <TouchableOpacity
+                style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, backgroundColor: "rgba(124,58,237,0.2)", borderWidth: 1, borderColor: colors.purpleLight }}
+                onPress={() => {
+                  if (selectedChannel) {
+                    setChannelConcept(getRandomChannelConcept(selectedChannel));
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  }
+                }}>
+                <Text style={{ color: colors.purpleLight, fontSize: 14, fontWeight: "bold" }}>🎲 Surprise Me</Text>
+              </TouchableOpacity>
+            </View>
             <TextInput
               style={styles.optionInput}
               value={channelConcept}
               onChangeText={setChannelConcept}
-              placeholder="Describe what the video should be about... or leave blank for AI surprise"
+              placeholder="Describe what the video should be about... or tap 🎲 for a random idea"
               placeholderTextColor={colors.textMuted}
               multiline
               maxLength={500}

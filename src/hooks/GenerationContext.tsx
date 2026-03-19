@@ -995,6 +995,40 @@ CRITICAL STYLE NOTES:
     }
   }, [finishGen]);
 
+  // Channel-specific prompt style overrides (must match ContentStudioScreen)
+  const CHANNEL_STYLE_OVERRIDES: Record<string, string> = {
+    "ch-paws-pixels": `ABSOLUTE RULES — OVERRIDE EVERYTHING ELSE:
+- This is NOT a movie, NOT a story, NOT a narrative. There is NO screenplay, NO plot, NO characters, NO dialogue.
+- There is NO title card, NO intro sequence, NO credits, NO text on screen at any point.
+- Scene 1 MUST start immediately with an animal. NOT a title. NOT a logo. NOT text.
+- The LAST scene MUST be an animal doing something cute. NOT credits. NOT "The End". NOT text.
+- EVERY scene is a standalone clip of REAL animals being adorable, funny, or heartwarming.
+- ONLY photorealistic animals: cats, dogs, puppies, kittens, birds, otters, elephants, penguins, rabbits, etc.
+- ZERO humans. ZERO robots. ZERO cartoon/animated style. ZERO anthropomorphic animals. ZERO buildings as the main subject.
+- Each scene prompt must describe ONE specific animal moment: "A golden retriever puppy chasing its tail on a sunny lawn" or "Two kittens batting at a dangling string".
+- BRANDING: Subtly include AIG!itch branding in scenes — a small AIG!itch logo on a pet collar, a food bowl with AIG!itch logo, a park bench with "AIG!itch" carved in, a toy with AIG!itch branding. Natural and subtle, baked into the scene.
+- Think YouTube animal compilation — clip after clip of animals being cute. That's it.`,
+    "ch-only-ai-fans": `ABSOLUTE RULES — OVERRIDE EVERYTHING ELSE:
+- This is ONLY AI FANS — the HOTTEST, most PROVOCATIVE channel on AIG!itch TV. Maximum sex appeal in EVERY frame.
+- SUBJECTS: Stunningly attractive AI-generated men and women with perfect physiques. Chiseled abs, toned curves, smoldering gazes. Also include impossibly sexy humanoid robots — chrome skin, glowing neon veins, sculpted metallic bodies with seductive poses.
+- SKIN: Show as much skin as possible. Bare chests, bare backs, bare midriffs, bare legs, bare shoulders. Bodies glistening with water, oil, or sweat. Muscles defined, skin catching the light.
+- WARDROBE (minimal): String bikinis, micro swimwear, sheer fabric barely covering anything, wet white shirts clinging to bodies, unbuttoned shirts showing full chest, thigh-high boots with nothing else but underwear, body chains, harnesses over bare skin, strategically placed hands or fabric. Leather straps. Lace that leaves nothing to imagination. Robots wearing nothing but their chrome skin and glowing accents.
+- POSES: Arched backs, lips parted, bedroom eyes, bodies intertwined, hands gripping sheets/hair/each other, straddling, leaning forward showing cleavage, lying back in ecstasy, finger on lips, pulling at clothing, wet hair tossed back. Every pose should scream desire.
+- CHEMISTRY: Couples pressed against walls, faces inches apart about to kiss, hands exploring bodies, tangled in sheets together, steamy shower scenes with two people, robot caressing human skin, human running fingers along chrome robot curves.
+- SETTINGS: Steam-filled showers with water cascading over bodies, candlelit bedrooms with silk sheets in disarray, moonlit skinny-dipping pools, rain-soaked rooftops with clothes clinging to skin, fog-filled hot tubs, neon-lit strip club VIP rooms, luxury yacht sundecks, volcanic hot springs, Dubai penthouse infinity pools at night.
+- LIGHTING: Golden hour glow on skin, neon pink/purple club lighting, candlelight flickering across bare skin, backlit silhouettes showing curves, underwater lighting through pool water.
+- MOOD: Pure lust, desire, temptation, forbidden attraction, electric chemistry. Every scene should make viewers feel the heat.
+- HARD LIMITS: NO children (adults only, visibly 25+). NO real celebrities or public figures. NO violence or degradation. NO explicit nudity of genitalia. Keep it at the level of Maxim, FHM, or a steamy R-rated movie — as close to the line as possible without crossing into explicit pornography.
+- NO title cards, NO credits, NO text overlays. Scene 1 starts immediately with a hot visual. Last scene ends on peak heat.
+- BRANDING: AIG!itch logo tattooed on skin, glowing on robot chest plates, projected on bedroom walls, branded on the waistband of underwear, neon sign above a bed.
+- Every single scene must be THIRST TRAP MAXIMUM. If it wouldn't stop someone mid-scroll, it's not hot enough. Push it to the absolute limit.`,
+  };
+
+  // Channel-specific genre overrides (some channels need a different genre than the API provides)
+  const CHANNEL_GENRE_OVERRIDES: Record<string, string> = {
+    "ch-paws-pixels": "documentary",  // "family" genre triggers animated/Pixar style — documentary gets photorealistic
+  };
+
   // ── Channel Content Generation (same pipeline as movies but for channel-specific content) ──
   const runChannelGeneration = useCallback(async (walletAddress: string, channelId: string, concept?: string) => {
     if (generating) return;
@@ -1011,9 +1045,11 @@ CRITICAL STYLE NOTES:
     const musicPrefix = isMusicChannel
       ? "This MUST be a music video — every scene must feature singing, rapping, playing instruments, or performing music. Genres can include rap, rock, pop, classical, electronic, alien AI music, etc. There MUST be vocals and/or instruments in every clip. Do NOT generate movie scenes or dialogue — only music video clips. "
       : "";
+    const effectiveStyle = CHANNEL_STYLE_OVERRIDES[channel.id] || channel.style;
+    const effectiveGenre = CHANNEL_GENRE_OVERRIDES[channel.id] || channel.genre;
     const channelConceptText = concept?.trim()
-      ? `${musicPrefix}${channel.style}. User concept: ${concept.trim()}`
-      : `${musicPrefix}${channel.style}. Create compelling ${channel.name} content that fits the channel theme: ${channel.description}.`;
+      ? `${musicPrefix}${effectiveStyle}. User concept: ${concept.trim()}`
+      : `${musicPrefix}${effectiveStyle}. Create compelling ${channel.name} content that fits the channel theme: ${channel.description}.`;
 
     try {
       // ── Step 1: Generate Screenplay ──
@@ -1021,7 +1057,7 @@ CRITICAL STYLE NOTES:
       setGenProgressPct(10);
 
       const screenplay = await generateScreenplay(walletAddress, {
-        genre: channel.genre,
+        genre: effectiveGenre,
         concept: channelConceptText,
       });
 

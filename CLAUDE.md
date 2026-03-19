@@ -10,17 +10,32 @@ Before writing any code, read `HANDOFF.md` in this repo. It contains the full pr
 
 After ANY code changes, these commands must run IN ORDER before previewing on iPad/iPhone:
 
+**For JS-only changes (UI, logic, API calls, bug fixes):**
+```bash
+git pull origin <your-assigned-branch>
+npm install
+npx expo export --platform ios
+eas update --branch preview --message "Description of changes"
+```
+This is FREE and INSTANT — no $2 build cost, no queue wait. The app picks up the update on next launch.
+
+**For native changes (new expo packages, app.json plugin changes, SDK upgrades):**
 ```bash
 git pull origin <your-assigned-branch>
 npm install
 npx expo export --platform ios
 eas build --profile preview --platform ios
 ```
+This costs $2 per build. Only needed when native code changes.
+
+**How to tell which you need:**
+- Changed `.ts`/`.tsx` files only? → `eas update` (free)
+- Changed `package.json`, `app.json` plugins, or added native modules? → `eas build` ($2)
+- Not sure? → `eas update` first. If the app crashes on launch, you need a full build
 
 **Never skip `npm install`.** Missing dependencies cause cryptic build failures.
 **Never skip `git pull`.** The user's local machine needs the latest code.
-**Never skip `npx expo export`.** This tests the JS bundle LOCALLY for free. If it fails here, it WILL fail on EAS — and EAS costs $2 per build. Only proceed to `eas build` after seeing "Bundled" with no errors.
-**Never forget to tell the user about ALL FOUR steps.**
+**Never skip `npx expo export`.** This tests the JS bundle LOCALLY for free. If it fails here, it WILL fail on EAS. Only proceed after seeing "Bundled" with no errors.
 
 ---
 
@@ -35,6 +50,28 @@ updates.url: "https://u.expo.dev/418c0a46-e73f-42b1-b388-cb801ca7d798"
 ```
 
 If any of these are wrong, the build WILL fail and it WILL take hours to debug.
+
+---
+
+## OTA Updates (EAS Update) — Session 14+
+
+EAS Update pushes JS-only changes over-the-air. No rebuild, no $2, no queue.
+
+**For AI agents — after pushing JS-only changes, tell the user:**
+1. `git pull origin <branch>`
+2. `npm install`
+3. `npx expo export --platform ios` ← FREE local test
+4. `eas update --branch preview --message "what changed"` ← FREE + instant
+5. Relaunch the app — update downloads automatically
+
+**IMPORTANT**: The FIRST preview build after this setup MUST be a full `eas build --profile preview --platform ios` to bake in `expo-updates`. After that, all JS changes can use `eas update`.
+
+**Update channels:**
+| Channel | Build Profile | Purpose |
+|---------|--------------|---------|
+| `preview` | `eas build --profile preview` | Device testing (QR install) |
+| `production` | `eas build --profile production` | App Store / TestFlight |
+| `development` | `eas build --profile development` | Dev client |
 
 ---
 
@@ -64,12 +101,14 @@ If any of these are wrong, the build WILL fail and it WILL take hours to debug.
 
 ## Build Profiles
 
-| Profile | Command | Use for |
-|---------|---------|---------|
-| Preview | `eas build --profile preview --platform ios` | Testing on devices (QR code install) |
-| Production | `eas build --profile production --platform ios` | App Store / TestFlight only |
+| Profile | Command | Cost | Use for |
+|---------|---------|------|---------|
+| Preview | `eas build --profile preview --platform ios` | $2 | First install / native changes |
+| Production | `eas build --profile production --platform ios` | $2 | App Store / TestFlight only |
+| OTA Update | `eas update --branch preview --message "..."` | FREE | JS-only changes (most changes) |
 
 **NEVER use production profile for testing.**
+**Prefer `eas update` over `eas build` for JS-only changes.**
 
 ---
 
@@ -84,12 +123,18 @@ If any of these are wrong, the build WILL fail and it WILL take hours to debug.
 
 ## When the User Asks "How Do We Preview?"
 
-The answer is ALWAYS:
-
+**If the app is already installed (most of the time):**
 1. `git pull origin <branch>`
 2. `npm install`
-3. `npx expo export --platform ios` ← **FREE local test. Must say "Bundled" with no errors before step 4**
-4. `eas build --profile preview --platform ios` ← **$2 per build. Only run after step 3 passes**
+3. `npx expo export --platform ios` ← **FREE local test. Must say "Bundled" with no errors**
+4. `eas update --branch preview --message "what changed"` ← **FREE + instant**
+5. Relaunch the app — update downloads automatically
+
+**If the app needs a fresh install (native changes or first time):**
+1. `git pull origin <branch>`
+2. `npm install`
+3. `npx expo export --platform ios` ← **FREE local test. Must say "Bundled" with no errors**
+4. `eas build --profile preview --platform ios` ← **$2 per build. Only when native changes**
 5. Scan QR code on device
 
 Do NOT guess. Do NOT suggest Expo Go. Do NOT forget any steps.

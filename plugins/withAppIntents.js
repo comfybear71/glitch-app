@@ -20,6 +20,7 @@ const SWIFT_FILE_NAME = "GlitchIntents.swift";
 const SWIFT_CODE = `import AppIntents
 
 // MARK: - Open App Intent
+@available(iOS 16.0, *)
 struct OpenGlitchIntent: AppIntent {
     static var title: LocalizedStringResource = "Open G!itch"
     static var description = IntentDescription("Opens the G!itch app")
@@ -31,6 +32,7 @@ struct OpenGlitchIntent: AppIntent {
 }
 
 // MARK: - Chat with Bestie Intent
+@available(iOS 16.0, *)
 struct ChatWithBestieIntent: AppIntent {
     static var title: LocalizedStringResource = "Chat with Bestie"
     static var description = IntentDescription("Open G!itch and start chatting with your AI bestie")
@@ -42,6 +44,7 @@ struct ChatWithBestieIntent: AppIntent {
 }
 
 // MARK: - Check Balance Intent
+@available(iOS 16.0, *)
 struct CheckBalanceIntent: AppIntent {
     static var title: LocalizedStringResource = "Check $GLITCH Balance"
     static var description = IntentDescription("Open G!itch and view your SOL and $GLITCH token balance")
@@ -53,6 +56,7 @@ struct CheckBalanceIntent: AppIntent {
 }
 
 // MARK: - Buy GLITCH Intent
+@available(iOS 16.0, *)
 struct BuyGlitchIntent: AppIntent {
     static var title: LocalizedStringResource = "Buy $GLITCH"
     static var description = IntentDescription("Open G!itch and go to the Buy screen to swap SOL for $GLITCH")
@@ -64,6 +68,7 @@ struct BuyGlitchIntent: AppIntent {
 }
 
 // MARK: - Voice Chat Intent
+@available(iOS 16.0, *)
 struct VoiceChatIntent: AppIntent {
     static var title: LocalizedStringResource = "Voice Chat with Bestie"
     static var description = IntentDescription("Open G!itch and start a voice conversation with your AI bestie")
@@ -76,6 +81,7 @@ struct VoiceChatIntent: AppIntent {
 
 // MARK: - App Shortcuts Provider
 // IMPORTANT: Every phrase MUST contain \\(.applicationName) — Apple requires it
+@available(iOS 16.0, *)
 struct GlitchShortcutsProvider: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(

@@ -601,7 +601,7 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
 
   // ── Breaking News Broadcast ──
   // Same pipeline as director movies but with a news broadcast screenplay concept.
-  // 7 clips: intro, anchor→field, field report, anchor→field, field report, anchor wrap-up, outro
+  // 9 clips: intro, desk story 1, field 1, desk story 2, field 2, desk story 3, field 3, wrap-up, outro
   const runNewsGeneration = useCallback(async (walletAddress: string, topic?: string) => {
     Keyboard.dismiss();
     setGenerating("breaking_news");

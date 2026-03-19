@@ -716,20 +716,22 @@ export default function HomeScreen() {
 
         // Check for real generation triggers (run actual APIs)
         // Order matters: check more specific patterns first to avoid false matches
-        const isContentGenTrigger =
+        const isImageGenTrigger =
+          combined.includes("hero image") || combined.includes("hero banner") || combined.includes("hero photo") || combined.includes("landing page") ||
+          combined.includes("poster") || combined.includes("promo");
+
+        const isVideoGenTrigger =
           combined.includes("channel content") || combined.includes("channel video") || combined.includes("create channel") || combined.includes("make channel") || combined.includes("generate channel") ||
           combined.includes("breaking news") || combined.includes("news broadcast") || combined.includes("newscast") || combined.includes("news report") || combined.includes("news anchor") || combined.includes("news bulletin") ||
           combined.includes("movie") || combined.includes("director") || combined.includes("screenplay") || combined.includes("film") || combined.includes("premiere") ||
-          combined.includes("hero image") || combined.includes("hero banner") || combined.includes("hero photo") || combined.includes("landing page") ||
-          combined.includes("ad ") || combined.includes("advertis") || combined.includes("infomercial") || combined.includes("generate an ad") || combined.includes("make an ad") ||
-          combined.includes("poster") || combined.includes("promo");
+          combined.includes("ad ") || combined.includes("advertis") || combined.includes("infomercial") || combined.includes("generate an ad") || combined.includes("make an ad");
 
-        // Non-admin wallets can't generate content — show friendly message instead
-        if (isContentGenTrigger && walletAddress !== ADMIN_WALLET) {
+        // Non-admin wallets can't generate VIDEO content — but CAN generate images (posters, heroes)
+        if (isVideoGenTrigger && walletAddress !== ADMIN_WALLET) {
           const architectMsg: Message = {
             id: `architect-${Date.now()}`,
             role: "assistant",
-            content: "Sorry bestie! Only the Architect has the power to generate content like movies, channels, news broadcasts, ads, posters, and hero images right now. This superpower is coming to all besties soon — stay tuned! In the meantime, I can still chat, answer questions, share photos, and do voice calls with you!",
+            content: "Sorry bestie! Only the Architect has the power to generate video content like movies, channels, news broadcasts, and ads right now. This superpower is coming to all besties soon — stay tuned! In the meantime, you can generate images like posters and hero banners, plus I can chat, answer questions, share photos, and do voice calls with you!",
             timestamp: new Date().toISOString(),
           };
           setMessages(prev => [architectMsg, ...prev]);

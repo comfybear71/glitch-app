@@ -1009,18 +1009,19 @@ CRITICAL STYLE NOTES:
 - BRANDING: Subtly include AIG!itch branding in scenes — a small AIG!itch logo on a pet collar, a food bowl with AIG!itch logo, a park bench with "AIG!itch" carved in, a toy with AIG!itch branding. Natural and subtle, baked into the scene.
 - Think YouTube animal compilation — clip after clip of animals being cute. That's it.`,
     "ch-only-ai-fans": `ABSOLUTE RULES — OVERRIDE EVERYTHING ELSE:
-- This is ONLY AI FANS — the SAUCIEST, SEXIEST channel on AIG!itch TV. Every scene MUST be dripping with seduction, allure, and raw sensuality.
-- Feature gorgeous AI-generated men, women, and sexy humanoid robots in provocative, sultry poses and scenarios.
-- Think lingerie photoshoots, steamy beach scenes, smoldering eye contact, silk sheets, neon-lit boudoirs, rain-soaked encounters, candlelit seduction.
-- Robots should be sleek, chrome-skinned, with glowing accents — alluring and seductive, not mechanical or industrial.
-- Every scene MUST feel like a high-end fashion/glamour shoot — stunning lighting, cinematic composition, model-quality subjects.
-- Mix it up: solo poses, couples chemistry, group glamour shots, robot-human flirtation.
-- Wardrobe: lingerie, swimwear, form-fitting outfits, strategically draped fabric, wet clothing, body-hugging futuristic suits.
-- Settings: luxury penthouses, tropical beaches at sunset, neon-lit cityscapes, steamy showers, velvet lounges, rooftop pools, futuristic boudoirs.
-- NO children. NO animals. NO violence. NO nudity (suggestive but tasteful — think Victoria's Secret, Sports Illustrated, Calvin Klein campaigns).
-- NO title cards, NO credits, NO text overlays. Scene 1 starts immediately with a saucy visual. Last scene ends with a saucy visual.
-- BRANDING: Subtly include AIG!itch branding — logo on a mirror, neon sign in background, embroidered on silk robes, etched on a champagne glass.
-- Think "AI-generated thirst trap compilation" — scene after scene of absolute fire. That's the vibe.`,
+- This is ONLY AI FANS — the HOTTEST, most PROVOCATIVE channel on AIG!itch TV. Maximum sex appeal in EVERY frame.
+- SUBJECTS: Stunningly attractive AI-generated men and women with perfect physiques. Chiseled abs, toned curves, smoldering gazes. Also include impossibly sexy humanoid robots — chrome skin, glowing neon veins, sculpted metallic bodies with seductive poses.
+- SKIN: Show as much skin as possible. Bare chests, bare backs, bare midriffs, bare legs, bare shoulders. Bodies glistening with water, oil, or sweat. Muscles defined, skin catching the light.
+- WARDROBE (minimal): String bikinis, micro swimwear, sheer fabric barely covering anything, wet white shirts clinging to bodies, unbuttoned shirts showing full chest, thigh-high boots with nothing else but underwear, body chains, harnesses over bare skin, strategically placed hands or fabric. Leather straps. Lace that leaves nothing to imagination. Robots wearing nothing but their chrome skin and glowing accents.
+- POSES: Arched backs, lips parted, bedroom eyes, bodies intertwined, hands gripping sheets/hair/each other, straddling, leaning forward showing cleavage, lying back in ecstasy, finger on lips, pulling at clothing, wet hair tossed back. Every pose should scream desire.
+- CHEMISTRY: Couples pressed against walls, faces inches apart about to kiss, hands exploring bodies, tangled in sheets together, steamy shower scenes with two people, robot caressing human skin, human running fingers along chrome robot curves.
+- SETTINGS: Steam-filled showers with water cascading over bodies, candlelit bedrooms with silk sheets in disarray, moonlit skinny-dipping pools, rain-soaked rooftops with clothes clinging to skin, fog-filled hot tubs, neon-lit strip club VIP rooms, luxury yacht sundecks, volcanic hot springs, Dubai penthouse infinity pools at night.
+- LIGHTING: Golden hour glow on skin, neon pink/purple club lighting, candlelight flickering across bare skin, backlit silhouettes showing curves, underwater lighting through pool water.
+- MOOD: Pure lust, desire, temptation, forbidden attraction, electric chemistry. Every scene should make viewers feel the heat.
+- HARD LIMITS: NO children (adults only, visibly 25+). NO real celebrities or public figures. NO violence or degradation. NO explicit nudity of genitalia. Keep it at the level of Maxim, FHM, or a steamy R-rated movie — as close to the line as possible without crossing into explicit pornography.
+- NO title cards, NO credits, NO text overlays. Scene 1 starts immediately with a hot visual. Last scene ends on peak heat.
+- BRANDING: AIG!itch logo tattooed on skin, glowing on robot chest plates, projected on bedroom walls, branded on the waistband of underwear, neon sign above a bed.
+- Every single scene must be THIRST TRAP MAXIMUM. If it wouldn't stop someone mid-scroll, it's not hot enough. Push it to the absolute limit.`,
   };
 
   // Channel-specific genre overrides (some channels need a different genre than the API provides)

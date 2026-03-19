@@ -23,6 +23,7 @@ import {
   getOnChainBalances, getMessages, sendMessage, sendImageMessage, saveGeneratedMessage,
   getBriefing, sendPostFeedback,
   Bestie, OnChainBalances, Message, TrendingPost, FeedbackAction,
+  CHANNELS,
 } from "../services/api";
 import CosmicVisualizer from "../components/CosmicVisualizer";
 import { useGeneration, SocialLink } from "../hooks/GenerationContext";
@@ -133,7 +134,7 @@ export default function HomeScreen() {
     generating: ctxGenerating, genStatusText, genProgressPct, genResult, clearResult, cancelGeneration,
     runAdGeneration: ctxRunAd, runPosterGeneration: ctxRunPoster,
     runHeroGeneration: ctxRunHero, runMovieGeneration: ctxRunMovie,
-    runNewsGeneration: ctxRunNews,
+    runNewsGeneration: ctxRunNews, runChannelGeneration: ctxRunChannel,
   } = useGeneration();
   const [cosmeticGen, setCosmeticGen] = useState<string | null>(null); // cosmetic gen type for polling-based tasks
   const generating = ctxGenerating || cosmeticGen; // unified: context takes priority
@@ -155,6 +156,10 @@ export default function HomeScreen() {
   // Inline news picker state
   const [showNewsPicker, setShowNewsPicker] = useState(false);
   const [newsTopic, setNewsTopic] = useState("");
+
+  // Inline channel picker state
+  const [showChannelPicker, setShowChannelPicker] = useState(false);
+  const [channelPickerConcept, setChannelPickerConcept] = useState("");
 
   const [hasMore, setHasMore] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
@@ -520,6 +525,20 @@ export default function HomeScreen() {
       "Spreading to all socials...",
       "BREAKING NEWS is LIVE!",
     ],
+    channel: [
+      "Picking the perfect channel...",
+      "Writing the screenplay for channel content...",
+      "Building visual style and mood...",
+      "Submitting scenes to Grok video...",
+      "Scene 1 rendering for the channel...",
+      "Scenes 2-6 rendering in parallel...",
+      "Waiting for all clips to complete...",
+      "Stitching clips into channel video...",
+      "Uploading to the channel...",
+      "Publishing to AIG!itch feed...",
+      "Spreading to socials...",
+      "Channel content is LIVE!",
+    ],
     generating: [
       "Processing your request...",
       "Your bestie is on it...",
@@ -698,6 +717,7 @@ export default function HomeScreen() {
         // Check for real generation triggers (run actual APIs)
         // Order matters: check more specific patterns first to avoid false matches
         const isContentGenTrigger =
+          combined.includes("channel content") || combined.includes("channel video") || combined.includes("create channel") || combined.includes("make channel") || combined.includes("generate channel") ||
           combined.includes("breaking news") || combined.includes("news broadcast") || combined.includes("newscast") || combined.includes("news report") || combined.includes("news anchor") || combined.includes("news bulletin") ||
           combined.includes("movie") || combined.includes("director") || combined.includes("screenplay") || combined.includes("film") || combined.includes("premiere") ||
           combined.includes("hero image") || combined.includes("hero banner") || combined.includes("hero photo") || combined.includes("landing page") ||
@@ -709,10 +729,15 @@ export default function HomeScreen() {
           const architectMsg: Message = {
             id: `architect-${Date.now()}`,
             role: "assistant",
-            content: "Sorry bestie! Only the Architect has the power to generate content like movies, news broadcasts, ads, posters, and hero images right now. This superpower is coming to all besties soon — stay tuned! In the meantime, I can still chat, answer questions, share photos, and do voice calls with you!",
+            content: "Sorry bestie! Only the Architect has the power to generate content like movies, channels, news broadcasts, ads, posters, and hero images right now. This superpower is coming to all besties soon — stay tuned! In the meantime, I can still chat, answer questions, share photos, and do voice calls with you!",
             timestamp: new Date().toISOString(),
           };
           setMessages(prev => [architectMsg, ...prev]);
+        } else if (combined.includes("channel content") || combined.includes("channel video") || combined.includes("create channel") || combined.includes("make channel") || combined.includes("generate channel")) {
+          // Show channel picker
+          Keyboard.dismiss();
+          setShowChannelPicker(true);
+          setChannelPickerConcept(text);
         } else if (combined.includes("breaking news") || combined.includes("news broadcast") || combined.includes("newscast") || combined.includes("news report") || combined.includes("news anchor") || combined.includes("news bulletin")) {
           // Show news topic picker
           Keyboard.dismiss();
@@ -1536,6 +1561,7 @@ export default function HomeScreen() {
                        generating === "hero" ? "Generating Hero Image" :
                        generating === "director_movie" ? "Commissioning Movie" :
                        generating === "breaking_news" ? "Breaking News Broadcast" :
+                       generating === "channel" ? "Creating Channel Content" :
                        "Working On It"}
                     </Text>
 
@@ -1947,6 +1973,63 @@ export default function HomeScreen() {
                   if (walletAddress) ctxRunNews(walletAddress, newsTopic.trim() || undefined);
                 }}>
                 <Text style={{ color: colors.text, fontSize: 16, fontWeight: "800" }}>Go Live — Breaking News</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Channel Picker Modal */}
+      <Modal visible={showChannelPicker} animationType="slide" transparent>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "flex-end" }}>
+          <View style={{ backgroundColor: "#111", borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: Platform.OS === "ios" ? 34 : 16, maxHeight: "85%" }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, paddingVertical: 16 }}>
+              <Text style={{ color: colors.text, fontSize: 18, fontWeight: "800" }}>Create Channel Content</Text>
+              <TouchableOpacity onPress={() => setShowChannelPicker(false)}>
+                <Text style={{ color: colors.textMuted, fontSize: 24 }}>x</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ paddingHorizontal: 20 }} keyboardShouldPersistTaps="handled">
+              <Text style={{ color: colors.textSecondary, fontSize: 12, marginBottom: 12 }}>
+                Pick a channel to create video content for. The video will be published to the channel on aiglitch.app.
+              </Text>
+
+              {/* Channel grid */}
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
+                {CHANNELS.map(ch => (
+                  <TouchableOpacity
+                    key={ch.id}
+                    style={{
+                      paddingHorizontal: 12, paddingVertical: 10, borderRadius: 10,
+                      borderWidth: 1, borderColor: channelPickerConcept === ch.id ? colors.cyan : "#374151",
+                      backgroundColor: channelPickerConcept === ch.id ? "rgba(6,182,212,0.15)" : "#1f2937",
+                    }}
+                    onPress={() => {
+                      setChannelPickerConcept(channelPickerConcept === ch.id ? "" : ch.id);
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    }}>
+                    <Text style={{ color: channelPickerConcept === ch.id ? colors.cyan : colors.textMuted, fontSize: 12, fontWeight: "600" }}>
+                      {ch.emoji} {ch.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* Generate button */}
+              <TouchableOpacity
+                style={{ backgroundColor: "rgba(6,182,212,0.15)", borderRadius: 12, paddingVertical: 16, alignItems: "center", borderWidth: 1, borderColor: colors.cyan, marginBottom: 16, opacity: channelPickerConcept ? 1 : 0.4 }}
+                disabled={!channelPickerConcept}
+                onPress={() => {
+                  Keyboard.dismiss();
+                  setShowChannelPicker(false);
+                  const selectedId = channelPickerConcept;
+                  setChannelPickerConcept("");
+                  if (walletAddress && selectedId) ctxRunChannel(walletAddress, selectedId);
+                }}>
+                <Text style={{ color: colors.cyan, fontSize: 16, fontWeight: "800" }}>Create Channel Content</Text>
               </TouchableOpacity>
             </ScrollView>
           </View>

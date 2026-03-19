@@ -63,7 +63,7 @@ In `app.json`, these MUST always be:
 - **Chat Modes**: 5 moods — Playful, Serious, Scientific, Whimsical, Unfiltered (swearing allowed). Persists via SecureStore + server sync
 - **Voice**: Grok xAI TTS via REST API. Stop button on messages + tap cosmic visualizer to stop. Speech-to-text transcription working
 - **Admin Panel**: FaceID-gated admin with tabs: Overview, Personas, Users, Swaps, System, Tools, Secrets
-- **Content Studio** (Architect only): Director Movies, Breaking News (9-clip), Ad Campaigns, Posters, Hero Images, Media Library, Blob Storage
+- **Content Studio** (Architect only): Director Movies, Channels (16 themed channels), Breaking News (9-clip), Ad Campaigns, Posters, Hero Images, Media Library, Blob Storage
 - **Director Movies**: Full pipeline — screenplay → submit scenes → poll → stitch → publish to feed + socials
 - **Breaking News**: 9-clip / 3-story broadcast — real TV news style (CNN/BBC). Based on real current events. No director selection (auto-directed)
 - **Ad Campaigns**: Multi-step ad generation with style/concept picker, auto-posts to socials
@@ -413,6 +413,52 @@ If "your local changes would be overwritten" appears, stash first (see above).
 - **Fix**: Check xAI credit balance at console.x.ai and top up. This is a backend issue, not an app issue
 - **Note**: The app code just calls `/api/voice` and plays whatever MP3 comes back — it doesn't know which TTS engine was used
 - **Where to check credits**: console.x.ai → API Keys → Usage (NOT console.x.com — that's the X Developer Portal)
+
+---
+
+## Recent Changes — Session 2026-03-19 (Session 12 — Channels Content Creation)
+
+### Channel Content Creation (NEW)
+
+Added a complete channel content creation system to the Studio tab. Works exactly like Director Movies — same multi-step pipeline (screenplay → submit scenes → poll → stitch → publish to feed + socials) — but generates content for specific themed channels on aiglitch.app.
+
+#### 16 Channels Available
+| Channel | Emoji | Genre | Blob Folder |
+|---------|-------|-------|-------------|
+| Action Zone | 💥 | action | channels/action |
+| Sci-Fi Hub | 🚀 | scifi | channels/scifi |
+| Horror Vault | 👻 | horror | channels/horror |
+| Comedy Club | 😂 | comedy | channels/comedy |
+| Drama Stage | 🎭 | drama | channels/drama |
+| Romance Lane | 💕 | romance | channels/romance |
+| Family Time | 🏠 | family | channels/family |
+| Doc Lens | 🔍 | documentary | channels/documentary |
+| Cooking Show | 👨‍🍳 | cooking_channel | channels/cooking |
+| Crypto Watch | 🪙 | documentary | channels/crypto |
+| Music Vibes | 🎵 | drama | channels/music |
+| Sports Arena | ⚽ | action | channels/sports |
+| Travel World | 🌍 | documentary | channels/travel |
+| Gaming Zone | 🎮 | scifi | channels/gaming |
+| Fashion Edit | 👗 | drama | channels/fashion |
+| Tech Talk | 💻 | documentary | channels/tech |
+
+#### How It Works
+1. **Studio Tab → Channels section**: Pick a channel, optionally describe a concept, tap "Create Channel Content"
+2. **Pipeline**: Same proven multi-step pipeline as Director Movies:
+   - Screenplay generation (genre + channel style as concept)
+   - Scene submission to Grok video
+   - Polling every 10s with stall detection
+   - Stitching into final video
+   - Auto-publish to AIG!itch feed + socials
+3. **Chat Keywords**: "channel content", "channel video", "create channel", "make channel", "generate channel" trigger the channel picker modal
+4. **Background Generation**: `runChannelGeneration` in GenerationContext allows generation to persist across tab navigation
+
+#### Files Changed (Session 12)
+- `src/services/api.ts` — Added `CHANNELS` array, `ChannelDef` interface, `CHANNEL_FOLDER_MAP`
+- `src/screens/ContentStudioScreen.tsx` — Added Channels section (state, handler, UI) between Directors and Breaking News
+- `src/hooks/GenerationContext.tsx` — Added `runChannelGeneration` to context
+- `src/screens/HomeScreen.tsx` — Added channel keyword detection, channel picker modal, channel gen steps
+- `app.json` — Added EAS extension config for App Intents provisioning
 
 ---
 

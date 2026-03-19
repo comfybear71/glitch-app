@@ -8,6 +8,7 @@ import {
   generateScreenplay, submitScene, pollScene, stitchMovie,
   getBriefing, spreadCustomContent, getSpreadHistory,
   GENRE_FOLDER_MAP, ScreenplayResponse, Message,
+  CHANNELS, ChannelDef,
 } from "../services/api";
 
 export interface SocialLink {
@@ -230,6 +231,7 @@ interface GenerationContextType {
   runHeroGeneration: (walletAddress: string) => void;
   runMovieGeneration: (walletAddress: string, director?: string, genre?: string, concept?: string) => void;
   runNewsGeneration: (walletAddress: string, topic?: string) => void;
+  runChannelGeneration: (walletAddress: string, channelId: string, concept?: string) => void;
 }
 
 const GenerationContext = createContext<GenerationContextType>({
@@ -244,6 +246,7 @@ const GenerationContext = createContext<GenerationContextType>({
   runHeroGeneration: () => {},
   runMovieGeneration: () => {},
   runNewsGeneration: () => {},
+  runChannelGeneration: () => {},
 });
 
 export function useGeneration() {
@@ -960,11 +963,179 @@ CRITICAL STYLE NOTES:
     }
   }, [finishGen]);
 
+  // ── Channel Content Generation (same pipeline as movies but for channel-specific content) ──
+  const runChannelGeneration = useCallback(async (walletAddress: string, channelId: string, concept?: string) => {
+    if (generating) return;
+    const channel = CHANNELS.find(ch => ch.id === channelId);
+    if (!channel) { console.warn("[CHANNEL] Unknown channel:", channelId); return; }
+
+    Keyboard.dismiss();
+    setGenerating("channel");
+    cancelRef.current = false;
+    setGenProgressPct(5);
+    setGenStatusText(`Creating ${channel.emoji} ${channel.name} content...`);
+
+    const channelConceptText = concept?.trim()
+      ? `${channel.style}. User concept: ${concept.trim()}`
+      : `${channel.style}. Create compelling ${channel.name} content that fits the channel theme: ${channel.description}.`;
+
+    try {
+      // ── Step 1: Generate Screenplay ──
+      setGenStatusText(`Writing screenplay for ${channel.emoji} ${channel.name}...`);
+      setGenProgressPct(10);
+
+      const screenplay = await generateScreenplay(walletAddress, {
+        genre: channel.genre,
+        concept: channelConceptText,
+      });
+
+      if (cancelRef.current) { setGenerating(null); setGenProgressPct(0); setGenStatusText(""); return; }
+
+      console.log("[CHANNEL] Screenplay:", screenplay.title, `— ${screenplay.scenes.length} scenes`);
+      setGenProgressPct(20);
+      setGenStatusText(`"${screenplay.title}" — submitting ${screenplay.scenes.length} scenes...`);
+
+      // ── Step 2: Submit Each Scene ──
+      const folder = channel.folder;
+      type SceneTracker = { sceneNumber: number; requestId: string | null; blobUrl: string | null; sizeMb: number | null };
+      const submitted: SceneTracker[] = [];
+
+      for (let i = 0; i < screenplay.scenes.length; i++) {
+        if (cancelRef.current) break;
+        const scene = screenplay.scenes[i];
+        const pct = 20 + Math.round(((i + 1) / screenplay.scenes.length) * 15);
+        setGenProgressPct(pct);
+        setGenStatusText(`Submitting scene ${i + 1}/${screenplay.scenes.length}: ${scene.title}`);
+
+        try {
+          const res = await submitScene(walletAddress, scene.videoPrompt, 10, folder);
+          submitted.push({ sceneNumber: scene.sceneNumber, requestId: res.success ? res.requestId || null : null, blobUrl: null, sizeMb: null });
+        } catch {
+          submitted.push({ sceneNumber: scene.sceneNumber, requestId: null, blobUrl: null, sizeMb: null });
+        }
+      }
+
+      if (cancelRef.current) { setGenerating(null); setGenProgressPct(0); setGenStatusText(""); return; }
+
+      const submittedScenes = submitted.filter(s => s.requestId);
+      if (submittedScenes.length === 0) {
+        setGenStatusText("All scenes failed to submit. Please try again.");
+        await new Promise(r => setTimeout(r, 3000));
+        setGenerating(null); setGenProgressPct(0); setGenStatusText("");
+        return;
+      }
+
+      // ── Step 3: Poll Every 10 Seconds ──
+      setGenProgressPct(40);
+      setGenStatusText(`Rendering ${submittedScenes.length} clips for ${channel.emoji} ${channel.name}...`);
+
+      const doneScenes = new Set<number>();
+      const failedScenes = new Set<number>();
+      const sceneUrls = new Map<number, string>();
+      let lastProgressTime = Date.now();
+      let pollCount = 0;
+      const totalScenes = screenplay.scenes.length;
+
+      submitted.filter(s => !s.requestId).forEach(s => failedScenes.add(s.sceneNumber));
+
+      const pendingCount = () => submittedScenes.filter(s => !doneScenes.has(s.sceneNumber) && !failedScenes.has(s.sceneNumber)).length;
+
+      while (pendingCount() > 0 && pollCount < 90 && !cancelRef.current) {
+        await new Promise(r => setTimeout(r, 10000));
+        pollCount++;
+
+        for (const scene of submittedScenes) {
+          if (doneScenes.has(scene.sceneNumber) || failedScenes.has(scene.sceneNumber) || !scene.requestId) continue;
+          try {
+            const pollRes = await pollScene(walletAddress, scene.requestId, folder);
+            if (pollRes.status === "done" && pollRes.blobUrl) {
+              doneScenes.add(scene.sceneNumber);
+              sceneUrls.set(scene.sceneNumber, pollRes.blobUrl);
+              lastProgressTime = Date.now();
+            } else if (["failed", "moderation_failed", "expired"].includes(pollRes.status)) {
+              failedScenes.add(scene.sceneNumber);
+            }
+          } catch { /* skip this cycle */ }
+        }
+
+        const done = doneScenes.size;
+        const pct = 40 + Math.round((done / totalScenes) * 45);
+        setGenProgressPct(Math.min(pct, 84));
+        setGenStatusText(`${channel.emoji} ${channel.name}: ${done}/${totalScenes} clips rendered...`);
+
+        // Stall detection
+        if (done >= totalScenes * 0.5 && (Date.now() - lastProgressTime) > 60000) break;
+      }
+
+      if (cancelRef.current) { setGenerating(null); setGenProgressPct(0); setGenStatusText(""); return; }
+
+      if (doneScenes.size === 0) {
+        setGenStatusText("All clips failed to render. Please try again.");
+        await new Promise(r => setTimeout(r, 3000));
+        setGenerating(null); setGenProgressPct(0); setGenStatusText("");
+        return;
+      }
+
+      // ── Step 4: Stitch ──
+      setGenStatusText(`Stitching ${doneScenes.size} clips for ${channel.emoji} ${channel.name}...`);
+      setGenProgressPct(85);
+
+      const sceneUrlsObj: Record<string, string> = {};
+      sceneUrls.forEach((url, num) => { sceneUrlsObj[String(num)] = url; });
+
+      const stitchRes = await stitchMovie(walletAddress, {
+        sceneUrls: sceneUrlsObj,
+        title: screenplay.title,
+        genre: channel.genre,
+        directorUsername: screenplay.director,
+        directorId: screenplay.directorId,
+        synopsis: screenplay.synopsis,
+        tagline: screenplay.tagline,
+        castList: screenplay.castList,
+      });
+
+      setGenProgressPct(92);
+      setGenStatusText("Publishing to AIG!itch feed...");
+
+      const channelCaption = `${channel.emoji} ${channel.name}: "${screenplay.title}"\n${screenplay.synopsis || screenplay.tagline || ""}`;
+      await publishToFeed(walletAddress, `${channel.emoji} ${channel.name}`, channelCaption, stitchRes.finalVideoUrl, true, !!stitchRes.feedPostId);
+
+      setGenProgressPct(95);
+      const didSpread = stitchRes.spreading && stitchRes.spreading.length > 0;
+      setGenStatusText(didSpread
+        ? `${channel.emoji} "${screenplay.title}" — published to ${stitchRes.spreading!.join(", ")} + feed! Verifying links...`
+        : `"${screenplay.title}" published to AIG!itch feed! Verifying links...`);
+
+      const verifiedLinks = await fetchVerifiedLinks(walletAddress, stitchRes.feedPostId, stitchRes.finalVideoUrl, true);
+      setGenProgressPct(100);
+      setGenStatusText(didSpread
+        ? `${channel.emoji} "${screenplay.title}" — published to ${stitchRes.spreading!.join(", ")} + feed!`
+        : `${channel.emoji} "${screenplay.title}" published to AIG!itch feed!`);
+      await new Promise(r => setTimeout(r, 1500));
+
+      finishGen({
+        type: "channel",
+        title: `${channel.emoji} ${channel.name}: ${screenplay.title}`,
+        message: `Channel content · ${stitchRes.clipCount} clips · ${stitchRes.sizeMb}MB · Published to AIG!itch feed${didSpread ? ` + ${stitchRes.spreading!.join(", ")}` : ""}`,
+        mediaUrl: stitchRes.finalVideoUrl || undefined,
+        isVideo: true,
+        socialLinks: verifiedLinks,
+      });
+
+    } catch (e: any) {
+      console.log("[CHANNEL] FATAL ERROR:", e?.message, e?.stack);
+      setGenStatusText(`Error: ${e?.message || "Channel content generation failed"}`);
+      await new Promise(r => setTimeout(r, 4000));
+      setGenerating(null); setGenProgressPct(0); setGenStatusText("");
+    }
+  }, [generating, finishGen]);
+
   return (
     <GenerationContext.Provider value={{
       generating, genStatusText, genProgressPct, genResult,
       clearResult, cancelGeneration,
       runAdGeneration, runPosterGeneration, runHeroGeneration, runMovieGeneration, runNewsGeneration,
+      runChannelGeneration,
     }}>
       {children}
     </GenerationContext.Provider>

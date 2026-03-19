@@ -22,6 +22,7 @@ import {
   autoGenerateConcept, listDirectorPrompts, submitExtension, pollExtension, stitchExtension,
   getBriefing,
   GENRE_FOLDER_MAP, ScreenplayResponse, ScenePollResponse,
+  CHANNELS, ChannelDef, CHANNEL_FOLDER_MAP,
 } from "../services/api";
 
 // Admin wallet — only this wallet can generate content
@@ -170,6 +171,7 @@ export default function ContentStudioScreen() {
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     create: true,
     directors: false,
+    channels: false,
     news: false,
     library: false,
     uploads: false,
@@ -222,6 +224,21 @@ export default function ContentStudioScreen() {
 
   const addNewsLog = (emoji: string, text: string, type: LogEntry["type"] = "info") => {
     setNewsLog((prev) => [...prev.slice(-120), { time: timestamp(), emoji, text, type }]);
+  };
+
+  // ── Channels State ──
+  const [selectedChannel, setSelectedChannel] = useState<string | null>(null);
+  const [channelConcept, setChannelConcept] = useState("");
+  const [channelGenerating, setChannelGenerating] = useState(false);
+  const [channelLog, setChannelLog] = useState<LogEntry[]>([]);
+  const [channelResult, setChannelResult] = useState<any>(null);
+  const [channelPhase, setChannelPhase] = useState<string>("idle");
+  const [channelProgress, setChannelProgress] = useState({ current: 0, total: 0, pct: 0 });
+  const [channelSceneStatuses, setChannelSceneStatuses] = useState<{ sceneNumber: number; title: string; status: string; sizeMb?: number; elapsed?: string }[]>([]);
+  const channelCancelRef = useRef(false);
+
+  const addChannelLog = (emoji: string, text: string, type: LogEntry["type"] = "info") => {
+    setChannelLog((prev) => [...prev.slice(-120), { time: timestamp(), emoji, text, type }]);
   };
 
   // ── Library State ──
@@ -907,6 +924,246 @@ CRITICAL STYLE NOTES:
     addNewsLog("⚠️", "Cancelling broadcast...", "waiting");
   };
 
+  // ── Channel Content: Full Multi-Step Pipeline (same as Director Movie) ──
+  const handleChannelGenerate = async () => {
+    if (channelGenerating || !walletAddress) return;
+    if (walletAddress !== ADMIN_WALLET) {
+      Alert.alert("Architect Only", "Sorry bestie! Only the Architect has the power to generate content right now. This superpower is coming to all besties soon!");
+      return;
+    }
+    if (!selectedChannel) {
+      Alert.alert("Select a Channel", "Pick a channel to create content for.");
+      return;
+    }
+    const channel = CHANNELS.find(ch => ch.id === selectedChannel);
+    if (!channel) return;
+
+    setChannelGenerating(true);
+    setChannelResult(null);
+    setChannelLog([]);
+    setChannelPhase("screenplay");
+    setChannelProgress({ current: 0, total: 1, pct: 0 });
+    setChannelSceneStatuses([]);
+    channelCancelRef.current = false;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+
+    const startTime = Date.now();
+    const formatElapsed = (from: number) => {
+      const s = Math.floor((Date.now() - from) / 1000);
+      return `${Math.floor(s / 60)}m ${s % 60}s`;
+    };
+
+    const channelConceptText = channelConcept.trim()
+      ? `${channel.style}. User concept: ${channelConcept.trim()}`
+      : `${channel.style}. Create compelling ${channel.name} content that fits the channel theme: ${channel.description}.`;
+
+    addChannelLog("📺", `Creating content for ${channel.emoji} ${channel.name}...`, "info");
+    addChannelLog("🎬", `Genre: ${channel.genre} | Style: ${channel.style}`, "info");
+    if (channelConcept.trim()) addChannelLog("📖", `Concept: "${channelConcept.trim().slice(0, 100)}"`, "info");
+    addChannelLog("📜", `Writing screenplay...`, "waiting");
+
+    try {
+      // ── STEP 1: Generate Screenplay ──
+      const screenplay = await generateScreenplay(walletAddress, {
+        genre: channel.genre,
+        concept: channelConceptText,
+      });
+
+      if (channelCancelRef.current) { setChannelGenerating(false); setChannelPhase("idle"); return; }
+
+      const totalScenes = screenplay.scenes.length;
+      const folder = channel.folder;
+      setChannelProgress({ current: 1, total: 1, pct: 100 });
+
+      addChannelLog("✅", `"${screenplay.title}" — ${totalScenes} scenes (screenplay by ${screenplay.screenplayProvider})`, "success");
+      addChannelLog("📖", `${screenplay.synopsis?.slice(0, 200)}...`, "info");
+
+      setChannelSceneStatuses(screenplay.scenes.map(s => ({ sceneNumber: s.sceneNumber, title: s.title, status: "pending" })));
+
+      // ── STEP 2: Submit Each Scene ──
+      setChannelPhase("submitting");
+      setChannelProgress({ current: 0, total: totalScenes, pct: 0 });
+      addChannelLog("📡", `Submitting ${totalScenes} scenes to xAI...`, "info");
+
+      type SceneTracker = {
+        sceneNumber: number; title: string; requestId: string | null;
+        status: "submitted" | "done" | "failed";
+        blobUrl: string | null; sizeMb: number | null;
+        submittedAt: number;
+      };
+      const sceneTrackers: SceneTracker[] = [];
+
+      for (let i = 0; i < screenplay.scenes.length; i++) {
+        if (channelCancelRef.current) break;
+        const scene = screenplay.scenes[i];
+        addChannelLog("🎬", `[${i + 1}/${totalScenes}] ${scene.title}`, "info");
+
+        try {
+          const submitRes = await submitScene(walletAddress, scene.videoPrompt, 10, folder);
+          if (submitRes.success && submitRes.requestId) {
+            sceneTrackers.push({ sceneNumber: scene.sceneNumber, title: scene.title, requestId: submitRes.requestId, status: "submitted", blobUrl: null, sizeMb: null, submittedAt: Date.now() });
+            addChannelLog("✅", `Submitted: ${submitRes.requestId.slice(0, 20)}...`, "success");
+            setChannelSceneStatuses(prev => prev.map(s => s.sceneNumber === scene.sceneNumber ? { ...s, status: "submitted" } : s));
+          } else {
+            addChannelLog("❌", `Failed: ${submitRes.error || "Unknown error"}`, "error");
+            sceneTrackers.push({ sceneNumber: scene.sceneNumber, title: scene.title, requestId: null, status: "failed", blobUrl: null, sizeMb: null, submittedAt: Date.now() });
+            setChannelSceneStatuses(prev => prev.map(s => s.sceneNumber === scene.sceneNumber ? { ...s, status: "failed" } : s));
+          }
+        } catch (err: any) {
+          addChannelLog("❌", `Failed: ${err?.message || "Network error"}`, "error");
+          sceneTrackers.push({ sceneNumber: scene.sceneNumber, title: scene.title, requestId: null, status: "failed", blobUrl: null, sizeMb: null, submittedAt: Date.now() });
+          setChannelSceneStatuses(prev => prev.map(s => s.sceneNumber === scene.sceneNumber ? { ...s, status: "failed" } : s));
+        }
+        setChannelProgress({ current: i + 1, total: totalScenes, pct: Math.round(((i + 1) / totalScenes) * 100) });
+      }
+
+      if (channelCancelRef.current) { setChannelGenerating(false); setChannelPhase("idle"); return; }
+
+      const submittedScenes = sceneTrackers.filter(s => s.status === "submitted");
+      if (submittedScenes.length === 0) {
+        addChannelLog("❌", "All scenes failed to submit. Please try again.", "error");
+        setChannelPhase("failed");
+        setChannelGenerating(false);
+        return;
+      }
+
+      // ── STEP 3: Poll Every 10 Seconds ──
+      setChannelPhase("polling");
+      const doneScenes = new Set<number>();
+      const failedScenes = new Set<number>();
+      const sceneUrls = new Map<number, string>();
+      let lastProgressTime = Date.now();
+      let pollCount = 0;
+      const pendingCount = () => submittedScenes.filter(s => !doneScenes.has(s.sceneNumber) && !failedScenes.has(s.sceneNumber)).length;
+
+      addChannelLog("⏳", `Polling ${submittedScenes.length} scenes every 10s (max 15 min)...`, "waiting");
+      setChannelProgress({ current: 0, total: totalScenes, pct: 0 });
+
+      sceneTrackers.filter(s => s.status === "failed").forEach(s => failedScenes.add(s.sceneNumber));
+
+      while (pendingCount() > 0 && pollCount < 90 && !channelCancelRef.current) {
+        await new Promise(r => setTimeout(r, 10000));
+        pollCount++;
+
+        for (const scene of submittedScenes) {
+          if (doneScenes.has(scene.sceneNumber) || failedScenes.has(scene.sceneNumber) || !scene.requestId) continue;
+          try {
+            const pollRes = await pollScene(walletAddress, scene.requestId, folder);
+            if (pollRes.status === "done" && pollRes.blobUrl) {
+              doneScenes.add(scene.sceneNumber);
+              sceneUrls.set(scene.sceneNumber, pollRes.blobUrl);
+              lastProgressTime = Date.now();
+              const elapsed = formatElapsed(scene.submittedAt);
+              addChannelLog("🎉", `Scene ${scene.sceneNumber} "${scene.title}" DONE (${elapsed}) — ${pollRes.sizeMb || "?"}MB`, "success");
+              setChannelSceneStatuses(prev => prev.map(s => s.sceneNumber === scene.sceneNumber ? { ...s, status: "done", sizeMb: pollRes.sizeMb, elapsed } : s));
+            } else if (["failed", "moderation_failed", "expired"].includes(pollRes.status)) {
+              failedScenes.add(scene.sceneNumber);
+              addChannelLog("❌", `Scene ${scene.sceneNumber} "${scene.title}" FAILED: ${pollRes.status}`, "error");
+              setChannelSceneStatuses(prev => prev.map(s => s.sceneNumber === scene.sceneNumber ? { ...s, status: "failed" } : s));
+            } else {
+              setChannelSceneStatuses(prev => prev.map(s => s.sceneNumber === scene.sceneNumber && s.status === "submitted" ? { ...s, status: "rendering" } : s));
+            }
+          } catch (err: any) {
+            console.warn(`Poll error for scene ${scene.sceneNumber}:`, err?.message);
+          }
+        }
+
+        const done = doneScenes.size;
+        const failed = failedScenes.size;
+        const pct = Math.round((done / totalScenes) * 100);
+        setChannelProgress({ current: done, total: totalScenes, pct });
+
+        if (pollCount % 3 === 0) {
+          addChannelLog("🔄", `${formatElapsed(startTime)}: ${done}/${totalScenes} done, ${failed} failed`, "info");
+        }
+
+        // Stall detection
+        if (done >= totalScenes * 0.5 && (Date.now() - lastProgressTime) > 60000) {
+          addChannelLog("⚠️", `Stall detected — stitching ${done}/${totalScenes} available clips`, "waiting");
+          break;
+        }
+      }
+
+      if (channelCancelRef.current) { setChannelGenerating(false); setChannelPhase("idle"); return; }
+
+      if (doneScenes.size === 0) {
+        addChannelLog("❌", `All scenes failed to generate. Please try again.`, "error");
+        setChannelPhase("failed");
+        setChannelGenerating(false);
+        return;
+      }
+
+      if (doneScenes.size < totalScenes * 0.5 && pollCount >= 90) {
+        addChannelLog("❌", `Not enough clips completed. ${doneScenes.size}/${totalScenes} done.`, "error");
+        setChannelPhase("failed");
+        setChannelGenerating(false);
+        return;
+      }
+
+      // ── STEP 4: Stitch ──
+      setChannelPhase("stitching");
+      setChannelProgress({ current: 0, total: 1, pct: 0 });
+      addChannelLog("🧩", `Stitching ${doneScenes.size} clips for ${channel.emoji} ${channel.name}...`, "waiting");
+
+      const sceneUrlsObj: Record<string, string> = {};
+      sceneUrls.forEach((url, num) => { sceneUrlsObj[String(num)] = url; });
+
+      const stitchRes = await stitchMovie(walletAddress, {
+        sceneUrls: sceneUrlsObj,
+        title: screenplay.title,
+        genre: channel.genre,
+        directorUsername: screenplay.director,
+        directorId: screenplay.directorId,
+        synopsis: screenplay.synopsis,
+        tagline: screenplay.tagline,
+        castList: screenplay.castList,
+      });
+
+      setChannelProgress({ current: 1, total: 1, pct: 100 });
+      addChannelLog("✅", `CHANNEL CONTENT READY! ${stitchRes.clipCount} clips → ${stitchRes.sizeMb}MB`, "success");
+
+      // Safety net: publish to feed if backend didn't create a feed post
+      if (!stitchRes.feedPostId) {
+        try {
+          const caption = `${channel.emoji} ${channel.name}: "${screenplay.title}"\n${screenplay.tagline || screenplay.synopsis || ""}`;
+          await spreadCustomContent(walletAddress, caption, stitchRes.finalVideoUrl, "video");
+          addChannelLog("📡", "Published to AIG!itch feed (safety net)", "success");
+        } catch { /* non-fatal */ }
+      }
+
+      addChannelLog("📺", `Feed post: ${stitchRes.feedPostId}`, "success");
+      if (stitchRes.spreading?.length) {
+        addChannelLog("✅", `Social distribution → ${stitchRes.spreading.join(", ")}`, "success");
+      }
+      addChannelLog("🙏", `Channel content published!`, "success");
+
+      setChannelResult({
+        success: true,
+        title: screenplay.title,
+        channelName: channel.name,
+        channelEmoji: channel.emoji,
+        genre: channel.genre,
+        finalVideoUrl: stitchRes.finalVideoUrl,
+        feedPostId: stitchRes.feedPostId,
+        clipCount: stitchRes.clipCount,
+        sizeMb: stitchRes.sizeMb,
+        spreading: stitchRes.spreading,
+      });
+      setChannelPhase("complete");
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+    } catch (e: any) {
+      addChannelLog("❌", e?.message || "Channel content generation failed", "error");
+      setChannelPhase("failed");
+    }
+    setChannelGenerating(false);
+  };
+
+  const handleCancelChannel = () => {
+    channelCancelRef.current = true;
+    addChannelLog("⚠️", "Cancelling generation...", "waiting");
+  };
+
   // ── Upload handlers ──
   const doUpload = async (uri: string, fileName: string, mimeType: string) => {
     if (!walletAddress || uploading) return;
@@ -1192,6 +1449,143 @@ CRITICAL STYLE NOTES:
                 {movieResult.clipCount && <Text style={styles.movieResultMeta}>Clips: {movieResult.clipCount} · {movieResult.sizeMb}MB</Text>}
                 {movieResult.spreading?.length > 0 && <Text style={[styles.movieResultMeta, { color: colors.green }]}>Spread to: {movieResult.spreading.join(", ")}</Text>}
                 {movieResult.feedPostId && <Text style={styles.movieResultMeta}>Post ID: {movieResult.feedPostId}</Text>}
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* ══════════════ CHANNELS ══════════════ */}
+        <SectionHeader title="Channels" emoji="📺" expanded={expandedSections.channels} onToggle={() => toggleSection("channels")} accent={colors.cyan} />
+        {expandedSections.channels && (
+          <View style={styles.sectionBody}>
+            <Text style={{ color: colors.textSecondary, fontSize: 12, marginBottom: 12, lineHeight: 18 }}>
+              Create video content for AIG!itch channels. Pick a channel, optionally describe your concept, and generate a multi-scene video that gets published to the channel on aiglitch.app.
+            </Text>
+
+            {/* Channel Picker — Grid of channel cards */}
+            <Text style={styles.subsectionLabel}>Choose a Channel</Text>
+            <View style={styles.genreGrid}>
+              {CHANNELS.map((ch) => (
+                <TouchableOpacity
+                  key={ch.id}
+                  style={[
+                    styles.genreChip,
+                    { paddingHorizontal: 10, paddingVertical: 10 },
+                    selectedChannel === ch.id && { borderColor: colors.cyan, backgroundColor: "rgba(6,182,212,0.15)" },
+                  ]}
+                  onPress={() => {
+                    setSelectedChannel(selectedChannel === ch.id ? null : ch.id);
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  }}>
+                  <Text style={[
+                    styles.genreChipText,
+                    selectedChannel === ch.id && { color: colors.cyan },
+                  ]}>
+                    {ch.emoji} {ch.name}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* Selected channel detail */}
+            {selectedChannel && (() => {
+              const ch = CHANNELS.find(x => x.id === selectedChannel);
+              if (!ch) return null;
+              return (
+                <View style={[styles.directorDetail, { borderColor: "rgba(6,182,212,0.2)", backgroundColor: "rgba(6,182,212,0.06)" }]}>
+                  <Text style={[styles.directorDetailName, { color: colors.cyan }]}>{ch.emoji} {ch.name}</Text>
+                  <Text style={styles.directorDetailMeta}>{ch.description}</Text>
+                  <Text style={styles.directorDetailMeta}>Style: {ch.style}</Text>
+                  <View style={styles.genreTags}>
+                    <Text style={[styles.genreTag, { color: colors.cyan, backgroundColor: "rgba(6,182,212,0.15)" }]}>{ch.genre}</Text>
+                    <Text style={[styles.genreTag, { color: colors.textMuted, backgroundColor: "rgba(255,255,255,0.05)" }]}>{ch.folder}</Text>
+                  </View>
+                </View>
+              );
+            })()}
+
+            {/* Concept input */}
+            <Text style={styles.subsectionLabel}>Content Concept (optional)</Text>
+            <TextInput
+              style={styles.optionInput}
+              value={channelConcept}
+              onChangeText={setChannelConcept}
+              placeholder="Describe what the video should be about... or leave blank for AI surprise"
+              placeholderTextColor={colors.textMuted}
+              multiline
+              maxLength={500}
+            />
+
+            {/* Generate + Cancel buttons */}
+            <View style={{ flexDirection: "row", gap: 10 }}>
+              <TouchableOpacity
+                style={[styles.movieGenBtn, { flex: 1, backgroundColor: "rgba(6,182,212,0.15)", borderColor: colors.cyan }, channelGenerating && { opacity: 0.5 }]}
+                onPress={handleChannelGenerate}
+                disabled={channelGenerating}>
+                <Text style={[styles.movieGenBtnText, { color: colors.cyan }]}>
+                  {channelGenerating
+                    ? `📺 ${channelPhase === "screenplay" ? "Writing script..." : channelPhase === "submitting" ? "Submitting scenes..." : channelPhase === "polling" ? "Rendering clips..." : channelPhase === "stitching" ? "Stitching video..." : "Generating..."}`
+                    : "📺 Create Channel Content"}
+                </Text>
+              </TouchableOpacity>
+              {channelGenerating && (
+                <TouchableOpacity
+                  style={[styles.movieGenBtn, { backgroundColor: "rgba(239,68,68,0.2)", borderColor: colors.red, flex: 0, paddingHorizontal: 16 }]}
+                  onPress={handleCancelChannel}>
+                  <Text style={[styles.movieGenBtnText, { color: colors.red }]}>Cancel</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Progress bar */}
+            {channelGenerating && channelPhase !== "idle" && (
+              <View style={{ marginTop: 12, marginBottom: 8 }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+                  <Text style={{ color: colors.text, fontFamily: "monospace", fontSize: 12 }}>
+                    {channelPhase === "screenplay" ? "📜 Writing screenplay..." : channelPhase === "submitting" ? `📡 Submitting scenes... ${channelProgress.current}/${channelProgress.total}` : channelPhase === "polling" ? `🎬 Rendering clips... ${channelProgress.current}/${channelProgress.total} (${channelProgress.pct}%)` : channelPhase === "stitching" ? "🧩 Stitching video..." : channelPhase === "complete" ? "✅ Channel content complete!" : ""}
+                  </Text>
+                </View>
+                <ProgressBar progress={channelProgress.pct} color={channelPhase === "complete" ? colors.green : colors.cyan} />
+                {channelPhase === "polling" && channelProgress.current === 0 && (
+                  <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 4, fontFamily: "monospace" }}>Waiting for clips to render...</Text>
+                )}
+                {channelPhase === "polling" && channelProgress.current > 0 && channelProgress.current < channelProgress.total && (
+                  <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 4, fontFamily: "monospace" }}>
+                    {channelProgress.pct}% complete — {channelProgress.total - channelProgress.current} clips remaining
+                  </Text>
+                )}
+              </View>
+            )}
+
+            {/* Per-scene status indicators */}
+            {channelSceneStatuses.length > 0 && (channelGenerating || channelPhase === "complete" || channelPhase === "failed") && (
+              <View style={{ backgroundColor: "rgba(3,7,18,0.8)", borderRadius: 8, padding: 10, marginTop: 8, marginBottom: 8 }}>
+                <Text style={{ color: colors.text, fontFamily: "monospace", fontSize: 11, fontWeight: "bold", marginBottom: 6 }}>Scene Status</Text>
+                {channelSceneStatuses.map(s => (
+                  <Text key={s.sceneNumber} style={{
+                    fontFamily: "monospace", fontSize: 11, marginBottom: 3,
+                    color: s.status === "done" ? "#4ade80" : s.status === "failed" ? "#f87171" : s.status === "rendering" ? "#94a3b8" : s.status === "submitted" ? "#facc15" : colors.textMuted,
+                  }}>
+                    {s.status === "done" ? "✅" : s.status === "failed" ? "❌" : s.status === "rendering" ? "🔄" : "⏳"} Scene {s.sceneNumber}: {s.title}
+                    {s.status === "done" && s.elapsed ? ` (${s.elapsed})` : ""}
+                    {s.status === "done" && s.sizeMb ? ` — ${s.sizeMb}MB` : ""}
+                    {s.status === "rendering" ? " Rendering..." : s.status === "submitted" ? " Submitted" : ""}
+                  </Text>
+                ))}
+              </View>
+            )}
+
+            {/* Generation log */}
+            {channelLog.length > 0 && <GenerationLog entries={channelLog} onClear={() => { setChannelLog([]); if (!channelGenerating) { setChannelPhase("idle"); setChannelSceneStatuses([]); } }} />}
+
+            {/* Result card */}
+            {channelResult && channelPhase === "complete" && (
+              <View style={[styles.movieResultCard, { borderColor: "rgba(6,182,212,0.3)" }]}>
+                <Text style={[styles.movieResultTitle, { color: colors.cyan }]}>{channelResult.channelEmoji} {channelResult.channelName}: {channelResult.title || "Content Complete!"}</Text>
+                {channelResult.genre && <Text style={styles.movieResultMeta}>Genre: {channelResult.genre}</Text>}
+                {channelResult.clipCount && <Text style={styles.movieResultMeta}>Clips: {channelResult.clipCount} · {channelResult.sizeMb}MB</Text>}
+                {channelResult.spreading?.length > 0 && <Text style={[styles.movieResultMeta, { color: colors.green }]}>Spread to: {channelResult.spreading.join(", ")}</Text>}
+                {channelResult.feedPostId && <Text style={styles.movieResultMeta}>Post ID: {channelResult.feedPostId}</Text>}
               </View>
             )}
           </View>

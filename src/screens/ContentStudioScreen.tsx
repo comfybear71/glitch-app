@@ -40,6 +40,28 @@ const DIRECTORS = [
 
 const GENRES = ["action", "scifi", "horror", "comedy", "drama", "romance", "family", "documentary", "cooking_channel"];
 
+// ── News Topic Presets (select up to 3) ──
+const NEWS_TOPICS = [
+  { id: "global", label: "Global News", emoji: "🌍" },
+  { id: "finance", label: "Finance", emoji: "💰" },
+  { id: "sport", label: "Sport", emoji: "⚽" },
+  { id: "tech", label: "Tech", emoji: "💻" },
+  { id: "politics", label: "Politics", emoji: "🏛" },
+  { id: "crypto", label: "Crypto & Web3", emoji: "🪙" },
+  { id: "glitch_coin", label: "$GLITCH Coin", emoji: "⚡" },
+  { id: "science", label: "Science", emoji: "🔬" },
+  { id: "entertainment", label: "Entertainment", emoji: "🎬" },
+  { id: "weather", label: "Weather", emoji: "🌪" },
+  { id: "health", label: "Health", emoji: "🏥" },
+  { id: "crime", label: "Crime", emoji: "🚨" },
+  { id: "war", label: "War & Conflict", emoji: "⚔" },
+  { id: "good_news", label: "Good News", emoji: "😊" },
+  { id: "bizarre", label: "Bizarre", emoji: "🤯" },
+  { id: "local", label: "Local Events", emoji: "📍" },
+  { id: "business", label: "Business", emoji: "📈" },
+  { id: "environment", label: "Environment", emoji: "🌱" },
+];
+
 const PLATFORMS = [
   { key: "twitter", name: "X / Twitter", emoji: "🐦", color: "#ffffff", bg: "rgba(255,255,255,0.1)" },
   { key: "tiktok", name: "TikTok", emoji: "🎵", color: "#00f2ea", bg: "rgba(0,242,234,0.1)" },
@@ -186,6 +208,7 @@ export default function ContentStudioScreen() {
 
   // ── Breaking News State ──
   const [newsTopicInput, setNewsTopicInput] = useState("");
+  const [selectedNewsTopics, setSelectedNewsTopics] = useState<string[]>([]);
   const [newsGenerating, setNewsGenerating] = useState(false);
   const [newsLog, setNewsLog] = useState<LogEntry[]>([]);
   const [newsResult, setNewsResult] = useState<any>(null);
@@ -611,7 +634,10 @@ export default function ContentStudioScreen() {
     newsCancelRef.current = false;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
 
-    const topicText = newsTopicInput.trim();
+    // Build topic from presets + freeform input
+    const presetLabels = selectedNewsTopics.map(id => NEWS_TOPICS.find(t => t.id === id)?.label).filter(Boolean).join(", ");
+    const freeform = newsTopicInput.trim();
+    const topicText = [presetLabels, freeform].filter(Boolean).join(" — ");
     const startTime = Date.now();
 
     const formatElapsed = (from: number) => {
@@ -1165,12 +1191,42 @@ CRITICAL STYLE NOTES:
               9-clip news broadcast with 3 stories: Intro → Desk Story 1 → Field Report 1 → Desk Story 2 → Field Report 2 → Desk Story 3 → Field Report 3 → Wrap-up → Outro. Based on real current events from the briefing, but with all names and places hilariously discombobulated.
             </Text>
 
+            {/* Topic presets (up to 3) */}
+            <Text style={styles.subsectionLabel}>News Topics (pick up to 3)</Text>
+            <View style={styles.genreGrid}>
+              {NEWS_TOPICS.map(t => {
+                const isSelected = selectedNewsTopics.includes(t.id);
+                const atLimit = selectedNewsTopics.length >= 3 && !isSelected;
+                return (
+                  <TouchableOpacity
+                    key={t.id}
+                    style={[styles.genreChip, isSelected && { borderColor: "#dc2626", backgroundColor: "rgba(220,38,38,0.15)" }, atLimit && { opacity: 0.4 }]}
+                    disabled={atLimit}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      setSelectedNewsTopics(prev =>
+                        prev.includes(t.id) ? prev.filter(x => x !== t.id) : [...prev, t.id]
+                      );
+                    }}>
+                    <Text style={[styles.genreChipText, isSelected && { color: "#dc2626" }]}>
+                      {t.emoji} {t.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            {selectedNewsTopics.length > 0 && (
+              <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: -8, marginBottom: 12 }}>
+                {selectedNewsTopics.length}/3 selected{selectedNewsTopics.length >= 3 ? " (max)" : ""}
+              </Text>
+            )}
+
             {/* Topic input */}
-            <Text style={styles.subsectionLabel}>News Topic (optional)</Text>
+            <Text style={styles.subsectionLabel}>Custom Topic (optional)</Text>
             <TextInput
               style={{ backgroundColor: "#1f2937", borderWidth: 1, borderColor: "#374151", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, color: colors.text, fontSize: 14, minHeight: 60, textAlignVertical: "top", marginBottom: 16 }}
               value={newsTopicInput} onChangeText={setNewsTopicInput}
-              placeholder="Leave blank for AI to pick from current events, or enter a topic..."
+              placeholder="Add extra detail or leave blank..."
               placeholderTextColor={colors.textMuted} multiline maxLength={500}
             />
 

@@ -995,6 +995,11 @@ CRITICAL STYLE NOTES:
     }
   }, [finishGen]);
 
+  // Channel-specific prompt style overrides (must match ContentStudioScreen)
+  const CHANNEL_STYLE_OVERRIDES: Record<string, string> = {
+    "ch-paws-pixels": "Photorealistic animals only. NO title intro, NO credits, NO text overlays, NO robots, NO humans, NO talking animals. Just real animals being animals — loving, funny, heartfelt moments. Soft background music for tender scenes, natural sound effects otherwise. Cats, dogs, birds, fish, giraffes, any animals in authentic natural or domestic settings.",
+  };
+
   // ── Channel Content Generation (same pipeline as movies but for channel-specific content) ──
   const runChannelGeneration = useCallback(async (walletAddress: string, channelId: string, concept?: string) => {
     if (generating) return;
@@ -1011,9 +1016,10 @@ CRITICAL STYLE NOTES:
     const musicPrefix = isMusicChannel
       ? "This MUST be a music video — every scene must feature singing, rapping, playing instruments, or performing music. Genres can include rap, rock, pop, classical, electronic, alien AI music, etc. There MUST be vocals and/or instruments in every clip. Do NOT generate movie scenes or dialogue — only music video clips. "
       : "";
+    const effectiveStyle = CHANNEL_STYLE_OVERRIDES[channel.id] || channel.style;
     const channelConceptText = concept?.trim()
-      ? `${musicPrefix}${channel.style}. User concept: ${concept.trim()}`
-      : `${musicPrefix}${channel.style}. Create compelling ${channel.name} content that fits the channel theme: ${channel.description}.`;
+      ? `${musicPrefix}${effectiveStyle}. User concept: ${concept.trim()}`
+      : `${musicPrefix}${effectiveStyle}. Create compelling ${channel.name} content that fits the channel theme: ${channel.description}.`;
 
     try {
       // ── Step 1: Generate Screenplay ──

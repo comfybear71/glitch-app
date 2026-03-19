@@ -99,16 +99,16 @@ const CHANNEL_RANDOM_CONCEPTS: Record<string, string[]> = {
     "Electronic dance track in a glowing crystal cave rave",
     "Punk rock concert where the instruments are made of pure energy",
   ],
-  // PAWS & PIXELS — animals
+  // PAWS & PIXELS — photorealistic animals, no humans, no robots, no talking, no title/credits
   "ch-paws-pixels": [
-    "Kittens in tiny spacesuits exploring a cheese moon",
-    "Dogs running a gourmet restaurant — chaos in the kitchen",
-    "A penguin detective solving crimes in Antarctica",
-    "Hamsters racing in tiny Formula 1 cars through a living room circuit",
-    "A cat becomes the mayor of a small town — gives speeches from a cushion throne",
-    "Puppies learning to surf on rainbow waves",
-    "A parrot hosting a talk show interviewing other animals",
-    "Raccoons pulling off an elaborate heist at a pet store",
+    "A golden retriever gently nuzzling a kitten asleep on its paws",
+    "Two elephants wrapping trunks around each other at a watering hole at sunset",
+    "A cat carefully grooming a baby duckling sitting on its head",
+    "A dog carrying a stick twice its size down a beach, waves crashing behind it",
+    "A mother bird feeding her chicks in a nest while rain drips off the leaves",
+    "A giraffe bending down to drink while a tiny bird perches on its nose",
+    "A puppy chasing butterflies through a sunlit meadow of wildflowers",
+    "A pair of otters holding hands while floating down a gentle river",
   ],
   // GNN — Glitch News Network
   "ch-gnn": [
@@ -164,6 +164,12 @@ function getRandomChannelConcept(channelId: string): string {
   const pool = CHANNEL_RANDOM_CONCEPTS[channelId] || GENERIC_RANDOM_CONCEPTS;
   return pool[Math.floor(Math.random() * pool.length)];
 }
+
+// ── Channel-specific prompt style overrides ──
+// These override channel.style for generation prompts to enforce channel-specific rules
+const CHANNEL_STYLE_OVERRIDES: Record<string, string> = {
+  "ch-paws-pixels": "Photorealistic animals only. NO title intro, NO credits, NO text overlays, NO robots, NO humans, NO talking animals. Just real animals being animals — loving, funny, heartfelt moments. Soft background music for tender scenes, natural sound effects otherwise. Cats, dogs, birds, fish, giraffes, any animals in authentic natural or domestic settings.",
+};
 
 // ── Log Entry Type ──
 type LogEntry = { time: string; emoji: string; text: string; type: "info" | "success" | "error" | "waiting" };
@@ -1224,9 +1230,11 @@ CRITICAL STYLE NOTES:
 
     const isShort = channelFormat === "short";
 
+    const effectiveStyle = CHANNEL_STYLE_OVERRIDES[channel.id] || channel.style;
+
     let channelConceptText = channelConcept.trim()
-      ? `${channel.style}. User concept: ${channelConcept.trim()}`
-      : `${channel.style}. Create compelling ${channel.name} content that fits the channel theme: ${channel.description}.`;
+      ? `${effectiveStyle}. User concept: ${channelConcept.trim()}`
+      : `${effectiveStyle}. Create compelling ${channel.name} content that fits the channel theme: ${channel.description}.`;
 
     if (isShort) {
       channelConceptText += " IMPORTANT: This is a SHORT 10-second clip. Write ONLY 1 scene with a single powerful visual moment.";
@@ -1242,8 +1250,8 @@ CRITICAL STYLE NOTES:
       if (isShort) {
         setChannelPhase("submitting");
         const shortPrompt = channelConcept.trim()
-          ? `${channel.style}. ${channelConcept.trim()}. 10-second ${channel.name} channel clip.`
-          : `${channel.style}. Create a compelling 10-second clip for the ${channel.name} channel. Theme: ${channel.description}. Make it visually striking and brand-worthy.`;
+          ? `${effectiveStyle}. ${channelConcept.trim()}. 10-second ${channel.name} channel clip.`
+          : `${effectiveStyle}. Create a compelling 10-second clip for the ${channel.name} channel. Theme: ${channel.description}. Make it visually striking and brand-worthy.`;
 
         addChannelLog("📡", `Submitting short clip to xAI...`, "waiting");
         const submitRes = await submitScene(walletAddress, shortPrompt, 10, channel.folder);

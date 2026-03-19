@@ -701,7 +701,6 @@ CRITICAL STYLE NOTES:
       // Step 1: Generate screenplay
       const screenplay = await generateScreenplay(walletAddress, {
         genre: "news",
-        director: "david_attenborough_ai",
         concept: newsConcept,
       });
 

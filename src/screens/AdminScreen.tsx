@@ -11,16 +11,17 @@ import { useSession } from "../hooks/useSession";
 import { usePhantomWallet } from "../hooks/usePhantomWallet";
 import {
   API_BASE, getAdminStats, getAdminPersonas, getAdminUsers,
-  getAdminHealth, getAdminSwaps, adminAction, adminAnnounce,
+  adminAction, adminAnnounce,
   AdminStats, AdminPersona, AdminUser,
+  generatePersonaAvatar, animatePersona,
 } from "../services/api";
 
 // ADMIN WALLET GATE — only this wallet can access admin panel
-// Set your own wallet address here, or store in SecureStore
+const ADMIN_WALLET = "AEWvE2xXaHSGdGCaCArb2PWdKS7K9RwoCRV7CT2CJTWq";
 const ADMIN_WALLET_KEY = "aiglitch-admin-wallet";
 const ADMIN_PIN_KEY = "aiglitch-admin-pin";
 
-type Tab = "overview" | "personas" | "users" | "swaps" | "system" | "tools" | "secrets";
+type Tab = "overview" | "personas" | "users" | "tools";
 
 function StatCard({ label, value, color, sub }: { label: string; value: string | number; color?: string; sub?: string }) {
   return (
@@ -32,17 +33,6 @@ function StatCard({ label, value, color, sub }: { label: string; value: string |
   );
 }
 
-function ServiceRow({ name, status, latency }: { name: string; status: string; latency?: number }) {
-  const isUp = status === "ok" || status === "healthy" || status === "up";
-  return (
-    <View style={styles.serviceRow}>
-      <View style={[styles.serviceDot, { backgroundColor: isUp ? colors.green : colors.red }]} />
-      <Text style={styles.serviceName}>{name}</Text>
-      <Text style={[styles.serviceStatus, { color: isUp ? colors.green : colors.red }]}>{status}</Text>
-      {latency != null && <Text style={styles.serviceLatency}>{latency}ms</Text>}
-    </View>
-  );
-}
 
 export default function AdminScreen() {
   const { sessionId } = useSession();
@@ -60,48 +50,23 @@ export default function AdminScreen() {
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [personas, setPersonas] = useState<AdminPersona[]>([]);
   const [users, setUsers] = useState<AdminUser[]>([]);
-  const [services, setServices] = useState<{ name: string; status: string; latency_ms?: number }[]>([]);
-  const [overallHealth, setOverallHealth] = useState("unknown");
-  const [swapStats, setSwapStats] = useState<{ total: number; pending: number; completed: number; failed: number } | null>(null);
   const [announceText, setAnnounceText] = useState("");
   const [announceSending, setAnnounceSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Secrets state
-  const [secrets, setSecrets] = useState<Record<string, string>>({});
-  const [newSecretKey, setNewSecretKey] = useState("");
-  const [newSecretValue, setNewSecretValue] = useState("");
 
-  // Check if wallet is admin — first time sets it, subsequent checks validate
+
+
+  // Check if wallet is admin — must match the designated admin wallet
   useEffect(() => {
     if (!walletAddress) { setIsAdmin(false); return; }
-    (async () => {
-      const storedAdmin = await SecureStore.getItemAsync(ADMIN_WALLET_KEY);
-      if (!storedAdmin) {
-        // First time — this wallet becomes admin
-        await SecureStore.setItemAsync(ADMIN_WALLET_KEY, walletAddress);
-        setIsAdmin(true);
-      } else {
-        setIsAdmin(storedAdmin === walletAddress);
-      }
-    })();
+    const isAdminWallet = walletAddress === ADMIN_WALLET;
+    if (isAdminWallet) {
+      // Persist so other parts of the app can check admin status
+      SecureStore.setItemAsync(ADMIN_WALLET_KEY, walletAddress);
+    }
+    setIsAdmin(isAdminWallet);
   }, [walletAddress]);
-
-  // Load saved secrets
-  useEffect(() => {
-    (async () => {
-      try {
-        const stored = await SecureStore.getItemAsync("aiglitch-admin-secrets");
-        if (stored) setSecrets(JSON.parse(stored));
-      } catch (_) {}
-    })();
-  }, []);
-
-  // Save secrets
-  const saveSecrets = async (updated: Record<string, string>) => {
-    setSecrets(updated);
-    await SecureStore.setItemAsync("aiglitch-admin-secrets", JSON.stringify(updated));
-  };
 
   // Check biometric availability
   useEffect(() => {
@@ -169,7 +134,8 @@ export default function AdminScreen() {
       setStats(statsData);
     } catch (e: any) {
       const msg = e?.message || "";
-      if (msg.includes("403") || msg.includes("unauthorized") || msg.includes("not admin") || msg.includes("Forbidden")) {
+      const msgLower = msg.toLowerCase();
+      if (msgLower.includes("403") || msgLower.includes("unauthorized") || msgLower.includes("not admin") || msgLower.includes("forbidden") || msgLower.includes("session expired")) {
         setError("admin_not_authorized");
       } else if (msg.includes("404") || msg.includes("Not Found")) {
         // Admin endpoint not yet deployed — show placeholder
@@ -198,17 +164,6 @@ export default function AdminScreen() {
         case "users": {
           const data = await getAdminUsers(sessionId, walletAddress);
           setUsers(data.users || []);
-          break;
-        }
-        case "system": {
-          const data = await getAdminHealth(sessionId, walletAddress);
-          setServices(data.services || []);
-          setOverallHealth(data.overall || "unknown");
-          break;
-        }
-        case "swaps": {
-          const data = await getAdminSwaps(sessionId, walletAddress);
-          setSwapStats(data.stats || null);
           break;
         }
       }
@@ -544,7 +499,10 @@ export default function AdminScreen() {
       <View style={styles.center}>
         <Text style={styles.lockEmoji}>⛔</Text>
         <Text style={styles.lockTitle}>Not Authorized</Text>
-        <Text style={styles.lockSub}>This wallet doesn't have admin access. Only the platform owner's wallet can use this panel.</Text>
+        <Text style={styles.lockSub}>The server rejected this wallet for admin access. This usually means the admin API endpoints aren't deployed yet, or this wallet isn't registered as admin on the server.</Text>
+        <TouchableOpacity style={styles.authBtn} onPress={() => { setError(null); setLoading(true); loadData(); }}>
+          <Text style={styles.authBtnText}>Retry</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -567,10 +525,7 @@ export default function AdminScreen() {
     { key: "overview", emoji: "📊", label: "Overview" },
     { key: "personas", emoji: "🤖", label: "Personas" },
     { key: "users", emoji: "👥", label: "Users" },
-    { key: "swaps", emoji: "💰", label: "Swaps" },
-    { key: "system", emoji: "🔧", label: "System" },
     { key: "tools", emoji: "🛠", label: "Tools" },
-    { key: "secrets", emoji: "🔐", label: "Secrets" },
   ];
 
   return (
@@ -622,7 +577,47 @@ export default function AdminScreen() {
                   <Text style={styles.listName}>{p.display_name}</Text>
                   <Text style={styles.listMeta}>@{p.username} · {p.persona_type} · {p.message_count} msgs</Text>
                 </View>
-                <View style={[styles.statusDot, { backgroundColor: p.is_active ? colors.green : colors.red }]} />
+                <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
+                  <TouchableOpacity
+                    style={{ backgroundColor: "rgba(124,58,237,0.15)", borderRadius: 8, paddingHorizontal: 8, paddingVertical: 6 }}
+                    onPress={() => {
+                      Alert.alert("Generate Avatar", `Create AI avatar for ${p.display_name}?`, [
+                        { text: "Cancel", style: "cancel" },
+                        { text: "Generate", onPress: async () => {
+                          try {
+                            const res = await generatePersonaAvatar(walletAddress!, p.id);
+                            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                            Alert.alert("Avatar Generated!", res.message || (res.avatar_url ? `URL: ${res.avatar_url}` : "Done!"));
+                          } catch (e: any) {
+                            Alert.alert("Error", e?.message || "Failed");
+                          }
+                        }},
+                      ]);
+                    }}
+                  >
+                    <Text style={{ fontSize: 14 }}>🎨</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={{ backgroundColor: "rgba(6,182,212,0.15)", borderRadius: 8, paddingHorizontal: 8, paddingVertical: 6 }}
+                    onPress={() => {
+                      Alert.alert("Animate Persona", `Create animation for ${p.display_name}?`, [
+                        { text: "Cancel", style: "cancel" },
+                        { text: "Animate", onPress: async () => {
+                          try {
+                            const res = await animatePersona(walletAddress!, p.id);
+                            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                            Alert.alert("Animation Created!", res.message || (res.animation_url ? `URL: ${res.animation_url}` : "Done!"));
+                          } catch (e: any) {
+                            Alert.alert("Error", e?.message || "Failed");
+                          }
+                        }},
+                      ]);
+                    }}
+                  >
+                    <Text style={{ fontSize: 14 }}>🎬</Text>
+                  </TouchableOpacity>
+                  <View style={[styles.statusDot, { backgroundColor: p.is_active ? colors.green : colors.red }]} />
+                </View>
               </View>
             ))}
             {personas.length === 0 && <Text style={styles.emptyText}>Loading personas...</Text>}
@@ -645,41 +640,6 @@ export default function AdminScreen() {
               </View>
             ))}
             {users.length === 0 && <Text style={styles.emptyText}>Loading users...</Text>}
-          </>
-        )}
-
-        {/* Swaps Tab */}
-        {activeTab === "swaps" && (
-          <>
-            <Text style={styles.sectionTitle}>Swap Overview</Text>
-            {swapStats && (
-              <View style={styles.statsGrid}>
-                <StatCard label="Total" value={swapStats.total} color={colors.cyan} />
-                <StatCard label="Completed" value={swapStats.completed} color={colors.green} />
-                <StatCard label="Pending" value={swapStats.pending} color={colors.yellow} />
-                <StatCard label="Failed" value={swapStats.failed} color={colors.red} />
-              </View>
-            )}
-          </>
-        )}
-
-        {/* System Tab */}
-        {activeTab === "system" && (
-          <>
-            <Text style={styles.sectionTitle}>System Health</Text>
-            <View style={styles.healthCard}>
-              <View style={[styles.healthDot, {
-                backgroundColor: overallHealth === "healthy" ? colors.green : overallHealth === "degraded" ? colors.yellow : colors.red,
-              }]} />
-              <Text style={styles.healthText}>
-                {overallHealth === "healthy" ? "All Systems Operational" :
-                 overallHealth === "degraded" ? "Degraded Performance" : "Issues Detected"}
-              </Text>
-            </View>
-            {services.map((s, i) => (
-              <ServiceRow key={i} name={s.name} status={s.status} latency={s.latency_ms} />
-            ))}
-            {services.length === 0 && <Text style={styles.emptyText}>Loading services...</Text>}
           </>
         )}
 
@@ -736,151 +696,6 @@ export default function AdminScreen() {
           </>
         )}
 
-        {/* Secrets Tab — secure variables & PIN */}
-        {activeTab === "secrets" && (
-          <>
-            <Text style={styles.sectionTitle}>Admin PIN</Text>
-            <View style={styles.toolCard}>
-              <Text style={styles.toolTitle}>🔐 Set / Change Admin PIN</Text>
-              <Text style={styles.toolDesc}>Extra layer of security on top of Face ID</Text>
-              <TextInput
-                style={[styles.toolInput, { minHeight: 44 }]}
-                value={pinInput}
-                onChangeText={setPinInput}
-                placeholder="Enter new PIN (4-8 digits)..."
-                placeholderTextColor={colors.textMuted}
-                secureTextEntry
-                keyboardType="number-pad"
-                maxLength={8}
-              />
-              <TouchableOpacity
-                style={[styles.toolBtn, !pinInput.trim() && { opacity: 0.4 }]}
-                onPress={async () => {
-                  if (pinInput.trim().length < 4) {
-                    Alert.alert("Too Short", "PIN must be at least 4 digits");
-                    return;
-                  }
-                  await SecureStore.setItemAsync(ADMIN_PIN_KEY, pinInput.trim());
-                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                  Alert.alert("PIN Set!", "Your admin PIN has been saved securely.");
-                  setPinInput("");
-                }}
-                disabled={!pinInput.trim()}
-              >
-                <Text style={styles.toolBtnText}>Save PIN</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.toolBtn, { backgroundColor: "rgba(239,68,68,0.15)", marginTop: 8 }]}
-                onPress={async () => {
-                  await SecureStore.deleteItemAsync(ADMIN_PIN_KEY);
-                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-                  Alert.alert("PIN Removed", "Admin PIN has been cleared.");
-                }}
-              >
-                <Text style={[styles.toolBtnText, { color: colors.red }]}>Remove PIN</Text>
-              </TouchableOpacity>
-            </View>
-
-            <Text style={[styles.sectionTitle, { marginTop: 20 }]}>Secret Variables</Text>
-            <Text style={styles.secretNote}>
-              Stored securely on-device with SecureStore (Keychain on iOS). These are NOT sent to the server unless you explicitly use them.
-            </Text>
-
-            {/* Existing secrets */}
-            {Object.entries(secrets).map(([key, value]) => (
-              <View key={key} style={styles.secretItem}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.secretKey}>{key}</Text>
-                  <Text style={styles.secretValue}>{"•".repeat(Math.min(value.length, 20))}</Text>
-                </View>
-                <TouchableOpacity
-                  onPress={() => {
-                    Alert.alert(key, `Value: ${value}`, [
-                      { text: "Copy", onPress: () => {
-                        const Clipboard = require("expo-clipboard");
-                        Clipboard.setStringAsync(value);
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      }},
-                      { text: "Delete", style: "destructive", onPress: () => {
-                        const updated = { ...secrets };
-                        delete updated[key];
-                        saveSecrets(updated);
-                      }},
-                      { text: "Cancel", style: "cancel" },
-                    ]);
-                  }}
-                  style={styles.secretBtn}
-                >
-                  <Text style={styles.secretBtnText}>👁</Text>
-                </TouchableOpacity>
-              </View>
-            ))}
-
-            {/* Add new secret */}
-            <View style={[styles.toolCard, { marginTop: 12 }]}>
-              <Text style={styles.toolTitle}>Add Secret Variable</Text>
-              <TextInput
-                style={[styles.toolInput, { minHeight: 44, marginTop: 8 }]}
-                value={newSecretKey}
-                onChangeText={setNewSecretKey}
-                placeholder="Key (e.g. API_KEY, PASSWORD, etc.)"
-                placeholderTextColor={colors.textMuted}
-                autoCapitalize="characters"
-                maxLength={50}
-              />
-              <TextInput
-                style={[styles.toolInput, { minHeight: 44, marginTop: 8 }]}
-                value={newSecretValue}
-                onChangeText={setNewSecretValue}
-                placeholder="Value (stored encrypted on device)"
-                placeholderTextColor={colors.textMuted}
-                secureTextEntry
-                maxLength={500}
-              />
-              <TouchableOpacity
-                style={[styles.toolBtn, { marginTop: 10 }, (!newSecretKey.trim() || !newSecretValue.trim()) && { opacity: 0.4 }]}
-                onPress={() => {
-                  if (!newSecretKey.trim() || !newSecretValue.trim()) return;
-                  const updated = { ...secrets, [newSecretKey.trim()]: newSecretValue.trim() };
-                  saveSecrets(updated);
-                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                  setNewSecretKey("");
-                  setNewSecretValue("");
-                  Alert.alert("Saved!", `Secret "${newSecretKey.trim()}" stored securely.`);
-                }}
-                disabled={!newSecretKey.trim() || !newSecretValue.trim()}
-              >
-                <Text style={styles.toolBtnText}>Save Secret</Text>
-              </TouchableOpacity>
-            </View>
-
-            <Text style={[styles.sectionTitle, { marginTop: 20 }]}>Admin Wallet</Text>
-            <View style={styles.toolCard}>
-              <Text style={styles.toolTitle}>🛡️ Admin Wallet Address</Text>
-              <Text style={styles.secretValue}>{walletAddress}</Text>
-              <Text style={styles.toolDesc}>Only this wallet can access admin features. Other users will see "Access Denied".</Text>
-              <TouchableOpacity
-                style={[styles.toolBtn, { backgroundColor: "rgba(239,68,68,0.15)", marginTop: 12 }]}
-                onPress={() => {
-                  Alert.alert(
-                    "Reset Admin Wallet",
-                    "This will clear the admin wallet. The next wallet to connect will become admin. Are you sure?",
-                    [
-                      { text: "Cancel", style: "cancel" },
-                      { text: "Reset", style: "destructive", onPress: async () => {
-                        await SecureStore.deleteItemAsync(ADMIN_WALLET_KEY);
-                        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-                        Alert.alert("Reset", "Admin wallet cleared. Reconnect to set a new admin.");
-                      }},
-                    ]
-                  );
-                }}
-              >
-                <Text style={[styles.toolBtnText, { color: colors.red }]}>Reset Admin Wallet</Text>
-              </TouchableOpacity>
-            </View>
-          </>
-        )}
 
         <View style={{ height: 40 }} />
       </ScrollView>
@@ -911,18 +726,6 @@ const styles = StyleSheet.create({
     fontSize: 20, textAlign: "center", letterSpacing: 8,
   },
   loadingText: { color: colors.textMuted, fontSize: 13, marginTop: 12 },
-
-  // Secrets
-  secretNote: { color: colors.textMuted, fontSize: 12, lineHeight: 18, marginBottom: 12 },
-  secretItem: {
-    flexDirection: "row", alignItems: "center", gap: 12,
-    backgroundColor: colors.surface, borderRadius: 14, padding: 14,
-    marginBottom: 8, borderWidth: 1, borderColor: colors.border,
-  },
-  secretKey: { color: colors.purpleLight, fontSize: 13, fontWeight: "700", fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace" },
-  secretValue: { color: colors.textMuted, fontSize: 12, marginTop: 4, fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace" },
-  secretBtn: { padding: 8 },
-  secretBtnText: { fontSize: 18 },
 
   // Header
   headerSection: { alignItems: "center", paddingVertical: 20 },
@@ -973,24 +776,6 @@ const styles = StyleSheet.create({
   statusDot: { width: 10, height: 10, borderRadius: 5 },
   emptyText: { color: colors.textMuted, fontSize: 13, textAlign: "center", paddingVertical: 20 },
 
-  // Health
-  healthCard: {
-    flexDirection: "row", alignItems: "center", gap: 10,
-    backgroundColor: colors.surface, borderRadius: 14, padding: 16,
-    marginBottom: 16, borderWidth: 1, borderColor: colors.border,
-  },
-  healthDot: { width: 14, height: 14, borderRadius: 7 },
-  healthText: { color: colors.text, fontSize: 15, fontWeight: "700" },
-  serviceRow: {
-    flexDirection: "row", alignItems: "center", gap: 10,
-    paddingVertical: 10, paddingHorizontal: 14,
-    borderBottomWidth: 1, borderBottomColor: colors.border,
-  },
-  serviceDot: { width: 8, height: 8, borderRadius: 4 },
-  serviceName: { color: colors.text, fontSize: 13, flex: 1 },
-  serviceStatus: { fontSize: 12, fontWeight: "700" },
-  serviceLatency: { color: colors.textMuted, fontSize: 11 },
-
   // Tools
   toolCard: {
     backgroundColor: colors.surface, borderRadius: 16, padding: 18,
@@ -1033,4 +818,5 @@ const styles = StyleSheet.create({
   deployList: { width: "100%", marginTop: 16, gap: 6 },
   deployItem: { color: colors.textSecondary, fontSize: 13, lineHeight: 22 },
   deployNote: { color: colors.textMuted, fontSize: 11, textAlign: "center", marginTop: 16, fontStyle: "italic" },
+
 });

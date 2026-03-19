@@ -177,7 +177,7 @@ export default function VoiceChatScreen() {
 
       // Read audio file as base64 using new Expo File API
       const file = new File(uri);
-      const base64 = file.base64();
+      const base64 = await file.base64();
 
       // Transcribe
       let userText: string;
@@ -199,7 +199,7 @@ export default function VoiceChatScreen() {
         return;
       }
 
-      const data = await sendMessage(sessionId, personaId, userText);
+      const data = await sendMessage(sessionId, personaId, userText, "casual");
       if (!data.success) {
         setError("Failed to get response");
         setState("idle");

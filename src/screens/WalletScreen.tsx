@@ -3,8 +3,9 @@ import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
   RefreshControl, ActivityIndicator, Alert, Share, Platform,
   TextInput, Keyboard, Image, Dimensions, Animated, Easing,
+  KeyboardAvoidingView,
 } from "react-native";
-import { useNavigation } from "@react-navigation/native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import { colors } from "../theme/colors";
 import { useSession } from "../hooks/useSession";
@@ -156,7 +157,8 @@ const WALLET_PROVIDERS = [
 ];
 
 export default function WalletScreen() {
-  const nav = useNavigation<any>();
+  const insets = useSafeAreaInsets();
+  const safeTop = insets.top;
   const { sessionId } = useSession();
   const { walletAddress, isConnecting, connect, disconnect, submitAddress, cancelConnect } = usePhantomWallet();
   const [pasteValue, setPasteValue] = useState("");
@@ -318,8 +320,13 @@ export default function WalletScreen() {
       <View style={styles.loginContainer}>
         <AnimatedBackground />
 
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
+        >
         <ScrollView
-          contentContainerStyle={styles.loginContent}
+          contentContainerStyle={[styles.loginContent, { paddingTop: Math.max(safeTop + 20, 60) }]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
@@ -455,6 +462,7 @@ export default function WalletScreen() {
             </Animated.View>
           )}
         </ScrollView>
+        </KeyboardAvoidingView>
       </View>
     );
   }
@@ -547,7 +555,7 @@ export default function WalletScreen() {
           style={[styles.actionCard, { borderColor: "rgba(124, 58, 237, 0.3)" }]}
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            nav.navigate("Buy");
+            // Navigation handled by tab bar
           }}
         >
           <Text style={styles.actionEmoji}>💰</Text>
@@ -572,7 +580,6 @@ const styles = StyleSheet.create({
   loginContent: {
     flexGrow: 1,
     paddingHorizontal: 24,
-    paddingTop: screenHeight * 0.08,
     paddingBottom: 40,
     alignItems: "center",
   },

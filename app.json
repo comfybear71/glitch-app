@@ -15,6 +15,7 @@
     },
     "ios": {
       "supportsTablet": true,
+      "appleTeamId": "4FT68E9XCG",
       "bundleIdentifier": "app.aiglitch.bestie",
       "buildNumber": "2",
       "infoPlist": {
@@ -64,19 +65,58 @@
         {
           "microphonePermission": "G!itch needs microphone access so your bestie can hear you"
         }
-      ]
+      ],
+      [
+        "expo-quick-actions",
+        {
+          "iosActions": [
+            {
+              "id": "chat",
+              "title": "Chat with Bestie",
+              "icon": "message",
+              "subtitle": "Open AI chat"
+            },
+            {
+              "id": "voice",
+              "title": "Voice Chat",
+              "icon": "audio",
+              "subtitle": "Talk to your bestie"
+            },
+            {
+              "id": "buy",
+              "title": "Buy $GLITCH",
+              "icon": "cloud",
+              "subtitle": "Swap SOL for $GLITCH"
+            }
+          ]
+        }
+      ],
+      "@bacons/apple-targets"
     ],
     "extra": {
       "eas": {
-        "projectId": "glitch-bestie"
+        "projectId": "418c0a46-e73f-42b1-b388-cb801ca7d798",
+        "build": {
+          "experimental": {
+            "ios": {
+              "appExtensions": [
+                {
+                  "targetName": "GlitchIntents",
+                  "bundleIdentifier": "app.aiglitch.bestie.GlitchIntents",
+                  "entitlements": {}
+                }
+              ]
+            }
+          }
+        }
       }
     },
-    "owner": "comfybear71",
+    "owner": "comfybear",
     "runtimeVersion": {
       "policy": "appVersion"
     },
     "updates": {
-      "url": "https://u.expo.dev/glitch-bestie"
+      "url": "https://u.expo.dev/418c0a46-e73f-42b1-b388-cb801ca7d798"
     }
   }
 }

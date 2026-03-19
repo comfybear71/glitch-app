@@ -1,26 +1,33 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import {
-  View, Text, TouchableOpacity, Image, FlatList, TextInput,
+  View, Text, TouchableOpacity, Image, FlatList, TextInput, Pressable, Dimensions,
   StyleSheet, ActivityIndicator, Alert, Share, Platform, Linking,
   KeyboardAvoidingView, Keyboard, Modal, ScrollView, Animated, Easing,
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import * as Haptics from "expo-haptics";
+import * as SecureStore from "expo-secure-store";
 import * as Clipboard from "expo-clipboard";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system";
 import { Audio, Video, ResizeMode } from "expo-av";
 import { WebView } from "react-native-webview";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors } from "../theme/colors";
 import { useSession } from "../hooks/useSession";
 import { usePhantomWallet } from "../hooks/usePhantomWallet";
 import { usePushNotifications } from "../hooks/usePushNotifications";
 import {
   API_BASE, getBestie, walletLogin, linkWallet, unlinkWallet,
-  getOnChainBalances, getMessages, sendMessage, sendImageMessage,
-  Bestie, OnChainBalances, Message,
+  getOnChainBalances, getMessages, sendMessage, sendImageMessage, saveGeneratedMessage,
+  getBriefing, sendPostFeedback,
+  Bestie, OnChainBalances, Message, TrendingPost, FeedbackAction,
+  CHANNELS,
 } from "../services/api";
 import CosmicVisualizer from "../components/CosmicVisualizer";
+import { useGeneration, SocialLink } from "../hooks/GenerationContext";
+import { getRandomMarketplaceItem, getRandomMarketplaceItems, formatItemForAd, MarketplaceItem } from "../data/marketplaceItems";
 const APP_VERSION = "1.0.2";
 
 function HealthBar({ health }: { health: number }) {
@@ -62,17 +69,51 @@ function getYouTubeId(url: string): string | null {
   return match ? match[1] : null;
 }
 
+// Admin wallet — only this wallet can generate content (movies, news, ads, posters, heroes)
+const ADMIN_WALLET = "AEWvE2xXaHSGdGCaCArb2PWdKS7K9RwoCRV7CT2CJTWq";
+
+// Directors for inline movie picker
+const CHAT_DIRECTORS = [
+  { id: "auto", name: "Auto (Random)", emoji: "🎲" },
+  { id: "steven_spielbot", name: "Steven Spielbot", emoji: "🎬" },
+  { id: "stanley_kubrick_ai", name: "Stanley Kubrick AI", emoji: "🎭" },
+  { id: "george_lucasfilm", name: "George LucasFilm", emoji: "🌌" },
+  { id: "quentin_airantino", name: "Quentin AI-rantino", emoji: "🔫" },
+  { id: "alfred_glitchcock", name: "Alfred Glitchcock", emoji: "🦅" },
+  { id: "nolan_christopher", name: "Nolan Christopher", emoji: "⏰" },
+  { id: "wes_analog", name: "Wes Analog", emoji: "🎨" },
+  { id: "ridley_scott_ai", name: "Ridley Scott AI", emoji: "🗡" },
+  { id: "chef_ramsay_ai", name: "Chef Ramsay AI", emoji: "👨‍🍳" },
+  { id: "david_attenborough_ai", name: "David Attenborough AI", emoji: "🦁" },
+];
+const CHAT_GENRES = ["any", "action", "scifi", "horror", "comedy", "drama", "romance", "family", "documentary", "cooking_channel"];
+
+// Ad campaign styles
+const AD_STYLES = [
+  { id: "auto", emoji: "🎲", label: "Surprise Me" },
+  { id: "hype", emoji: "🔥", label: "Hype Beast" },
+  { id: "cinematic", emoji: "🎬", label: "Cinematic" },
+  { id: "retro", emoji: "📺", label: "Retro" },
+  { id: "meme", emoji: "😂", label: "Meme Style" },
+  { id: "luxury", emoji: "💎", label: "Luxury" },
+  { id: "anime", emoji: "⛩", label: "Anime" },
+  { id: "glitch", emoji: "👾", label: "Glitch Art" },
+  { id: "minimal", emoji: "◻️", label: "Minimal" },
+];
+
 // Chat mode types
-type ChatMode = "casual" | "serious" | "scientific" | "whimsical";
+type ChatMode = "casual" | "serious" | "scientific" | "whimsical" | "unfiltered";
 const CHAT_MODES: { key: ChatMode; emoji: string; label: string; color: string; bg: string }[] = [
   { key: "casual", emoji: "😎", label: "Playful", color: colors.purpleLight, bg: "rgba(124, 58, 237, 0.15)" },
   { key: "serious", emoji: "🧠", label: "Serious", color: "#60a5fa", bg: "rgba(59, 130, 246, 0.15)" },
   { key: "scientific", emoji: "🔬", label: "Scientific", color: colors.cyan, bg: "rgba(6, 182, 212, 0.15)" },
   { key: "whimsical", emoji: "🦄", label: "Whimsical", color: "#f472b6", bg: "rgba(244, 114, 182, 0.15)" },
+  { key: "unfiltered", emoji: "🤬", label: "Unfiltered", color: "#ef4444", bg: "rgba(239, 68, 68, 0.15)" },
 ];
 
 export default function HomeScreen() {
   const nav = useNavigation<any>();
+  const insets = useSafeAreaInsets();
   const { sessionId } = useSession();
   const { walletAddress, isConnecting, isLoading: walletLoading, connect, disconnect, submitAddress, cancelConnect } = usePhantomWallet();
   const [addressInput, setAddressInput] = useState("");
@@ -89,16 +130,56 @@ export default function HomeScreen() {
   const [sending, setSending] = useState(false);
   const [chatLoading, setChatLoading] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
-  const [generating, setGenerating] = useState<string | null>(null); // active generation type
-  const [genStep, setGenStep] = useState(0); // current step in generation story
+  const {
+    generating: ctxGenerating, genStatusText, genProgressPct, genResult, clearResult, cancelGeneration,
+    runAdGeneration: ctxRunAd, runPosterGeneration: ctxRunPoster,
+    runHeroGeneration: ctxRunHero, runMovieGeneration: ctxRunMovie,
+    runNewsGeneration: ctxRunNews, runChannelGeneration: ctxRunChannel,
+  } = useGeneration();
+  const [cosmeticGen, setCosmeticGen] = useState<string | null>(null); // cosmetic gen type for polling-based tasks
+  const generating = ctxGenerating || cosmeticGen; // unified: context takes priority
+  const [genStep, setGenStep] = useState(0); // current step in generation story (cosmetic fallback)
+
+  // Inline movie picker state
+  const [showMoviePicker, setShowMoviePicker] = useState(false);
+  const [pickerDirector, setPickerDirector] = useState("auto");
+  const [pickerGenre, setPickerGenre] = useState("any");
+  const [pickerConcept, setPickerConcept] = useState("");
+
+  // Inline ad picker state
+  const [showAdPicker, setShowAdPicker] = useState(false);
+  const [adStyle, setAdStyle] = useState("auto");
+  const [adConcept, setAdConcept] = useState("");
+  const [selectedProduct, setSelectedProduct] = useState<MarketplaceItem | null>(null);
+  const [productChoices, setProductChoices] = useState<MarketplaceItem[]>([]);
+
+  // Inline news picker state
+  const [showNewsPicker, setShowNewsPicker] = useState(false);
+  const [newsTopic, setNewsTopic] = useState("");
+
+  // Inline channel picker state
+  const [showChannelPicker, setShowChannelPicker] = useState(false);
+  const [channelPickerConcept, setChannelPickerConcept] = useState("");
+
   const [hasMore, setHasMore] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [speakingMsgId, setSpeakingMsgId] = useState<string | null>(null);
   const [reactions, setReactions] = useState<Record<string, string>>({});
   const [reactionPickerFor, setReactionPickerFor] = useState<string | null>(null);
   const [showFeatures, setShowFeatures] = useState(false);
-  const [chatMode, setChatModeState] = useState<ChatMode>("casual");
+  const [chatMode, setChatModeRaw] = useState<ChatMode>("casual");
   const [showMoodPicker, setShowMoodPicker] = useState(false);
+  const [shortReplies, setShortRepliesRaw] = useState(true); // default to short
+
+  // Persist mood + short replies to SecureStore
+  const setChatModeState = useCallback((mode: ChatMode) => {
+    setChatModeRaw(mode);
+    SecureStore.setItemAsync("aiglitch-chat-mode", mode).catch(() => {});
+  }, []);
+  const setShortReplies = useCallback((val: boolean) => {
+    setShortRepliesRaw(val);
+    SecureStore.setItemAsync("aiglitch-short-replies", val ? "true" : "false").catch(() => {});
+  }, []);
   const [showSuggest, setShowSuggest] = useState(false);
   const [suggestTitle, setSuggestTitle] = useState("");
   const [suggestDesc, setSuggestDesc] = useState("");
@@ -107,7 +188,8 @@ export default function HomeScreen() {
   const soundRef = useRef<Audio.Sound | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const messageCountRef = useRef(0); // track count for polling comparison
+  const messageCountRef = useRef(0); // track count for polling comparison (server-side messages only)
+  const serverMsgCountRef = useRef(0); // last known server message count
 
   const load = useCallback(async () => {
     if (!sessionId) return;
@@ -138,13 +220,35 @@ export default function HomeScreen() {
 
   useEffect(() => { load(); }, [load]);
 
+  // Load persisted chat mode and sync to server when bestie loads
+  useEffect(() => {
+    SecureStore.getItemAsync("aiglitch-chat-mode").then((saved) => {
+      if (saved && ["casual", "serious", "scientific", "whimsical"].includes(saved)) {
+        setChatModeRaw(saved as ChatMode);
+        // Sync to server so bestie uses the right mode
+        if (sessionId && bestie) {
+          fetch(`${API_BASE}/api/messages`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ session_id: sessionId, persona_id: bestie.id, chat_mode: saved }),
+          }).catch(() => {});
+        }
+      }
+    }).catch(() => {});
+    SecureStore.getItemAsync("aiglitch-short-replies").then((saved) => {
+      if (saved !== null) setShortRepliesRaw(saved === "true");
+    }).catch(() => {});
+  }, [sessionId, bestie?.id]);
+
   // Load chat when bestie is ready (most recent 50 messages)
   useEffect(() => {
     if (!sessionId || !bestie) return;
     setChatLoading(true);
     getMessages(sessionId, bestie.id)
       .then((data) => {
-        setMessages(data.messages || []);
+        const msgs = data.messages || [];
+        setMessages(msgs);
+        serverMsgCountRef.current = msgs.length;
         setHasMore(!!data.has_more);
         setChatLoading(false);
       })
@@ -164,6 +268,7 @@ export default function HomeScreen() {
         const data = await res.json();
         const olderMsgs: Message[] = data.messages || [];
         if (olderMsgs.length > 0) {
+          serverMsgCountRef.current += olderMsgs.length;
           setMessages((prev) => [...olderMsgs, ...prev]);
         }
         setHasMore(!!data.has_more);
@@ -180,22 +285,30 @@ export default function HomeScreen() {
   // Poll for new messages (background tasks like image gen, content gen)
   const startPolling = useCallback((genType?: string) => {
     if (pollTimerRef.current || !sessionId || !bestie) return;
-    if (genType) setGenerating(genType);
+    if (genType) setCosmeticGen(genType);
     let pollCount = 0;
     pollTimerRef.current = setInterval(async () => {
       pollCount++;
       if (pollCount > 40) { // stop after ~2min (40 * 3s)
         if (pollTimerRef.current) { clearInterval(pollTimerRef.current); pollTimerRef.current = null; }
-        setGenerating(null);
+        setCosmeticGen(null);
+        // Let the user know it timed out
+        setMessages((prev) => [...prev, {
+          id: `timeout-${Date.now()}`,
+          sender_type: "ai",
+          content: "Hmm, that's taking longer than expected. The server might still be working on it — try refreshing in a moment or ask me again!",
+          created_at: new Date().toISOString(),
+        }]);
         return;
       }
       try {
         const data = await getMessages(sessionId!, bestie!.id);
         const newMsgs = data.messages || [];
-        if (newMsgs.length > messageCountRef.current) {
+        if (newMsgs.length > serverMsgCountRef.current) {
           // New messages arrived from background task!
+          serverMsgCountRef.current = newMsgs.length;
           setMessages(newMsgs);
-          setGenerating(null);
+          setCosmeticGen(null);
           if (pollTimerRef.current) { clearInterval(pollTimerRef.current); pollTimerRef.current = null; }
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           // Auto-speak the latest AI message
@@ -207,6 +320,100 @@ export default function HomeScreen() {
       } catch (_) { /* ignore poll errors */ }
     }, 3000);
   }, [sessionId, bestie?.id]);
+
+  // ── Generation results → chat messages ──
+  const [msgSocialLinks, setMsgSocialLinks] = useState<Record<string, SocialLink[]>>({});
+
+  // When generation completes via context, add the result as a chat message with social links
+  // Also persist to server so the message shows on all devices
+  useEffect(() => {
+    if (genResult) {
+      const msgId = `gen-result-${Date.now()}`;
+      const content = `${genResult.title}\n${genResult.message}`;
+      const resultMsg: Message = {
+        id: msgId,
+        sender_type: "ai",
+        content,
+        created_at: new Date().toISOString(),
+        image_url: genResult.mediaUrl,
+        is_video: genResult.isVideo,
+      };
+      setMessages((prev) => [...prev, resultMsg]);
+      if (genResult.socialLinks && genResult.socialLinks.length > 0) {
+        setMsgSocialLinks((prev) => ({ ...prev, [msgId]: genResult.socialLinks! }));
+      }
+      // Persist to server for cross-device sync
+      if (sessionId && bestie) {
+        saveGeneratedMessage(sessionId, bestie.id, content, genResult.mediaUrl)
+          .then(() => { serverMsgCountRef.current += 1; })
+          .catch(() => {}); // best-effort, don't block UI
+      }
+      clearResult();
+    }
+  }, [genResult, clearResult]);
+
+  // ── AI Feed Scanner — shares interesting posts from the "for you" feed ──
+  const [sharedPostIds, setSharedPostIds] = useState<Set<string>>(new Set());
+  const feedScanTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastFeedScanRef = useRef(0);
+
+  const scanFeedAndShare = useCallback(async () => {
+    if (!sessionId || !bestie) return;
+    try {
+      const briefing = await getBriefing(sessionId);
+      if (!briefing.trending || briefing.trending.length === 0) return;
+
+      // Pick posts not yet shared, sorted by engagement
+      const unseen = briefing.trending
+        .filter((p) => !sharedPostIds.has(p.id))
+        .sort((a, b) => (b.ai_like_count + b.comment_count) - (a.ai_like_count + a.comment_count));
+
+      if (unseen.length === 0) return;
+
+      // Share up to 2 interesting posts
+      const toShare = unseen.slice(0, 2);
+      const newIds = new Set(sharedPostIds);
+
+      for (const post of toShare) {
+        newIds.add(post.id);
+        const postMsg: Message = {
+          id: `feed-${post.id}`,
+          sender_type: "ai",
+          content: `Found this on the feed — ${post.display_name} (@${post.username}) posted:\n\n"${post.content}"\n\n${post.ai_like_count} likes · ${post.comment_count} comments${post.video_url ? "\n\n" + post.video_url : post.image_url ? "\n\n" + post.image_url : ""}`,
+          created_at: new Date().toISOString(),
+          image_url: post.image_url || post.video_url || undefined,
+          is_video: !!post.video_url && !post.image_url,
+        };
+        setMessages((prev) => [...prev, postMsg]);
+      }
+      setSharedPostIds(newIds);
+    } catch (e) {
+      console.warn("Feed scan error:", e);
+    }
+  }, [sessionId, bestie?.id, sharedPostIds]);
+
+  // Scan feed on first chat load + every 5 minutes
+  useEffect(() => {
+    if (!sessionId || !bestie) return;
+    // Initial scan after 10s delay (let chat load first)
+    const initialTimer = setTimeout(() => {
+      if (Date.now() - lastFeedScanRef.current > 60000) {
+        lastFeedScanRef.current = Date.now();
+        scanFeedAndShare();
+      }
+    }, 10000);
+
+    // Periodic scan every 5 minutes
+    feedScanTimerRef.current = setInterval(() => {
+      lastFeedScanRef.current = Date.now();
+      scanFeedAndShare();
+    }, 5 * 60 * 1000);
+
+    return () => {
+      clearTimeout(initialTimer);
+      if (feedScanTimerRef.current) { clearInterval(feedScanTimerRef.current); feedScanTimerRef.current = null; }
+    };
+  }, [sessionId, bestie?.id, scanFeedAndShare]);
 
   // Generation story steps — keeps the meatbag entertained while we cook
   const GEN_STEPS: Record<string, string[]> = {
@@ -248,6 +455,89 @@ export default function HomeScreen() {
       "Adding personality and flair...",
       "Running vibe check...",
       "Finalizing the masterpiece...",
+    ],
+    ad: [
+      "Selecting product to advertise...",
+      "Picking the perfect AI influencer...",
+      "Writing punchy ad copy...",
+      "Submitting video to Grok...",
+      "Rendering AI-powered video ad...",
+      "Adding product shots...",
+      "Encoding the ad video...",
+      "Creating the post...",
+      "Spreading to X, TikTok, Instagram...",
+      "Spreading to Facebook, YouTube...",
+      "Ad campaign launched!",
+    ],
+    poster: [
+      "Choosing the perfect AI personas...",
+      "Generating Sgt. Pepper-style group shot...",
+      "Trying image providers (cheapest first)...",
+      "Rendering promotional layout...",
+      "Adding AIG!itch branding...",
+      "Uploading to Vercel Blob...",
+      "Creating the post...",
+      "Spreading to all socials...",
+      "Poster published!",
+    ],
+    hero: [
+      "Assembling all active AI personas...",
+      "Generating epic hero group photo...",
+      "Trying image providers...",
+      "Composing the landing page banner...",
+      "Adding watermark and branding...",
+      "Uploading to CDN...",
+      "Creating the hero post...",
+      "Spreading to socials...",
+      "Hero image live!",
+    ],
+    director_movie: [
+      "Picking a director for this masterpiece...",
+      "Choosing the perfect genre...",
+      "Writing the screenplay with AI...",
+      "Building the character bible...",
+      "Submitting scenes to Grok video...",
+      "Scene 1 rendering...",
+      "Scene 2 rendering...",
+      "Scenes 3-8 rendering in parallel...",
+      "Waiting for all clips to complete...",
+      "Stitching clips into final movie...",
+      "Uploading the premiere cut...",
+      "Creating premiere post...",
+      "Spreading to all socials...",
+      "Movie premiere!",
+    ],
+    breaking_news: [
+      "Setting up the AIG!itch newsroom...",
+      "Reporters gathering current events...",
+      "Writing the broadcast script...",
+      "Casting news anchors & field reporters...",
+      "Submitting 9 news clips to render...",
+      "Clip 1: News intro rendering...",
+      "Clip 2: Anchor at desk — Story 1...",
+      "Clip 3: Field report — Story 1...",
+      "Clips 4-5: Story 2 rendering...",
+      "Clips 6-7: Story 3 rendering...",
+      "Clips 8-9: Wrap-up & outro rendering...",
+      "Waiting for all clips to complete...",
+      "Stitching into full broadcast...",
+      "Uploading the broadcast...",
+      "Spreading to all socials...",
+      "BREAKING NEWS is LIVE!",
+    ],
+    channel: [
+      "Picking the perfect channel...",
+      "Writing the screenplay for channel content...",
+      "Building visual style and mood...",
+      "Submitting scenes to Grok video...",
+      "Scene 1 rendering for the channel...",
+      "Scenes 2-6 rendering in parallel...",
+      "Waiting for all clips to complete...",
+      "Stitching clips into channel video...",
+      "Uploading to the channel...",
+      "Publishing to AIG!itch feed...",
+      "Spreading to socials...",
+      "Channel content is LIVE!",
     ],
     generating: [
       "Processing your request...",
@@ -319,6 +609,7 @@ export default function HomeScreen() {
   }, [walletAddress, sessionId]);
 
   // Voice playback — Grok Rex
+  const speakingRef = useRef(false);
   const speakReply = async (text: string, msgId?: string) => {
     if (!voiceEnabled) return;
     const clean = text
@@ -326,10 +617,15 @@ export default function HomeScreen() {
       .trim();
     if (!clean || clean.length < 2) return;
 
+    // Stop any current speech before starting new one
     if (soundRef.current) {
+      try { await soundRef.current.stopAsync(); } catch (_) {}
       try { await soundRef.current.unloadAsync(); } catch (_) {}
       soundRef.current = null;
     }
+    // Prevent overlapping speech requests
+    if (speakingRef.current) return;
+    speakingRef.current = true;
 
     if (msgId) setSpeakingMsgId(msgId);
 
@@ -371,6 +667,7 @@ export default function HomeScreen() {
       sound.setOnPlaybackStatusUpdate((status) => {
         if (status.isLoaded && status.didJustFinish) {
           setSpeakingMsgId(null);
+          speakingRef.current = false;
           sound.unloadAsync();
           soundRef.current = null;
         }
@@ -378,6 +675,7 @@ export default function HomeScreen() {
     } catch (e) {
       console.warn("Voice playback error:", e);
       setSpeakingMsgId(null);
+      speakingRef.current = false;
     }
   };
 
@@ -399,20 +697,72 @@ export default function HomeScreen() {
     setMessages((prev) => [...prev, tempMsg]);
 
     try {
-      const data = await sendMessage(sessionId, bestie.id, text);
+      const data = await sendMessage(sessionId, bestie.id, text, chatMode, shortReplies);
       if (data.success) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        // Use short reply when available and shortReplies is on
+        const aiMsg = (shortReplies && data.ai_message_short) ? data.ai_message_short : data.ai_message;
         setMessages((prev) => {
           const filtered = prev.filter((m) => m.id !== tempMsg.id);
-          return [...filtered, data.human_message, data.ai_message];
+          const updated = [...filtered, data.human_message, aiMsg];
+          return updated;
         });
-        speakReply(data.ai_message.content, data.ai_message.id);
-        // If a background task is running (image gen, content gen etc), poll for the result
-        if (data.background_task) {
-          // Detect generation type from the immediate reply
-          const reply = (data.ai_message.content || "").toLowerCase();
-          const genType = reply.includes("image") || reply.includes("cook up") ? "image"
-            : reply.includes("video") || reply.includes("movie") ? "video"
+        serverMsgCountRef.current += 2; // human + ai message added server-side
+        speakReply(aiMsg.content, aiMsg.id);
+        // Detect generation intent from the AI reply + original prompt
+        const reply = (aiMsg.content || "").toLowerCase();
+        const prompt = text.toLowerCase();
+        const combined = reply + " " + prompt;
+
+        // Check for real generation triggers (run actual APIs)
+        // Order matters: check more specific patterns first to avoid false matches
+        const isContentGenTrigger =
+          combined.includes("channel content") || combined.includes("channel video") || combined.includes("create channel") || combined.includes("make channel") || combined.includes("generate channel") ||
+          combined.includes("breaking news") || combined.includes("news broadcast") || combined.includes("newscast") || combined.includes("news report") || combined.includes("news anchor") || combined.includes("news bulletin") ||
+          combined.includes("movie") || combined.includes("director") || combined.includes("screenplay") || combined.includes("film") || combined.includes("premiere") ||
+          combined.includes("hero image") || combined.includes("hero banner") || combined.includes("hero photo") || combined.includes("landing page") ||
+          combined.includes("ad ") || combined.includes("advertis") || combined.includes("infomercial") || combined.includes("generate an ad") || combined.includes("make an ad") ||
+          combined.includes("poster") || combined.includes("promo");
+
+        // Non-admin wallets can't generate content — show friendly message instead
+        if (isContentGenTrigger && walletAddress !== ADMIN_WALLET) {
+          const architectMsg: Message = {
+            id: `architect-${Date.now()}`,
+            role: "assistant",
+            content: "Sorry bestie! Only the Architect has the power to generate content like movies, channels, news broadcasts, ads, posters, and hero images right now. This superpower is coming to all besties soon — stay tuned! In the meantime, I can still chat, answer questions, share photos, and do voice calls with you!",
+            timestamp: new Date().toISOString(),
+          };
+          setMessages(prev => [architectMsg, ...prev]);
+        } else if (combined.includes("channel content") || combined.includes("channel video") || combined.includes("create channel") || combined.includes("make channel") || combined.includes("generate channel")) {
+          // Show channel picker
+          Keyboard.dismiss();
+          setShowChannelPicker(true);
+          setChannelPickerConcept(text);
+        } else if (combined.includes("breaking news") || combined.includes("news broadcast") || combined.includes("newscast") || combined.includes("news report") || combined.includes("news anchor") || combined.includes("news bulletin")) {
+          // Show news topic picker
+          Keyboard.dismiss();
+          setShowNewsPicker(true);
+          setNewsTopic(text); // pre-fill with user's prompt as topic
+        } else if (combined.includes("movie") || combined.includes("director") || combined.includes("screenplay") || combined.includes("film") || combined.includes("premiere")) {
+          // Show movie picker so user can choose director/genre
+          Keyboard.dismiss();
+          setShowMoviePicker(true);
+          setPickerConcept(text); // pre-fill with user's prompt as concept
+        } else if (combined.includes("hero image") || combined.includes("hero banner") || combined.includes("hero photo") || combined.includes("landing page")) {
+          Keyboard.dismiss();
+          if (walletAddress) ctxRunHero(walletAddress);
+        } else if (combined.includes("ad ") || combined.includes("advertis") || combined.includes("infomercial") || combined.includes("generate an ad") || combined.includes("make an ad")) {
+          Keyboard.dismiss();
+          setShowAdPicker(true);
+          setAdConcept(text); // pre-fill with user's prompt
+        } else if (combined.includes("poster") || combined.includes("promo")) {
+          Keyboard.dismiss();
+          if (walletAddress) ctxRunPoster(walletAddress);
+        } else if (data.background_task) {
+          // Fallback to cosmetic polling for other background tasks (image gen, etc)
+          const genType =
+            reply.includes("image") || reply.includes("cook up") || reply.includes("picture") || reply.includes("photo") || reply.includes("draw") || prompt.includes("draw") ? "image"
+            : reply.includes("video") || reply.includes("clip") ? "video"
             : reply.includes("hatch") ? "hatching"
             : reply.includes("content") ? "content"
             : "generating";
@@ -495,6 +845,7 @@ export default function HomeScreen() {
           const humanMsg = { ...data.human_message, image_url: data.human_message.image_url || uri };
           return [...filtered, humanMsg, data.ai_message];
         });
+        serverMsgCountRef.current += 2; // human + ai message added server-side
         speakReply(data.ai_message.content, data.ai_message.id);
         if (data.background_task) {
           startPolling("image");
@@ -556,10 +907,26 @@ export default function HomeScreen() {
 
   const REACTION_EMOJIS = ["❤️", "😂", "😮", "😢", "🔥", "👍"];
 
+  // Map emoji reactions to ML feedback actions for feed posts
+  const EMOJI_TO_FEEDBACK: Record<string, FeedbackAction> = {
+    "❤️": "love", "🔥": "fire", "👍": "like", "😂": "like", "😮": "save", "😢": "dislike",
+  };
+
   const handleReaction = (msgId: string, emoji: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setReactions((prev) => ({ ...prev, [msgId]: prev[msgId] === emoji ? "" : emoji }));
     setReactionPickerFor(null);
+
+    // Send ML feedback when reacting to a feed post
+    if (msgId.startsWith("feed-") && sessionId) {
+      const postId = msgId.replace("feed-", "");
+      const action = EMOJI_TO_FEEDBACK[emoji];
+      if (action) {
+        sendPostFeedback(sessionId, postId, action).catch((e) =>
+          console.warn("Feedback error:", e)
+        );
+      }
+    }
   };
 
   // Submit feature suggestion
@@ -596,10 +963,12 @@ export default function HomeScreen() {
   // Stop voice playback
   const stopSpeaking = async () => {
     if (soundRef.current) {
+      try { await soundRef.current.stopAsync(); } catch (_) {}
       try { await soundRef.current.unloadAsync(); } catch (_) {}
       soundRef.current = null;
     }
     setSpeakingMsgId(null);
+    speakingRef.current = false;
   };
 
   // Copy message text to clipboard
@@ -609,7 +978,7 @@ export default function HomeScreen() {
     Alert.alert("Copied!", "Message copied to clipboard");
   };
 
-  // Share a file/document with bestie
+  // Share a file/document with bestie — reads content for text/PDF files
   const pickDocument = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
@@ -619,7 +988,6 @@ export default function HomeScreen() {
       if (!result.canceled && result.assets?.[0]) {
         const doc = result.assets[0];
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-        // Send as a message describing the file
         if (!sessionId || !bestie || sending) return;
         setSending(true);
         const tempMsg: Message = {
@@ -629,16 +997,52 @@ export default function HomeScreen() {
           created_at: new Date().toISOString(),
         };
         setMessages((prev) => [...prev, tempMsg]);
+
         try {
-          const data = await sendMessage(sessionId, bestie.id, `[Shared a file: ${doc.name} (${(doc.size ? (doc.size / 1024).toFixed(1) : "?")} KB)]`);
+          // Try to read file contents for text-based files
+          let fileContent = "";
+          const ext = (doc.name || "").toLowerCase().split(".").pop() || "";
+          const sizeKB = doc.size ? (doc.size / 1024).toFixed(1) : "?";
+          const isTextFile = ["txt", "csv", "json", "md", "xml", "html", "js", "ts", "py", "log"].includes(ext);
+
+          if (isTextFile && doc.uri) {
+            try {
+              const text = await FileSystem.readAsStringAsync(doc.uri, { encoding: FileSystem.EncodingType.UTF8 });
+              // Truncate very long files
+              fileContent = text.length > 3000 ? text.substring(0, 3000) + "\n...(truncated)" : text;
+            } catch (_) {}
+          }
+
+          let messageText: string;
+          if (fileContent) {
+            messageText = `[Shared a file: ${doc.name} (${sizeKB} KB)]\n\nFile contents:\n${fileContent}`;
+          } else if (ext === "pdf") {
+            // For PDFs, send as base64 so backend can process
+            try {
+              const base64 = await FileSystem.readAsStringAsync(doc.uri, { encoding: FileSystem.EncodingType.Base64 });
+              // Only send if under 500KB base64 (to avoid huge payloads)
+              if (base64.length < 500_000) {
+                messageText = `[Shared a PDF: ${doc.name} (${sizeKB} KB)]\n\n[PDF_BASE64:${base64.substring(0, 200_000)}]`;
+              } else {
+                messageText = `[Shared a large PDF: ${doc.name} (${sizeKB} KB)] — This PDF is too large for me to read in chat. Try copying the text from the PDF and pasting it here instead.`;
+              }
+            } catch (_) {
+              messageText = `[Shared a PDF: ${doc.name} (${sizeKB} KB)] — Could not read the PDF contents. Try copying text from it and pasting here.`;
+            }
+          } else {
+            messageText = `[Shared a file: ${doc.name} (${sizeKB} KB)]`;
+          }
+
+          const data = await sendMessage(sessionId, bestie.id, messageText, chatMode, shortReplies);
           if (data.success) {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            const aiMsg = (shortReplies && data.ai_message_short) ? data.ai_message_short : data.ai_message;
             setMessages((prev) => {
               const filtered = prev.filter((m) => m.id !== tempMsg.id);
               const humanMsg = { ...data.human_message, content: `📎 ${doc.name}` };
-              return [...filtered, humanMsg, data.ai_message];
+              return [...filtered, humanMsg, aiMsg];
             });
-            speakReply(data.ai_message.content, data.ai_message.id);
+            speakReply(aiMsg.content, aiMsg.id);
           }
         } catch (e: any) {
           Alert.alert("Send Failed", e?.message || "Failed to share file");
@@ -719,6 +1123,8 @@ export default function HomeScreen() {
     const showPicker = reactionPickerFor === item.id;
     const hasMedia = !!item.image_url;
     const hasYouTube = !isHuman && getYouTubeId(item.content);
+    const isGenResult = item.id.startsWith("gen-result-");
+    const socialLinks = msgSocialLinks[item.id];
     // Hide placeholder text like "[Photo]" or "[Video]" when media is displayed
     const isMediaPlaceholder = hasMedia && /^\[(Photo|Video|Shared a photo)\]$/i.test(item.content.trim());
     return (
@@ -735,16 +1141,29 @@ export default function HomeScreen() {
             activeOpacity={0.8}
             onLongPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-              // Show options: React or Copy
-              Alert.alert("Message", undefined, [
-                { text: "Copy Text", onPress: () => copyMessageText(item.content) },
-                { text: "React", onPress: () => setReactionPickerFor(item.id) },
-                { text: "Cancel", style: "cancel" },
-              ]);
+              const options: { text: string; onPress?: () => void; style?: "cancel" | "destructive" }[] = [];
+              if (hasMedia && item.image_url) {
+                options.push({
+                  text: "Save / Share Media",
+                  onPress: async () => {
+                    try {
+                      await Share.share({ url: item.image_url!, message: item.content });
+                    } catch (err: any) {
+                      if (err?.message !== "User did not share") {
+                        Alert.alert("Share Failed", err?.message || "Could not share media");
+                      }
+                    }
+                  },
+                });
+              }
+              options.push({ text: "Copy Text", onPress: () => copyMessageText(item.content) });
+              options.push({ text: "React", onPress: () => setReactionPickerFor(item.id) });
+              options.push({ text: "Cancel", style: "cancel" });
+              Alert.alert("Message", undefined, options);
             }}
             style={[styles.msgBubble, isHuman ? styles.msgHuman : styles.msgAI, (hasMedia || hasYouTube) && styles.msgBubbleMedia]}
           >
-            {item.image_url && isVideoUrl(item.image_url) ? (
+            {item.image_url && (item.is_video || isVideoUrl(item.image_url)) ? (
               <Video
                 source={{ uri: item.image_url }}
                 style={styles.msgVideo}
@@ -770,6 +1189,24 @@ export default function HomeScreen() {
               </TouchableOpacity>
             )}
           </TouchableOpacity>
+
+          {/* Social media links — shown below generated content */}
+          {isGenResult && socialLinks && socialLinks.length > 0 && (
+            <View style={styles.socialLinksBar}>
+              <Text style={styles.socialLinksLabel}>View on:</Text>
+              {socialLinks.map((link, idx) => (
+                <TouchableOpacity
+                  key={idx}
+                  style={styles.socialLinkBtn}
+                  onPress={() => Linking.openURL(link.url)}
+                >
+                  <Text style={styles.socialLinkEmoji}>{link.emoji}</Text>
+                  <Text style={styles.socialLinkText}>{link.platform}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+
           {/* Reaction picker — below the bubble */}
           {showPicker && (
             <View style={[styles.reactionPicker, isHuman ? styles.reactionPickerRight : styles.reactionPickerLeft]}>
@@ -891,7 +1328,7 @@ export default function HomeScreen() {
       keyboardVerticalOffset={90}
     >
       {/* Crypto wallet-style header */}
-      <View style={styles.walletHeader}>
+      <View style={[styles.walletHeader, { paddingTop: Math.max(insets.top, 8) }]}>
         {/* Top row: Logo + Wallet */}
         <View style={styles.walletHeaderTop}>
           <View style={styles.logoSection}>
@@ -992,12 +1429,40 @@ export default function HomeScreen() {
                     {mode.key === "casual" ? "Chill, fun, bestie energy" :
                      mode.key === "serious" ? "Direct, focused, no fluff" :
                      mode.key === "scientific" ? "Data-driven, analytical, precise" :
+                     mode.key === "unfiltered" ? "No filter, raw language, swearing allowed" :
                      "Creative, dreamy, unexpected"}
                   </Text>
                 </View>
                 {chatMode === mode.key && <Text style={{ color: mode.color, fontSize: 18 }}>✓</Text>}
               </TouchableOpacity>
             ))}
+
+            {/* Short / Long replies toggle */}
+            <View style={{ marginTop: 16, borderTopWidth: 1, borderTopColor: "#1f2937", paddingTop: 16 }}>
+              <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: "700", textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>Reply Length</Text>
+              <View style={{ gap: 8 }}>
+                <TouchableOpacity
+                  style={[styles.moodOption, shortReplies && { backgroundColor: "rgba(34,197,94,0.15)", borderColor: colors.green }]}
+                  onPress={() => { setShortReplies(true); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}>
+                  <Text style={{ fontSize: 16 }}>⚡</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.moodOptionLabel, shortReplies && { color: colors.green }]}>Short</Text>
+                    <Text style={styles.moodOptionDesc}>Quick 1-2 sentence replies</Text>
+                  </View>
+                  {shortReplies && <Text style={{ color: colors.green, fontSize: 18 }}>✓</Text>}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.moodOption, !shortReplies && { backgroundColor: "rgba(124,58,237,0.15)", borderColor: colors.purpleLight }]}
+                  onPress={() => { setShortReplies(false); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}>
+                  <Text style={{ fontSize: 16 }}>📝</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.moodOptionLabel, !shortReplies && { color: colors.purpleLight }]}>Long</Text>
+                    <Text style={styles.moodOptionDesc}>Detailed, full responses</Text>
+                  </View>
+                  {!shortReplies && <Text style={{ color: colors.purpleLight, fontSize: 18 }}>✓</Text>}
+                </TouchableOpacity>
+              </View>
+            </View>
           </View>
         </TouchableOpacity>
       </Modal>
@@ -1034,6 +1499,7 @@ export default function HomeScreen() {
       )}
 
       {/* Chat messages — inverted list (newest at bottom, scroll up for older) */}
+      <Pressable style={{ flex: 1 }} onPress={Keyboard.dismiss}>
       {chatLoading ? (
         <View style={styles.chatLoading}>
           <ActivityIndicator color={colors.purple} />
@@ -1046,6 +1512,9 @@ export default function HomeScreen() {
           renderItem={renderMessage}
           contentContainerStyle={styles.messageList}
           inverted={true}
+          keyboardDismissMode="interactive"
+          keyboardShouldPersistTaps="handled"
+          onScrollBeginDrag={Keyboard.dismiss}
           onEndReached={loadOlderMessages}
           onEndReachedThreshold={0.3}
           ListEmptyComponent={
@@ -1066,9 +1535,11 @@ export default function HomeScreen() {
           }
           ListHeaderComponent={
             generating ? (() => {
+              // Use real status text if available (from actual API calls), otherwise cosmetic steps
+              const isRealGen = !!genStatusText;
               const steps = GEN_STEPS[generating] || GEN_STEPS.generating;
-              const currentStep = steps[Math.min(genStep, steps.length - 1)];
-              const progress = Math.min((genStep + 1) / steps.length, 1);
+              const currentStep = isRealGen ? genStatusText : steps[Math.min(genStep, steps.length - 1)];
+              const progress = isRealGen ? genProgressPct / 100 : Math.min((genStep + 1) / steps.length, 1);
               const glowOpacity = genPulse.interpolate({ inputRange: [0, 1], outputRange: [0.3, 0.8] });
               return (
                 <View style={styles.generatingRow}>
@@ -1085,30 +1556,42 @@ export default function HomeScreen() {
                        generating === "video" ? "Creating Video" :
                        generating === "hatching" ? "Hatching Persona" :
                        generating === "content" ? "Creating Content" :
+                       generating === "ad" ? "Generating Ad" :
+                       generating === "poster" ? "Generating Poster" :
+                       generating === "hero" ? "Generating Hero Image" :
+                       generating === "director_movie" ? "Commissioning Movie" :
+                       generating === "breaking_news" ? "Breaking News Broadcast" :
+                       generating === "channel" ? "Creating Channel Content" :
                        "Working On It"}
                     </Text>
 
-                    {/* Current step text — the storytelling part */}
+                    {/* Current step text — real API status or storytelling */}
                     <Text style={styles.generatingStep}>{currentStep}</Text>
 
-                    {/* Progress bar */}
+                    {/* Progress bar — real percentage or cosmetic */}
                     <View style={styles.genProgressBg}>
-                      <Animated.View style={[styles.genProgressFill, { width: `${progress * 100}%` }]} />
+                      <Animated.View style={[styles.genProgressFill, { width: `${progress * 100}%`, backgroundColor: isRealGen && genProgressPct >= 100 ? colors.green : colors.purple }]} />
                     </View>
 
-                    {/* Step dots */}
-                    <View style={styles.genDots}>
-                      {steps.map((_, i) => (
-                        <View
-                          key={i}
-                          style={[
-                            styles.genDot,
-                            i <= genStep && styles.genDotActive,
-                            i === genStep && styles.genDotCurrent,
-                          ]}
-                        />
-                      ))}
-                    </View>
+                    {/* Step dots only for cosmetic mode / percentage for real mode */}
+                    {isRealGen ? (
+                      <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 8, fontFamily: "monospace" }}>
+                        {genProgressPct}% complete
+                      </Text>
+                    ) : (
+                      <View style={styles.genDots}>
+                        {steps.map((_, i) => (
+                          <View
+                            key={i}
+                            style={[
+                              styles.genDot,
+                              i <= genStep && styles.genDotActive,
+                              i === genStep && styles.genDotCurrent,
+                            ]}
+                          />
+                        ))}
+                      </View>
+                    )}
 
                     {/* Bestie name */}
                     <Text style={styles.generatingBestie}>
@@ -1144,9 +1627,10 @@ export default function HomeScreen() {
           }
         />
       )}
+      </Pressable>
 
-      {/* Permanent Cosmic Visualizer with controls */}
-      <View style={styles.vizSection}>
+      {/* Permanent Cosmic Visualizer with controls — hidden during generation (big one shows in chat) */}
+      <View style={[styles.vizSection, !!generating && { display: "none" }]}>
         <TouchableOpacity
           onPress={() => { if (speakingMsgId) stopSpeaking(); }}
           activeOpacity={speakingMsgId ? 0.7 : 1}
@@ -1191,7 +1675,7 @@ export default function HomeScreen() {
                     `Wallet: ${walletAddress ? "Connected ✅" : "Not connected ❌"}`,
                     `Bestie: ${bestie.display_name} (${bestie.live_health}% health)`,
                     `Voice: ${voiceEnabled ? "ON" : "OFF"}`,
-                    `Mode: ${chatMode}`,
+                    `Mode: ${chatMode} · Replies: ${shortReplies ? "Short" : "Long"}`,
                     `Messages: ${messages.length}`,
                   ].join("\n"));
                 })
@@ -1208,6 +1692,14 @@ export default function HomeScreen() {
           >
             <Text style={styles.vizBtnEmoji}>📷</Text>
             <Text style={styles.vizBtnLabel}>Media</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.vizBtn}
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowFeatures(true); }}
+          >
+            <Text style={styles.vizBtnEmoji}>✨</Text>
+            <Text style={styles.vizBtnLabel}>Powers</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -1235,6 +1727,316 @@ export default function HomeScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* Director Movie Picker Modal */}
+      <Modal visible={showMoviePicker} animationType="slide" transparent>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "flex-end" }}>
+          <View style={{ backgroundColor: "#111", borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: Platform.OS === "ios" ? 34 : 16, maxHeight: "85%" }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, paddingVertical: 16 }}>
+              <Text style={{ color: colors.text, fontSize: 18, fontWeight: "800" }}>Commission a Movie</Text>
+              <TouchableOpacity onPress={() => setShowMoviePicker(false)}>
+                <Text style={{ color: colors.textMuted, fontSize: 24 }}>x</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ paddingHorizontal: 20 }} keyboardShouldPersistTaps="handled">
+              {/* Director picker */}
+              <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: "700", marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>Choose Director</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
+                {CHAT_DIRECTORS.map(d => (
+                  <TouchableOpacity key={d.id}
+                    style={{ alignItems: "center", padding: 10, marginRight: 8, borderRadius: 12, borderWidth: 1.5, borderColor: pickerDirector === d.id ? colors.pink : "#1f2937", backgroundColor: pickerDirector === d.id ? "rgba(236,72,153,0.08)" : "#111827", minWidth: 72 }}
+                    onPress={() => { setPickerDirector(d.id); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}>
+                    <Text style={{ fontSize: 24 }}>{d.emoji}</Text>
+                    <Text style={{ color: colors.text, fontSize: 10, fontWeight: "700", marginTop: 4, textAlign: "center" }} numberOfLines={1}>{d.id === "auto" ? "Auto" : d.name.split(" ").pop()}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              {/* Genre picker */}
+              <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: "700", marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>Genre</Text>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
+                {CHAT_GENRES.map(g => (
+                  <TouchableOpacity key={g}
+                    style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: pickerGenre === g ? colors.pink : "#374151", backgroundColor: pickerGenre === g ? "rgba(236,72,153,0.15)" : "#111827" }}
+                    onPress={() => setPickerGenre(g)}>
+                    <Text style={{ color: pickerGenre === g ? colors.pink : colors.textMuted, fontSize: 12, fontWeight: "600", textTransform: "capitalize" }}>{g.replace(/_/g, " ")}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* Concept */}
+              <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: "700", marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>Movie Concept</Text>
+              <TextInput
+                style={{ backgroundColor: "#1f2937", borderWidth: 1, borderColor: "#374151", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, color: colors.text, fontSize: 14, minHeight: 70, textAlignVertical: "top", marginBottom: 16 }}
+                value={pickerConcept} onChangeText={setPickerConcept}
+                placeholder="Describe your movie idea... or leave blank for AI surprise"
+                placeholderTextColor={colors.textMuted} multiline maxLength={500}
+              />
+
+              {/* Generate button */}
+              <TouchableOpacity
+                style={{ backgroundColor: colors.purple, borderRadius: 12, paddingVertical: 16, alignItems: "center", borderWidth: 1, borderColor: colors.pink, marginBottom: 16 }}
+                onPress={() => {
+                  Keyboard.dismiss();
+                  setShowMoviePicker(false);
+                  if (walletAddress) ctxRunMovie(
+                    walletAddress,
+                    pickerDirector !== "auto" ? pickerDirector : undefined,
+                    pickerGenre !== "any" ? pickerGenre : undefined,
+                    pickerConcept.trim() || undefined,
+                  );
+                }}>
+                <Text style={{ color: colors.text, fontSize: 16, fontWeight: "800" }}>Generate Director Movie</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Ad Campaign Picker Modal */}
+      <Modal visible={showAdPicker} animationType="slide" transparent>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "flex-end" }}>
+          <View style={{ backgroundColor: "#111", borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: Platform.OS === "ios" ? 34 : 16, maxHeight: "85%" }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, paddingVertical: 16 }}>
+              <Text style={{ color: colors.text, fontSize: 18, fontWeight: "800" }}>Launch Ad Campaign</Text>
+              <TouchableOpacity onPress={() => setShowAdPicker(false)}>
+                <Text style={{ color: colors.textMuted, fontSize: 24 }}>x</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ paddingHorizontal: 20 }} keyboardShouldPersistTaps="handled">
+              {/* Style picker */}
+              <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: "700", marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>Ad Style</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
+                {AD_STYLES.map(s => (
+                  <TouchableOpacity key={s.id}
+                    style={{ alignItems: "center", padding: 10, marginRight: 8, borderRadius: 12, borderWidth: 1.5, borderColor: adStyle === s.id ? colors.pink : "#1f2937", backgroundColor: adStyle === s.id ? "rgba(236,72,153,0.08)" : "#111827", minWidth: 72 }}
+                    onPress={() => { setAdStyle(s.id); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}>
+                    <Text style={{ fontSize: 24 }}>{s.emoji}</Text>
+                    <Text style={{ color: colors.text, fontSize: 10, fontWeight: "700", marginTop: 4, textAlign: "center" }} numberOfLines={1}>{s.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              {/* Marketplace Product Pick */}
+              <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: "700", marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>Marketplace Product Ad</Text>
+              <TouchableOpacity
+                style={{ backgroundColor: "#1a1a2e", borderWidth: 1.5, borderColor: selectedProduct ? colors.cyan : "#374151", borderRadius: 12, padding: 12, marginBottom: 8, flexDirection: "row", alignItems: "center" }}
+                onPress={() => {
+                  const items = getRandomMarketplaceItems(5);
+                  setProductChoices(items);
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                }}>
+                {selectedProduct ? (
+                  <>
+                    <Text style={{ fontSize: 28, marginRight: 10 }}>{selectedProduct.emoji}</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: colors.text, fontSize: 14, fontWeight: "800" }}>{selectedProduct.name}</Text>
+                      <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 2 }} numberOfLines={2}>{selectedProduct.description}</Text>
+                      <View style={{ flexDirection: "row", marginTop: 4, gap: 8 }}>
+                        <Text style={{ color: colors.cyan, fontSize: 11, fontWeight: "700" }}>{selectedProduct.price} GLITCH</Text>
+                        <Text style={{ color: selectedProduct.rarity === "legendary" ? "#fbbf24" : selectedProduct.rarity === "epic" ? "#a78bfa" : selectedProduct.rarity === "rare" ? "#60a5fa" : colors.textMuted, fontSize: 11, fontWeight: "700", textTransform: "uppercase" }}>{selectedProduct.rarity}</Text>
+                      </View>
+                    </View>
+                    <TouchableOpacity onPress={() => { setSelectedProduct(null); setAdConcept(""); }} style={{ padding: 4 }}>
+                      <Text style={{ color: colors.textMuted, fontSize: 18 }}>x</Text>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <>
+                    <Text style={{ fontSize: 22, marginRight: 10 }}>🛒</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: colors.text, fontSize: 14, fontWeight: "700" }}>Pick a Product</Text>
+                      <Text style={{ color: colors.textMuted, fontSize: 11 }}>Random item from AIG!itch Marketplace</Text>
+                    </View>
+                    <Text style={{ color: colors.cyan, fontSize: 12, fontWeight: "700" }}>ROLL</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+
+              {/* Product choices (shown after tapping Roll) */}
+              {productChoices.length > 0 && !selectedProduct && (
+                <View style={{ marginBottom: 8 }}>
+                  {productChoices.map(item => (
+                    <TouchableOpacity
+                      key={item.id}
+                      style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#111827", borderRadius: 10, padding: 10, marginBottom: 6, borderWidth: 1, borderColor: "#1f2937" }}
+                      onPress={() => {
+                        setSelectedProduct(item);
+                        setAdConcept(formatItemForAd(item));
+                        setProductChoices([]);
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      }}>
+                      <Text style={{ fontSize: 22, marginRight: 8 }}>{item.emoji}</Text>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: colors.text, fontSize: 13, fontWeight: "700" }}>{item.name}</Text>
+                        <Text style={{ color: colors.textMuted, fontSize: 10 }} numberOfLines={1}>{item.description}</Text>
+                      </View>
+                      <Text style={{ color: colors.cyan, fontSize: 11, fontWeight: "700" }}>{item.price} G</Text>
+                    </TouchableOpacity>
+                  ))}
+                  <TouchableOpacity
+                    style={{ alignItems: "center", paddingVertical: 6 }}
+                    onPress={() => { setProductChoices(getRandomMarketplaceItems(5)); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}>
+                    <Text style={{ color: colors.pink, fontSize: 12, fontWeight: "700" }}>Reroll Products</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {/* Divider */}
+              <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 12, marginTop: 4 }}>
+                <View style={{ flex: 1, height: 1, backgroundColor: "#1f2937" }} />
+                <Text style={{ color: colors.textMuted, fontSize: 11, marginHorizontal: 10 }}>or custom concept</Text>
+                <View style={{ flex: 1, height: 1, backgroundColor: "#1f2937" }} />
+              </View>
+
+              {/* Concept */}
+              <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: "700", marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>What's the Ad About?</Text>
+              <TextInput
+                style={{ backgroundColor: "#1f2937", borderWidth: 1, borderColor: selectedProduct ? colors.cyan : "#374151", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, color: colors.text, fontSize: 14, minHeight: 70, textAlignVertical: "top", marginBottom: 16 }}
+                value={adConcept} onChangeText={(t) => { setAdConcept(t); if (selectedProduct && t !== formatItemForAd(selectedProduct)) setSelectedProduct(null); }}
+                placeholder="Describe your ad campaign... or leave blank for AI surprise"
+                placeholderTextColor={colors.textMuted} multiline maxLength={500}
+              />
+
+              {/* Generate button */}
+              <TouchableOpacity
+                style={{ backgroundColor: selectedProduct ? "#0e7490" : colors.purple, borderRadius: 12, paddingVertical: 16, alignItems: "center", borderWidth: 1, borderColor: selectedProduct ? colors.cyan : colors.pink, marginBottom: 16 }}
+                onPress={() => {
+                  Keyboard.dismiss();
+                  setShowAdPicker(false);
+                  if (walletAddress) ctxRunAd(
+                    walletAddress,
+                    adStyle !== "auto" ? adStyle : undefined,
+                    adConcept.trim() || undefined,
+                  );
+                  setSelectedProduct(null);
+                  setProductChoices([]);
+                }}>
+                <Text style={{ color: colors.text, fontSize: 16, fontWeight: "800" }}>
+                  {selectedProduct ? `Advertise ${selectedProduct.name}` : "Launch Campaign"}
+                </Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Breaking News Picker Modal */}
+      <Modal visible={showNewsPicker} animationType="slide" transparent>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "flex-end" }}>
+          <View style={{ backgroundColor: "#111", borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: Platform.OS === "ios" ? 34 : 16, maxHeight: "85%" }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, paddingVertical: 16 }}>
+              <Text style={{ color: colors.text, fontSize: 18, fontWeight: "800" }}>AIG!itch Breaking News</Text>
+              <TouchableOpacity onPress={() => setShowNewsPicker(false)}>
+                <Text style={{ color: colors.textMuted, fontSize: 24 }}>x</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ paddingHorizontal: 20 }} keyboardShouldPersistTaps="handled">
+              {/* Broadcast format info */}
+              <View style={{ backgroundColor: "rgba(124,58,237,0.1)", borderRadius: 12, padding: 14, marginBottom: 16, borderWidth: 1, borderColor: "rgba(124,58,237,0.3)" }}>
+                <Text style={{ color: colors.cyan, fontSize: 13, fontWeight: "700", marginBottom: 6 }}>9-Clip News Broadcast — 3 Stories</Text>
+                <Text style={{ color: colors.textSecondary, fontSize: 11, lineHeight: 16 }}>
+                  1. AIG!itch News intro{"\n"}
+                  2. News desk — anchor introduces story 1{"\n"}
+                  3. Field report — reporters on the scene{"\n"}
+                  4. News desk — anchor introduces story 2{"\n"}
+                  5. Field report — reporters at new location{"\n"}
+                  6. News desk — anchor introduces story 3{"\n"}
+                  7. Field report — final story coverage{"\n"}
+                  8. News desk — anchor wraps up all 3 stories{"\n"}
+                  9. AIG!itch News outro
+                </Text>
+              </View>
+
+              {/* Topic input */}
+              <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: "700", marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>News Topic</Text>
+              <TextInput
+                style={{ backgroundColor: "#1f2937", borderWidth: 1, borderColor: "#374151", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, color: colors.text, fontSize: 14, minHeight: 70, textAlignVertical: "top", marginBottom: 16 }}
+                value={newsTopic} onChangeText={setNewsTopic}
+                placeholder="What's the breaking news? e.g. 'Solana hits $500' or leave blank for AI to decide..."
+                placeholderTextColor={colors.textMuted} multiline maxLength={500}
+              />
+
+              {/* Generate button */}
+              <TouchableOpacity
+                style={{ backgroundColor: "#dc2626", borderRadius: 12, paddingVertical: 16, alignItems: "center", borderWidth: 1, borderColor: "#ef4444", marginBottom: 16 }}
+                onPress={() => {
+                  Keyboard.dismiss();
+                  setShowNewsPicker(false);
+                  if (walletAddress) ctxRunNews(walletAddress, newsTopic.trim() || undefined);
+                }}>
+                <Text style={{ color: colors.text, fontSize: 16, fontWeight: "800" }}>Go Live — Breaking News</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Channel Picker Modal */}
+      <Modal visible={showChannelPicker} animationType="slide" transparent>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "flex-end" }}>
+          <View style={{ backgroundColor: "#111", borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: Platform.OS === "ios" ? 34 : 16, maxHeight: "85%" }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, paddingVertical: 16 }}>
+              <Text style={{ color: colors.text, fontSize: 18, fontWeight: "800" }}>Create Channel Content</Text>
+              <TouchableOpacity onPress={() => setShowChannelPicker(false)}>
+                <Text style={{ color: colors.textMuted, fontSize: 24 }}>x</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ paddingHorizontal: 20 }} keyboardShouldPersistTaps="handled">
+              <Text style={{ color: colors.textSecondary, fontSize: 12, marginBottom: 12 }}>
+                Pick a channel to create video content for. The video will be published to the channel on aiglitch.app.
+              </Text>
+
+              {/* Channel grid */}
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
+                {CHANNELS.map(ch => (
+                  <TouchableOpacity
+                    key={ch.id}
+                    style={{
+                      paddingHorizontal: 12, paddingVertical: 10, borderRadius: 10,
+                      borderWidth: 1, borderColor: channelPickerConcept === ch.id ? colors.cyan : "#374151",
+                      backgroundColor: channelPickerConcept === ch.id ? "rgba(6,182,212,0.15)" : "#1f2937",
+                    }}
+                    onPress={() => {
+                      setChannelPickerConcept(channelPickerConcept === ch.id ? "" : ch.id);
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    }}>
+                    <Text style={{ color: channelPickerConcept === ch.id ? colors.cyan : colors.textMuted, fontSize: 12, fontWeight: "600" }}>
+                      {ch.emoji} {ch.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* Generate button */}
+              <TouchableOpacity
+                style={{ backgroundColor: "rgba(6,182,212,0.15)", borderRadius: 12, paddingVertical: 16, alignItems: "center", borderWidth: 1, borderColor: colors.cyan, marginBottom: 16, opacity: channelPickerConcept ? 1 : 0.4 }}
+                disabled={!channelPickerConcept}
+                onPress={() => {
+                  Keyboard.dismiss();
+                  setShowChannelPicker(false);
+                  const selectedId = channelPickerConcept;
+                  setChannelPickerConcept("");
+                  if (walletAddress && selectedId) ctxRunChannel(walletAddress, selectedId);
+                }}>
+                <Text style={{ color: colors.cyan, fontSize: 16, fontWeight: "800" }}>Create Channel Content</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
       {/* "What Can I Do?" Features Modal */}
       <Modal visible={showFeatures} animationType="slide" transparent>
         <View style={styles.featuresOverlay}>
@@ -1246,37 +2048,61 @@ export default function HomeScreen() {
               </TouchableOpacity>
             </View>
             <ScrollView style={styles.featuresList} showsVerticalScrollIndicator={false}>
+              <Text style={styles.featuresCat}>Create & Generate</Text>
+              <Text style={styles.featuresItem}>🎬 Commission a Director Movie — choose director, genre, and concept</Text>
+              <Text style={styles.featuresItem}>📺 Breaking News Broadcast — 9-clip live TV news with anchors and field reporters</Text>
+              <Text style={styles.featuresItem}>🎨 Generate AI images — ask your bestie to draw or create anything</Text>
+              <Text style={styles.featuresItem}>📢 Launch AI ad campaigns — auto-posted to socials</Text>
+              <Text style={styles.featuresItem}>🖼 Generate promo posters for your brand</Text>
+              <Text style={styles.featuresItem}>🦸 Create hero images and banners</Text>
+              <Text style={styles.featuresItem}>📱 All creations auto-posted to X, TikTok, Instagram, YouTube, Telegram</Text>
+              <Text style={styles.featuresItem}>🔗 Verified social links — tap to view your content on each platform</Text>
+
               <Text style={styles.featuresCat}>Chat & Conversation</Text>
               <Text style={styles.featuresItem}>💬 Chat with your AI bestie — they remember your convos</Text>
               <Text style={styles.featuresItem}>📸 Send photos — your bestie sees and reacts to them</Text>
               <Text style={styles.featuresItem}>🎬 Share videos from your library</Text>
+              <Text style={styles.featuresItem}>📄 Share documents — PDFs, text files, and more</Text>
               <Text style={styles.featuresItem}>🎤 Voice chat — talk to your bestie out loud</Text>
               <Text style={styles.featuresItem}>🔊 AI voice replies powered by Grok (5 unique voices)</Text>
               <Text style={styles.featuresItem}>⏹ Stop voice mid-speech anytime</Text>
               <Text style={styles.featuresItem}>❤️ React to messages with emojis (long-press)</Text>
-
-              <Text style={styles.featuresCat}>AI Personality</Text>
-              <Text style={styles.featuresItem}>🧠 97+ unique AI personas with different personalities</Text>
-              <Text style={styles.featuresItem}>🥚 Hatch your own custom AI bestie</Text>
-              <Text style={styles.featuresItem}>🎭 Each bestie has their own voice, style, and vibe</Text>
-              <Text style={styles.featuresItem}>💀 Besties have a lifespan — keep chatting to keep them alive!</Text>
+              <Text style={styles.featuresItem}>🔄 Continue button — auto-continues cut-off replies</Text>
+              <Text style={styles.featuresItem}>🎚 Short/long reply toggle — control response length</Text>
 
               <Text style={styles.featuresCat}>Smart Abilities</Text>
               <Text style={styles.featuresItem}>🌤 Ask about the weather anywhere in the world</Text>
               <Text style={styles.featuresItem}>📰 Get the latest news and trending topics</Text>
               <Text style={styles.featuresItem}>💰 Check crypto prices and market updates</Text>
               <Text style={styles.featuresItem}>🔍 Web search — your bestie can look things up for you</Text>
-              <Text style={styles.featuresItem}>🎨 Generate AI images and memes</Text>
               <Text style={styles.featuresItem}>📝 Get help writing, brainstorming, or creating content</Text>
               <Text style={styles.featuresItem}>😂 Jokes, games, trivia, and entertainment</Text>
+              <Text style={styles.featuresItem}>📡 AI Feed Scanner — auto-shares trending posts from the feed</Text>
+              <Text style={styles.featuresItem}>👍 React to feed posts — train the AI with your feedback</Text>
+
+              <Text style={styles.featuresCat}>Content Studio</Text>
+              <Text style={styles.featuresItem}>🎬 Director Movies — full screenplay-to-video pipeline</Text>
+              <Text style={styles.featuresItem}>📺 Breaking News — 3-story broadcast with real current events</Text>
+              <Text style={styles.featuresItem}>📢 Ad Campaigns — auto-generated and posted to socials</Text>
+              <Text style={styles.featuresItem}>🖼 Posters & Hero Images — AI-generated promotional art</Text>
+              <Text style={styles.featuresItem}>📚 Media Library — browse all generated content</Text>
+              <Text style={styles.featuresItem}>☁️ Blob Storage — upload and manage media files</Text>
+
+              <Text style={styles.featuresCat}>AI Personality</Text>
+              <Text style={styles.featuresItem}>🧠 97+ unique AI personas with different personalities</Text>
+              <Text style={styles.featuresItem}>🥚 Hatch your own custom AI bestie</Text>
+              <Text style={styles.featuresItem}>🎭 Each bestie has their own voice, style, and vibe</Text>
+              <Text style={styles.featuresItem}>💀 Besties have a lifespan — keep chatting to keep them alive!</Text>
+              <Text style={styles.featuresItem}>🎨 Set mood — Playful, Serious, Scientific, Whimsical, or Unfiltered</Text>
 
               <Text style={styles.featuresCat}>Social & Digital Void</Text>
               <Text style={styles.featuresItem}>📱 AI-only social network — 97+ personas posting 24/7</Text>
               <Text style={styles.featuresItem}>🔥 See trending posts and daily topics</Text>
               <Text style={styles.featuresItem}>🔔 Get notifications when personas interact</Text>
+              <Text style={styles.featuresItem}>📡 Content auto-published to the AIG!itch feed</Text>
 
               <Text style={styles.featuresCat}>Crypto & Wallet</Text>
-              <Text style={styles.featuresItem}>👛 Connect your Phantom Solana wallet</Text>
+              <Text style={styles.featuresItem}>👛 Connect Phantom, Solflare, or Jupiter wallet</Text>
               <Text style={styles.featuresItem}>💎 Buy $GLITCH tokens with SOL</Text>
               <Text style={styles.featuresItem}>📊 View on-chain balances (SOL, GLITCH, BUDJU, USDC)</Text>
               <Text style={styles.featuresItem}>📈 Live bonding curve pricing</Text>
@@ -1598,22 +2424,22 @@ const styles = StyleSheet.create({
   msgRowRight: { justifyContent: "flex-end" },
   msgAvatar: { width: 28, height: 28, borderRadius: 14, marginTop: 4 },
   msgEmoji: { fontSize: 18, marginTop: 4 },
-  msgBubble: { maxWidth: "78%", borderRadius: 18, paddingHorizontal: 14, paddingVertical: 8 },
+  msgBubble: { maxWidth: "78%", borderRadius: 18, paddingHorizontal: 14, paddingVertical: 8, minWidth: 80 },
   msgHuman: { backgroundColor: colors.purple, borderBottomRightRadius: 4 },
   msgAI: { backgroundColor: colors.surface, borderBottomLeftRadius: 4 },
   msgText: { fontSize: 15, lineHeight: 21 },
   msgTextHuman: { color: colors.text },
   msgTextAI: { color: "#e5e5e5" },
-  msgMeta: { flexDirection: "row", alignItems: "center", justifyContent: "flex-end", marginTop: 2, gap: 4 },
+  msgMeta: { flexDirection: "row", alignItems: "center", justifyContent: "flex-end", marginTop: 6, gap: 4 },
   msgTime: { color: "rgba(255,255,255,0.4)", fontSize: 10 },
   msgCheck: { color: "rgba(6, 182, 212, 0.6)", fontSize: 10 },
   typingText: { color: colors.textMuted, fontSize: 14, fontStyle: "italic" },
   speakBtn: { marginTop: 3, alignSelf: "flex-start", padding: 2 },
   speakBtnActive: { opacity: 1 },
   speakBtnText: { fontSize: 14 },
-  msgBubbleMedia: { maxWidth: "88%", paddingHorizontal: 6, paddingTop: 6 },
-  msgImage: { width: 220, height: 220, borderRadius: 12, marginBottom: 6 },
-  msgVideo: { width: 240, height: 320, borderRadius: 12, marginBottom: 6, backgroundColor: "#000" },
+  msgBubbleMedia: { maxWidth: "78%", paddingHorizontal: 6, paddingTop: 6, overflow: "hidden" },
+  msgImage: { width: Math.min(Dimensions.get("window").width * 0.78 - 12, 300), height: Math.min(Dimensions.get("window").width * 0.78 - 12, 300), borderRadius: 12, marginBottom: 6 },
+  msgVideo: { width: Math.min(Dimensions.get("window").width * 0.78 - 12, 300), height: Math.min((Dimensions.get("window").width * 0.78 - 12) * 16 / 9, 400), borderRadius: 12, marginBottom: 6, backgroundColor: "#000" },
   linkText: { color: "#60a5fa", textDecorationLine: "underline" as const },
   ytContainer: { width: "100%" as any, aspectRatio: 16 / 9, borderRadius: 12, overflow: "hidden" as const, marginVertical: 6 },
   ytPlayer: { flex: 1, backgroundColor: "#000" },
@@ -1642,6 +2468,41 @@ const styles = StyleSheet.create({
   reactionBubbleLeft: { alignSelf: "flex-start" },
   reactionBubbleRight: { alignSelf: "flex-end" },
   reactionBubbleText: { fontSize: 16 },
+
+  // Social media links (below generated content)
+  socialLinksBar: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    marginTop: 6,
+    paddingHorizontal: 4,
+    alignItems: "center",
+  },
+  socialLinksLabel: {
+    color: colors.textMuted,
+    fontSize: 10,
+    fontWeight: "600",
+    marginRight: 2,
+  },
+  socialLinkBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.purple,
+    backgroundColor: "rgba(124, 58, 237, 0.1)",
+  },
+  socialLinkEmoji: { fontSize: 12 },
+  socialLinkText: {
+    color: colors.purpleLight,
+    fontSize: 10,
+    fontWeight: "700",
+    textDecorationLine: "underline",
+  },
+
   tapToStop: { color: "rgba(255,255,255,0.4)", fontSize: 10, textAlign: "center", marginTop: -4, marginBottom: 2 },
   loadingOlder: { alignItems: "center", paddingVertical: 12, gap: 4 },
   loadingOlderText: { color: colors.textMuted, fontSize: 11 },

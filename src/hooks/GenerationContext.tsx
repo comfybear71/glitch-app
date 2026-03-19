@@ -1126,6 +1126,8 @@ CRITICAL STYLE NOTES:
         synopsis: screenplay.synopsis,
         tagline: screenplay.tagline,
         castList: screenplay.castList,
+        channelId: channel.id,
+        folder: channel.folder,
       });
 
       setGenProgressPct(92);
@@ -1133,6 +1135,9 @@ CRITICAL STYLE NOTES:
 
       const channelCaption = `${channel.emoji} ${channel.name}: "${screenplay.title}"\n${screenplay.synopsis || screenplay.tagline || ""}`;
       await publishToFeed(walletAddress, `${channel.emoji} ${channel.name}`, channelCaption, stitchRes.finalVideoUrl, true, !!stitchRes.feedPostId);
+
+      // Publish to the channel itself so it appears on the channel page
+      await publishToChannel(walletAddress, channel.id, channelCaption, stitchRes.finalVideoUrl, true);
 
       setGenProgressPct(95);
       const didSpread = stitchRes.spreading && stitchRes.spreading.length > 0;

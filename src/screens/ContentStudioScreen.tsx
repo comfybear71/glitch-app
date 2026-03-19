@@ -1394,10 +1394,19 @@ CRITICAL STYLE NOTES:
         synopsis: screenplay.synopsis,
         tagline: screenplay.tagline,
         castList: screenplay.castList,
+        channelId: channel.id,
+        folder: channel.folder,
       });
 
       setChannelProgress({ current: 1, total: 1, pct: 100 });
       addChannelLog("✅", `CHANNEL CONTENT READY! ${stitchRes.clipCount} clips → ${stitchRes.sizeMb}MB`, "success");
+
+      // Publish to the channel itself so it appears on the channel page
+      try {
+        const caption = `${channel.emoji} ${channel.name}: "${screenplay.title}"\n${screenplay.tagline || screenplay.synopsis || ""}`;
+        await spreadCustomContent(walletAddress, caption, stitchRes.finalVideoUrl, "video", channel.id);
+        addChannelLog("📺", `Published to ${channel.name} channel`, "success");
+      } catch { /* non-fatal */ }
 
       // Safety net: publish to feed if backend didn't create a feed post
       if (!stitchRes.feedPostId) {

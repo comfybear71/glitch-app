@@ -1118,6 +1118,8 @@ export function stitchMovie(walletAddress: string, data: {
   synopsis?: string;
   tagline?: string;
   castList?: string[];
+  channelId?: string;
+  folder?: string;
 }) {
   return fetchJSON<StitchResponse>("/api/generate-director-movie", {
     method: "PUT",

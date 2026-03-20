@@ -1510,9 +1510,8 @@ CRITICAL STYLE NOTES:
         sceneUrls: sceneUrlsObj,
         title: screenplay.title,
         genre: effectiveGenre,
-        // Only include director in stitch if channel has showDirector enabled
-        directorUsername: channel.showDirector ? screenplay.director : undefined,
-        directorId: channel.showDirector ? screenplay.directorId : undefined,
+        directorUsername: screenplay.director,
+        directorId: screenplay.directorId,
         synopsis: screenplay.synopsis,
         tagline: screenplay.tagline,
         castList: screenplay.castList,

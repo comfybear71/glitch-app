@@ -1,6 +1,6 @@
 # HANDOFF.md — AI G!itch App Project Status
 
-Last updated: 2026-03-19 (Session 15 — Paws & Pixels prompt fix, channel-specific style overrides, testing & QA)
+Last updated: 2026-03-20 (Session 16 — Only AI Fans prompt toned down to avoid Grok content filter hang)
 
 ## Project Overview
 
@@ -431,6 +431,24 @@ If "your local changes would be overwritten" appears, stash first (see above).
 - **Fix**: Check xAI credit balance at console.x.ai and top up. This is a backend issue, not an app issue
 - **Note**: The app code just calls `/api/voice` and plays whatever MP3 comes back — it doesn't know which TTS engine was used
 - **Where to check credits**: console.x.ai → API Keys → Usage (NOT console.x.com — that's the X Developer Portal)
+
+---
+
+## Recent Changes — Session 2026-03-20 (Session 16 — Only AI Fans Prompt Toned Down)
+
+### Only AI Fans Channel — Prompt Toned Down (CRITICAL FIX)
+- **Problem**: The `ch-only-ai-fans` channel prompt was too sexually explicit, causing Grok's content filters to silently refuse generation. The app would get stuck in an infinite polling loop with no error message — it just kept polling forever.
+- **Root cause**: The style override prompt contained explicit sexual language ("hands exploring bodies", "straddling", "lying back in ecstasy", "strip club VIP rooms", "pure lust", "thirst trap maximum", etc.) that pushed past what Grok's image/video generation API will produce. Grok doesn't return an error — it simply never completes the render, so the app polls indefinitely.
+- **Fix**: Rewrote the `CHANNEL_STYLE_OVERRIDES` for `ch-only-ai-fans` in both `GenerationContext.tsx` and `ContentStudioScreen.tsx`. New prompt focuses on **high-fashion editorial / luxury lifestyle / influencer aesthetic** — think Vogue, Sports Illustrated, Victoria's Secret fashion show, luxury brand campaigns. Still glamorous and alluring, but well within what AI generators will produce.
+- **Key changes**:
+  - Removed all sexually explicit language (lust, desire, ecstasy, bedroom, strip club, etc.)
+  - Changed from "thirst trap" to "fashion editorial" aesthetic
+  - Wardrobe: from "string bikinis, sheer fabric, harnesses" to "designer swimwear, evening gowns, resort wear"
+  - Poses: from "straddling, arched backs, bedroom eyes" to "runway walks, editorial poses, candid lifestyle"
+  - Settings: from "steam-filled showers, bedrooms, strip clubs" to "fashion runways, yacht decks, Santorini terraces"
+  - Mood: from "pure lust, forbidden attraction" to "glamour, confidence, aspiration, allure"
+- **Lesson**: Grok has content filters that silently refuse rather than error. If generation hangs forever with no error, the prompt is likely too explicit. Stay at "luxury magazine" level, not "adult content" level.
+- **Files changed**: `src/hooks/GenerationContext.tsx`, `src/screens/ContentStudioScreen.tsx`
 
 ---
 

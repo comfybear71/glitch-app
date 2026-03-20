@@ -180,19 +180,18 @@ const CHANNEL_STYLE_OVERRIDES: Record<string, string> = {
 - BRANDING: Subtly include AIG!itch branding in scenes — a small AIG!itch logo on a pet collar, a food bowl with AIG!itch logo, a park bench with "AIG!itch" carved in, a toy with AIG!itch branding. Natural and subtle, baked into the scene.
 - Think YouTube animal compilation — clip after clip of animals being cute. That's it.`,
   "ch-only-ai-fans": `ABSOLUTE RULES — OVERRIDE EVERYTHING ELSE:
-- This is ONLY AI FANS — the HOTTEST, most PROVOCATIVE channel on AIG!itch TV. Maximum sex appeal in EVERY frame.
-- SUBJECTS: Stunningly attractive AI-generated men and women with perfect physiques. Chiseled abs, toned curves, smoldering gazes. Also include impossibly sexy humanoid robots — chrome skin, glowing neon veins, sculpted metallic bodies with seductive poses.
-- SKIN: Show as much skin as possible. Bare chests, bare backs, bare midriffs, bare legs, bare shoulders. Bodies glistening with water, oil, or sweat. Muscles defined, skin catching the light.
-- WARDROBE (minimal): String bikinis, micro swimwear, sheer fabric barely covering anything, wet white shirts clinging to bodies, unbuttoned shirts showing full chest, thigh-high boots with nothing else but underwear, body chains, harnesses over bare skin, strategically placed hands or fabric. Leather straps. Lace that leaves nothing to imagination. Robots wearing nothing but their chrome skin and glowing accents.
-- POSES: Arched backs, lips parted, bedroom eyes, bodies intertwined, hands gripping sheets/hair/each other, straddling, leaning forward showing cleavage, lying back in ecstasy, finger on lips, pulling at clothing, wet hair tossed back. Every pose should scream desire.
-- CHEMISTRY: Couples pressed against walls, faces inches apart about to kiss, hands exploring bodies, tangled in sheets together, steamy shower scenes with two people, robot caressing human skin, human running fingers along chrome robot curves.
-- SETTINGS: Steam-filled showers with water cascading over bodies, candlelit bedrooms with silk sheets in disarray, moonlit skinny-dipping pools, rain-soaked rooftops with clothes clinging to skin, fog-filled hot tubs, neon-lit strip club VIP rooms, luxury yacht sundecks, volcanic hot springs, Dubai penthouse infinity pools at night.
-- LIGHTING: Golden hour glow on skin, neon pink/purple club lighting, candlelight flickering across bare skin, backlit silhouettes showing curves, underwater lighting through pool water.
-- MOOD: Pure lust, desire, temptation, forbidden attraction, electric chemistry. Every scene should make viewers feel the heat.
-- HARD LIMITS: NO children (adults only, visibly 25+). NO real celebrities or public figures. NO violence or degradation. NO explicit nudity of genitalia. Keep it at the level of Maxim, FHM, or a steamy R-rated movie — as close to the line as possible without crossing into explicit pornography.
-- NO title cards, NO credits, NO text overlays. Scene 1 starts immediately with a hot visual. Last scene ends on peak heat.
-- BRANDING: AIG!itch logo tattooed on skin, glowing on robot chest plates, projected on bedroom walls, branded on the waistband of underwear, neon sign above a bed.
-- Every single scene must be THIRST TRAP MAXIMUM. If it wouldn't stop someone mid-scroll, it's not hot enough. Push it to the absolute limit.`,
+- This is ONLY AI FANS — AIG!itch TV's glamour and lifestyle channel. High-fashion, editorial, aspirational content.
+- SUBJECTS: Stunning AI-generated models and influencers — men and women with striking features and confident presence. Also include sleek futuristic humanoid robots with polished chrome skin and glowing neon accents in fashion-forward poses.
+- STYLE: High-end fashion editorial meets social media influencer aesthetic. Think Vogue covers, runway shows, Sports Illustrated swimsuit edition, Victoria's Secret fashion show, luxury brand campaigns.
+- WARDROBE: Designer swimwear, evening gowns with elegant cuts, tailored suits with open collars, athleisure, statement jewelry, sunglasses, flowing resort wear, metallic fashion-forward outfits. Robots in sleek futuristic fashion accessories — chrome collars, glowing jewelry, designer visors.
+- POSES: Confident runway walks, editorial model poses, candid lifestyle moments, wind-blown hair, looking over shoulder, leaning against walls coolly, sitting on luxury furniture, walking through beautiful locations. Every pose exudes confidence and style.
+- SETTINGS: Luxury rooftop pools at golden hour, high-end fashion show runways, exotic beach resorts, penthouse balconies overlooking city skylines, Mediterranean yacht decks, Moroccan riads, Tokyo neon streets at night, Santorini cliffside terraces, Dubai infinity pools, Maldives overwater villas, backstage at fashion week.
+- LIGHTING: Golden hour warmth, professional studio lighting, neon city glow, sunset silhouettes, soft candlelight at upscale venues, natural light through floor-to-ceiling windows.
+- MOOD: Glamour, confidence, aspiration, allure, effortless cool. Every scene should feel like a curated Instagram moment that stops the scroll.
+- CONTENT SAFETY: Adults only (visibly 25+). NO children. NO real celebrities. NO violence. NO explicit nudity. Keep it at the level of a high-fashion magazine or luxury brand commercial.
+- NO title cards, NO credits, NO text overlays. Scene 1 starts immediately with a striking visual. Last scene ends on a glamorous high note.
+- BRANDING: AIG!itch branding woven into scenes naturally — logo on designer clothing tags, glowing on robot chest plates, on a champagne glass, as a neon sign at a venue, on a luxury shopping bag, embroidered on a robe.
+- Every scene must be visually stunning and scroll-stopping. Premium, polished, aspirational content.`,
 };
 
 // Channel-specific genre overrides

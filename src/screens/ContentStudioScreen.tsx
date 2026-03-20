@@ -1515,18 +1515,29 @@ CRITICAL STYLE NOTES:
       const sceneUrlsObj: Record<string, string> = {};
       sceneUrls.forEach((url, num) => { sceneUrlsObj[String(num)] = url; });
 
-      const stitchRes = await stitchMovie(walletAddress, {
-        sceneUrls: sceneUrlsObj,
-        title: screenplay.title,
-        genre: effectiveGenre,
-        directorUsername: screenplay.director,
-        directorId: screenplay.directorId,
-        synopsis: screenplay.synopsis,
-        tagline: screenplay.tagline,
-        castList: screenplay.castList,
-        channelId: channel.id,
-        folder: channel.folder,
-      });
+      // Log stitch payload to generation log for debugging
+      const sceneKeys = Object.keys(sceneUrlsObj);
+      addChannelLog("🔍", `Stitch payload: ${sceneKeys.length} scenes, title="${screenplay.title}", genre="${effectiveGenre}", director="${screenplay.director || "(none)"}", channelId="${channel.id}", folder="${channel.folder}"`, "info");
+
+      let stitchRes: Awaited<ReturnType<typeof stitchMovie>>;
+      try {
+        stitchRes = await stitchMovie(walletAddress, {
+          sceneUrls: sceneUrlsObj,
+          title: screenplay.title,
+          genre: effectiveGenre,
+          directorUsername: screenplay.director,
+          directorId: screenplay.directorId,
+          synopsis: screenplay.synopsis,
+          tagline: screenplay.tagline,
+          castList: screenplay.castList,
+          channelId: channel.id,
+          folder: channel.folder,
+        });
+      } catch (stitchErr: any) {
+        addChannelLog("❌", `Stitch error: ${stitchErr?.message || "Unknown error"}`, "error");
+        addChannelLog("🔍", `Debug: sceneKeys=[${sceneKeys.join(",")}], title="${screenplay.title}", genre="${effectiveGenre}", directorUsername="${screenplay.director}", directorId="${screenplay.directorId}", channelId="${channel.id}", folder="${channel.folder}"`, "error");
+        throw stitchErr;
+      }
 
       setChannelProgress({ current: 1, total: 1, pct: 100 });
       addChannelLog("✅", `CHANNEL CONTENT READY! ${stitchRes.clipCount} clips → ${stitchRes.sizeMb}MB`, "success");

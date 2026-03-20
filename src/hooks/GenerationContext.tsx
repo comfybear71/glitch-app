@@ -1170,6 +1170,17 @@ CRITICAL STYLE NOTES:
       const sceneUrlsObj: Record<string, string> = {};
       sceneUrls.forEach((url, num) => { sceneUrlsObj[String(num)] = url; });
 
+      console.log("[CHANNEL] Stitch payload:", JSON.stringify({
+        sceneCount: Object.keys(sceneUrlsObj).length,
+        sceneKeys: Object.keys(sceneUrlsObj),
+        title: screenplay.title,
+        genre: effectiveGenre,
+        directorUsername: screenplay.director,
+        directorId: screenplay.directorId,
+        channelId: channel.id,
+        folder: channel.folder,
+      }));
+
       const stitchRes = await stitchMovie(walletAddress, {
         sceneUrls: sceneUrlsObj,
         title: screenplay.title,

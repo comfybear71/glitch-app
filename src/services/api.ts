@@ -25,12 +25,17 @@ async function fetchJSON<T>(path: string, init?: RequestInit): Promise<T> {
   }
   if (!res.ok) {
     let detail = "";
+    let bodyFields = "";
     try {
       const body = await res.json();
       detail = body.error || body.message || body.detail || "";
+      // Capture missing_fields or fields list if backend provides them
+      if (body.missing_fields) bodyFields = ` [missing: ${JSON.stringify(body.missing_fields)}]`;
+      else if (body.fields) bodyFields = ` [fields: ${JSON.stringify(body.fields)}]`;
     } catch (_) {
       try { detail = await res.text(); } catch (_) {}
     }
+    const context = `[${res.status} ${path}]`;
     if (res.status === 401 || res.status === 403) {
       throw new Error(detail || "Session expired. Please reconnect your wallet.");
     }
@@ -38,9 +43,9 @@ async function fetchJSON<T>(path: string, init?: RequestInit): Promise<T> {
       throw new Error("Too many requests. Please wait a moment and try again.");
     }
     if (res.status >= 500) {
-      throw new Error(detail || "Server error. The G!itch servers are having a moment. Try again shortly.");
+      throw new Error(`${detail || "Server error"}${bodyFields} ${context}`);
     }
-    throw new Error(detail || `Request failed (${res.status})`);
+    throw new Error(`${detail || "Request failed"}${bodyFields} ${context}`);
   }
   return res.json();
 }
@@ -1152,24 +1157,47 @@ export interface StitchResponse {
 export function stitchMovie(walletAddress: string, data: {
   sceneUrls: Record<string, string>;
   title: string;
-  genre: string;
-  directorUsername: string;
-  directorId: string;
+  genre?: string;
+  directorUsername?: string;
+  directorId?: string;
   synopsis?: string;
   tagline?: string;
   castList?: string[];
   channelId?: string;
   folder?: string;
 }) {
-  // Validate required fields before sending to backend — show exactly what's missing
+  // Log the full payload so we can diagnose stitch failures
+  const sceneKeys = Object.keys(data.sceneUrls || {});
+  console.log("[STITCH] Sending to /api/generate-director-movie:", JSON.stringify({
+    title: data.title,
+    genre: data.genre,
+    directorUsername: data.directorUsername,
+    directorId: data.directorId,
+    channelId: data.channelId,
+    folder: data.folder,
+    sceneCount: sceneKeys.length,
+    sceneKeys,
+    hasSceneUrls: sceneKeys.every(k => !!data.sceneUrls[k]),
+    synopsis: data.synopsis ? `${data.synopsis.slice(0, 50)}...` : "(empty)",
+    tagline: data.tagline || "(empty)",
+    castList: data.castList,
+  }));
+
+  // Validate the two actually-required fields (per backend spec)
   const missing: string[] = [];
-  if (!data.title) missing.push("title");
-  if (!data.genre) missing.push("genre");
-  if (!data.directorUsername) missing.push("directorUsername");
-  if (!data.directorId) missing.push("directorId");
-  if (!data.sceneUrls || Object.keys(data.sceneUrls).length === 0) missing.push("sceneUrls");
+  if (!data.sceneUrls || sceneKeys.length === 0) missing.push("sceneUrls (no scene URLs provided)");
+  if (!data.title) missing.push(`title (got "${data.title}")`);
+  // Warn about recommended fields being empty (not fatal, but logged)
+  const warnings: string[] = [];
+  if (!data.genre) warnings.push("genre");
+  if (!data.directorId) warnings.push("directorId");
+  if (!data.channelId) warnings.push("channelId");
+  if (!data.folder) warnings.push("folder");
+  if (warnings.length > 0) {
+    console.warn(`[STITCH] Recommended fields missing: ${warnings.join(", ")}`);
+  }
   if (missing.length > 0) {
-    throw new Error(`Stitch failed — missing required fields: ${missing.join(", ")}. Got directorUsername="${data.directorUsername}", directorId="${data.directorId}"`);
+    throw new Error(`Stitch failed — missing required fields: ${missing.join(", ")}`);
   }
   return fetchJSON<StitchResponse>("/api/generate-director-movie", {
     method: "PUT",

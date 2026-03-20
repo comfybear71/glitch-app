@@ -4,17 +4,27 @@
 
 export const API_BASE = "https://aiglitch.app";
 
-async function fetchJSON<T>(path: string, init?: RequestInit): Promise<T> {
+async function fetchJSON<T>(path: string, init?: RequestInit & { timeoutMs?: number }): Promise<T> {
   let res: Response;
+  const { timeoutMs, ...fetchInit } = (init || {}) as RequestInit & { timeoutMs?: number };
   try {
+    // Use AbortController for custom timeout (default: 30s, stitch calls use longer)
+    const controller = new AbortController();
+    const timeout = timeoutMs || 30000;
+    const timer = setTimeout(() => controller.abort(), timeout);
     res = await fetch(`${API_BASE}${path}`, {
-      ...init,
+      ...fetchInit,
+      signal: controller.signal,
       headers: {
         "Content-Type": "application/json",
-        ...init?.headers,
+        ...fetchInit?.headers,
       },
     });
+    clearTimeout(timer);
   } catch (e: any) {
+    if (e?.name === "AbortError") {
+      throw new Error(`Request timed out after ${Math.round((timeoutMs || 30000) / 1000)}s — the server is still processing. Check if the content was posted successfully.`);
+    }
     if (e?.message?.includes("Network request failed") || e?.message?.includes("Failed to fetch")) {
       throw new Error("Request failed — the server may be busy or the connection timed out. Try again.");
     }
@@ -1199,10 +1209,12 @@ export function stitchMovie(walletAddress: string, data: {
   if (missing.length > 0) {
     throw new Error(`Stitch failed — missing required fields: ${missing.join(", ")}`);
   }
+  // Stitching can take 2-4 minutes for large movies — use 5 min timeout
   return fetchJSON<StitchResponse>("/api/generate-director-movie", {
     method: "PUT",
     headers: { "X-Wallet-Address": walletAddress },
     body: JSON.stringify(data),
+    timeoutMs: 300000,
   });
 }
 
@@ -1212,6 +1224,7 @@ export function forceStitch(walletAddress: string, jobId: string) {
     method: "PATCH",
     headers: { "X-Wallet-Address": walletAddress },
     body: JSON.stringify({ jobId }),
+    timeoutMs: 300000,
   });
 }
 

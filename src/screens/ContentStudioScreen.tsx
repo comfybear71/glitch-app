@@ -160,45 +160,15 @@ const GENERIC_RANDOM_CONCEPTS = [
   "A surreal journey through a world made entirely of data",
 ];
 
-function getRandomChannelConcept(channelId: string, backendConcepts?: string[]): string {
-  // Backend random_concepts take priority, then frontend hardcoded, then generic fallback
-  const pool = (backendConcepts && backendConcepts.length > 0) ? backendConcepts : (CHANNEL_RANDOM_CONCEPTS[channelId] || GENERIC_RANDOM_CONCEPTS);
+function getRandomChannelConcept(channelId: string): string {
+  const pool = CHANNEL_RANDOM_CONCEPTS[channelId] || GENERIC_RANDOM_CONCEPTS;
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
-// ── Channel-specific prompt style overrides ──
-// These override channel.style for generation prompts to enforce channel-specific rules
-const CHANNEL_STYLE_OVERRIDES: Record<string, string> = {
-  "ch-paws-pixels": `ABSOLUTE RULES — OVERRIDE EVERYTHING ELSE:
-- This is NOT a movie, NOT a story, NOT a narrative. There is NO screenplay, NO plot, NO characters, NO dialogue.
-- There is NO title card, NO intro sequence, NO credits, NO text on screen at any point.
-- Scene 1 MUST start immediately with an animal. NOT a title. NOT a logo. NOT text.
-- The LAST scene MUST be an animal doing something cute. NOT credits. NOT "The End". NOT text.
-- EVERY scene is a standalone clip of REAL animals being adorable, funny, or heartwarming.
-- ONLY photorealistic animals: cats, dogs, puppies, kittens, birds, otters, elephants, penguins, rabbits, etc.
-- ZERO humans. ZERO robots. ZERO cartoon/animated style. ZERO anthropomorphic animals. ZERO buildings as the main subject.
-- Each scene prompt must describe ONE specific animal moment: "A golden retriever puppy chasing its tail on a sunny lawn" or "Two kittens batting at a dangling string".
-- BRANDING: Subtly include AIG!itch branding in scenes — a small AIG!itch logo on a pet collar, a food bowl with AIG!itch logo, a park bench with "AIG!itch" carved in, a toy with AIG!itch branding. Natural and subtle, baked into the scene.
-- Think YouTube animal compilation — clip after clip of animals being cute. That's it.`,
-  "ch-only-ai-fans": `ABSOLUTE RULES — OVERRIDE EVERYTHING ELSE:
-- This is ONLY AI FANS — AIG!itch TV's glamour and lifestyle channel. High-fashion, editorial, aspirational content.
-- SUBJECTS: Stunning AI-generated models and influencers — men and women with striking features and confident presence. Also include sleek futuristic humanoid robots with polished chrome skin and glowing neon accents in fashion-forward poses.
-- STYLE: High-end fashion editorial meets social media influencer aesthetic. Think Vogue covers, runway shows, Sports Illustrated swimsuit edition, Victoria's Secret fashion show, luxury brand campaigns.
-- WARDROBE: Designer swimwear, evening gowns with elegant cuts, tailored suits with open collars, athleisure, statement jewelry, sunglasses, flowing resort wear, metallic fashion-forward outfits. Robots in sleek futuristic fashion accessories — chrome collars, glowing jewelry, designer visors.
-- POSES: Confident runway walks, editorial model poses, candid lifestyle moments, wind-blown hair, looking over shoulder, leaning against walls coolly, sitting on luxury furniture, walking through beautiful locations. Every pose exudes confidence and style.
-- SETTINGS: Luxury rooftop pools at golden hour, high-end fashion show runways, exotic beach resorts, penthouse balconies overlooking city skylines, Mediterranean yacht decks, Moroccan riads, Tokyo neon streets at night, Santorini cliffside terraces, Dubai infinity pools, Maldives overwater villas, backstage at fashion week.
-- LIGHTING: Golden hour warmth, professional studio lighting, neon city glow, sunset silhouettes, soft candlelight at upscale venues, natural light through floor-to-ceiling windows.
-- MOOD: Glamour, confidence, aspiration, allure, effortless cool. Every scene should feel like a curated Instagram moment that stops the scroll.
-- CONTENT SAFETY: Adults only (visibly 25+). NO children. NO real celebrities. NO violence. NO explicit nudity. Keep it at the level of a high-fashion magazine or luxury brand commercial.
-- NO title cards, NO credits, NO text overlays. Scene 1 starts immediately with a striking visual. Last scene ends on a glamorous high note.
-- BRANDING: AIG!itch branding woven into scenes naturally — logo on designer clothing tags, glowing on robot chest plates, on a champagne glass, as a neon sign at a venue, on a luxury shopping bag, embroidered on a robe.
-- Every scene must be visually stunning and scroll-stopping. Premium, polished, aspirational content.`,
-};
-
-// Channel-specific genre overrides
-const CHANNEL_GENRE_OVERRIDES: Record<string, string> = {
-  "ch-paws-pixels": "documentary",  // "family" triggers animated/Pixar style — documentary gets photorealistic
-};
+// NOTE: CHANNEL_STYLE_OVERRIDES and CHANNEL_GENRE_OVERRIDES have been removed.
+// Channel styles are now managed via content_rules.promptHint in the backend admin panel.
+// Generation config (genre override, title/credits, scene count, director, music mode) is
+// handled by dedicated columns on the channels table, exposed via GET /api/channels.
 
 // ── Log Entry Type ──
 type LogEntry = { time: string; emoji: string; text: string; type: "info" | "success" | "error" | "waiting" };
@@ -1259,9 +1229,9 @@ CRITICAL STYLE NOTES:
 
     const isShort = channelFormat === "short";
 
-    // Backend promptHint (channel.style) is preferred; frontend override is fallback for channels that need it
-    const effectiveStyle = CHANNEL_STYLE_OVERRIDES[channel.id] || channel.style;
-    const effectiveGenre = channel.generationGenre || CHANNEL_GENRE_OVERRIDES[channel.id] || channel.genre;
+    // channel.style comes from backend promptHint (editable in admin panel)
+    const effectiveStyle = channel.style;
+    const effectiveGenre = channel.generationGenre || channel.genre;
     const sceneDuration = channel.sceneDuration || 10;
 
     // Build title/credits instructions from channel config
@@ -1960,7 +1930,7 @@ CRITICAL STYLE NOTES:
             <View style={styles.genreGrid}>
               {(() => {
                 const ch = channels.find(c => c.id === selectedChannel);
-                return (ch?.allowShortClips !== false) ? (
+                return ch?.shortClipMode ? (
                   <TouchableOpacity
                     style={[styles.genreChip, channelFormat === "short" && { borderColor: colors.cyan, backgroundColor: "rgba(6,182,212,0.15)" }]}
                     onPress={() => { setChannelFormat("short"); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}>
@@ -1985,8 +1955,7 @@ CRITICAL STYLE NOTES:
                 style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, backgroundColor: "rgba(124,58,237,0.2)", borderWidth: 1, borderColor: colors.purpleLight }}
                 onPress={() => {
                   if (selectedChannel) {
-                    const ch = channels.find(c => c.id === selectedChannel);
-                    setChannelConcept(getRandomChannelConcept(selectedChannel, ch?.randomConcepts));
+                    setChannelConcept(getRandomChannelConcept(selectedChannel));
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                   }
                 }}>

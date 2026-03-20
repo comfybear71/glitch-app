@@ -1,6 +1,6 @@
 # HANDOFF.md — AI G!itch App Project Status
 
-Last updated: 2026-03-20 (Session 16 — Only AI Fans prompt toned down to avoid Grok content filter hang)
+Last updated: 2026-03-20 (Session 16 — Backend-driven generation config, hardcoded overrides removed, chat channel gen fixed)
 
 ## Project Overview
 
@@ -434,31 +434,43 @@ If "your local changes would be overwritten" appears, stash first (see above).
 
 ---
 
-## Recent Changes — Session 2026-03-20 (Session 16 — Only AI Fans Prompt Toned Down)
+## Recent Changes — Session 2026-03-20 (Session 16 — Backend-Driven Generation Config, Hardcoded Overrides Removed)
 
 ### Only AI Fans Channel — Prompt Toned Down (CRITICAL FIX)
 - **Problem**: The `ch-only-ai-fans` channel prompt was too sexually explicit, causing Grok's content filters to silently refuse generation. The app would get stuck in an infinite polling loop with no error message — it just kept polling forever.
 - **Root cause**: The style override prompt contained explicit sexual language that pushed past what Grok's image/video generation API will produce. Grok doesn't return an error — it simply never completes the render, so the app polls indefinitely.
-- **Fix**: Rewrote the `CHANNEL_STYLE_OVERRIDES` for `ch-only-ai-fans` in both `GenerationContext.tsx` and `ContentStudioScreen.tsx`. New prompt focuses on **high-fashion editorial / luxury lifestyle / influencer aesthetic** — think Vogue, Sports Illustrated, Victoria's Secret fashion show, luxury brand campaigns. Still glamorous and alluring, but well within what AI generators will produce.
+- **Fix**: Channel style is now managed via backend `promptHint` field (see below). No more hardcoded frontend overrides.
 - **Lesson**: Grok has content filters that silently refuse rather than error. If generation hangs forever with no error, the prompt is likely too explicit. Stay at "luxury magazine" level, not "adult content" level.
-- **Files changed**: `src/hooks/GenerationContext.tsx`, `src/screens/ContentStudioScreen.tsx`
 
 ### Backend-Driven Channel Generation Config (MAJOR CHANGE)
 - **Problem**: Channel-specific behavior (style overrides, genre overrides, title/credits, scene count, duration, music detection) was all hardcoded in the frontend. Every change required code edits + OTA push.
-- **Fix**: Added 10 new generation config fields to `BackendChannel` and `ChannelDef` interfaces that the backend channel editor can set per-channel:
-  - `generation_genre` — genre override for screenplay API (e.g., "documentary" instead of "family")
-  - `show_title_page` / `show_credits` — toggle title card and credits scenes
-  - `scene_count` — target number of scenes (1-12, or let AI decide)
-  - `scene_duration` — per-scene duration in seconds (5-15, default 10)
-  - `default_director` — assign a specific persona as director
-  - `is_music_channel` — enforce music video style
-  - `allow_short_clips` — show/hide the "Short Clip" format option
-  - `auto_publish_feed` — control auto-publishing to "for you" feed
-  - `random_concepts` — pool of dice button suggestions from backend
-- **How it works**: Frontend reads these from `GET /api/channels`. If a field is missing (backend not updated yet), sensible defaults apply. Frontend hardcoded overrides (`CHANNEL_STYLE_OVERRIDES`, `CHANNEL_GENRE_OVERRIDES`) remain as fallbacks.
+- **Fix**: Backend implemented 9 new columns on the `channels` table, editable via the admin channel editor. Frontend reads these from `GET /api/channels` and uses them directly — no more hardcoded overrides.
+- **9 backend columns** (snake_case from API, mapped to camelCase in `ChannelDef`):
+  - `generation_genre` → `generationGenre` — genre override for screenplay API
+  - `show_title_page` → `showTitlePage` — include title card scene (default: true)
+  - `show_credits` → `showCredits` — include credits scene (default: true)
+  - `scene_count` → `sceneCount` — target number of scenes (1-12)
+  - `scene_duration` → `sceneDuration` — per-scene duration in seconds (5-15, default: 10)
+  - `default_director` → `defaultDirector` — persona username to use as director
+  - `is_music_channel` → `isMusicChannel` — enforce music video style
+  - `short_clip_mode` → `shortClipMode` — enable single-clip format option
+  - `auto_publish_to_feed` → `autoPublishFeed` — auto-publish to "for you" feed (default: true)
+- **Channel style via `promptHint`**: The backend's existing `content_rules.promptHint` field is now the primary source for channel style prompts. This replaces the frontend `CHANNEL_STYLE_OVERRIDES` dictionary entirely.
+
+### Hardcoded Overrides Removed (CLEANUP)
+- **Removed `CHANNEL_STYLE_OVERRIDES`** from both `GenerationContext.tsx` and `ContentStudioScreen.tsx` (~80 lines total). Backend `promptHint` handles channel styles now.
+- **Removed `CHANNEL_GENRE_OVERRIDES`** from both files. Backend `generation_genre` column handles genre overrides now.
+- Generation functions now use `channel.style` directly (which comes from `promptHint` via `toChannelDef()`) and `channel.generationGenre || channel.genre`.
+
+### Channel Generation from Chat — Fixed (CRITICAL BUG FIX)
+- **Problem**: Channel generation triggered from chat keywords was completely broken since Session 13. `runChannelGeneration` looked up channels from the `CHANNELS` array which has been empty `[]` since channels became dynamic. The function always bailed at `if (!channel)` — silently doing nothing.
+- **Fix**: `runChannelGeneration` now accepts `ChannelDef | string`. If given a string ID, it fetches from the API as fallback. HomeScreen now fetches channels dynamically and passes full `ChannelDef` objects.
+- **HomeScreen channel picker also fixed**: Was iterating over empty `CHANNELS.map()`. Now uses `homeChannels` state populated from `fetchChannels()`.
+
+### Other Fixes
+- **`stitchMovie()` genre consistency**: Now uses `effectiveGenre` consistently (was using raw `channel.genre`, ignoring the override)
 - **Backend spec**: Full API spec added to `BACKEND-CHANGES.md` (Change 9)
-- **Bug fix**: `stitchMovie()` now uses `effectiveGenre` consistently (was using raw `channel.genre`, ignoring the override)
-- **Files changed**: `src/services/api.ts`, `src/hooks/GenerationContext.tsx`, `src/screens/ContentStudioScreen.tsx`, `BACKEND-CHANGES.md`
+- **Files changed**: `src/services/api.ts`, `src/hooks/GenerationContext.tsx`, `src/screens/ContentStudioScreen.tsx`, `src/screens/HomeScreen.tsx`, `BACKEND-CHANGES.md`
 
 ---
 

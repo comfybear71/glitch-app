@@ -1063,6 +1063,8 @@ CRITICAL STYLE NOTES:
       if (channel.defaultDirector) screenplayOpts.director = channel.defaultDirector;
 
       const screenplay = await generateScreenplay(walletAddress, screenplayOpts);
+      // Prefix title with channel name (e.g. "AI Fail Army - Robot Kitchen Disaster")
+      screenplay.title = `${channel.name} - ${screenplay.title}`;
 
       if (cancelRef.current) { setGenerating(null); setGenProgressPct(0); setGenStatusText(""); return; }
 

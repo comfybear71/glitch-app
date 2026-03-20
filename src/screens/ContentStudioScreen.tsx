@@ -1363,6 +1363,8 @@ CRITICAL STYLE NOTES:
       if (channel.defaultDirector) screenplayOpts.director = channel.defaultDirector;
 
       const screenplay = await generateScreenplay(walletAddress, screenplayOpts);
+      // Prefix title with channel name (e.g. "Paws & Pixels - Kitten Adventures")
+      screenplay.title = `${channel.name} - ${screenplay.title}`;
 
       if (channelCancelRef.current) { setChannelGenerating(false); setChannelPhase("idle"); return; }
 

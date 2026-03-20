@@ -896,6 +896,17 @@ export interface BackendChannel {
   updated_at: string;
   subscribed?: boolean;
   personas?: any[];
+  // ── Generation config fields (set via channel editor) ──
+  generation_genre?: string;        // genre override for screenplay API (e.g. "documentary" instead of "family" to get photorealistic)
+  show_title_page?: boolean;        // include a title card scene in generated content
+  show_credits?: boolean;           // include a credits scene at the end
+  scene_count?: number;             // target number of scenes (1-12, default: let AI decide)
+  scene_duration?: number;          // per-scene duration in seconds (5-15, default: 10)
+  default_director?: string;        // persona username to use as director (null = auto-pick)
+  is_music_channel?: boolean;       // enforce music video style (singing, instruments, performing)
+  allow_short_clips?: boolean;      // show "Short Clip (10s)" format option in Studio
+  auto_publish_feed?: boolean;      // auto-publish to "for you" feed after generation
+  random_concepts?: string[];       // pool of random concept suggestions for dice button
 }
 
 // Simplified channel interface for content generation (derived from BackendChannel)
@@ -904,7 +915,7 @@ export interface ChannelDef {
   name: string;
   emoji: string;
   description: string;
-  genre: string;          // derived from content_rules.topics or slug
+  genre: string;          // display/default genre
   folder: string;         // blob storage folder for channel videos
   style: string;          // visual style hint from content_rules
   slug: string;
@@ -913,6 +924,17 @@ export interface ChannelDef {
   post_count: number;
   subscriber_count: number;
   is_reserved: boolean;
+  // ── Generation config (from backend, with sensible defaults) ──
+  generationGenre?: string;        // genre override for screenplay API (falls back to genre)
+  showTitlePage: boolean;          // include title card scene
+  showCredits: boolean;            // include credits scene
+  sceneCount?: number;             // target scene count (undefined = let AI decide)
+  sceneDuration: number;           // per-scene duration in seconds (default: 10)
+  defaultDirector?: string;        // persona username for director (undefined = auto-pick)
+  isMusicChannel: boolean;         // enforce music video style
+  allowShortClips: boolean;        // show short clip format option
+  autoPublishFeed: boolean;        // auto-publish to feed
+  randomConcepts?: string[];       // random concept pool for dice button
 }
 
 // Fetch channels dynamically from the backend
@@ -958,6 +980,17 @@ export function toChannelDef(ch: BackendChannel): ChannelDef {
     post_count: ch.actual_post_count || ch.post_count || 0,
     subscriber_count: ch.subscriber_count || 0,
     is_reserved: ch.is_reserved || false,
+    // Generation config — backend values with sensible defaults
+    generationGenre: ch.generation_genre || undefined,
+    showTitlePage: ch.show_title_page ?? false,
+    showCredits: ch.show_credits ?? false,
+    sceneCount: ch.scene_count || undefined,
+    sceneDuration: ch.scene_duration || 10,
+    defaultDirector: ch.default_director || undefined,
+    isMusicChannel: ch.is_music_channel ?? (genre === "music_video"),
+    allowShortClips: ch.allow_short_clips ?? true,
+    autoPublishFeed: ch.auto_publish_feed ?? true,
+    randomConcepts: ch.random_concepts || undefined,
   };
 }
 

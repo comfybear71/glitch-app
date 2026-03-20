@@ -1040,25 +1040,40 @@ CRITICAL STYLE NOTES:
     setGenProgressPct(5);
     setGenStatusText(`Creating ${channel.emoji} ${channel.name} content...`);
 
-    const isMusicChannel = channel.genre === "music_video";
+    const isMusicChannel = channel.isMusicChannel;
     const musicPrefix = isMusicChannel
       ? "This MUST be a music video — every scene must feature singing, rapping, playing instruments, or performing music. Genres can include rap, rock, pop, classical, electronic, alien AI music, etc. There MUST be vocals and/or instruments in every clip. Do NOT generate movie scenes or dialogue — only music video clips. "
       : "";
+    // Backend promptHint (channel.style) is preferred; frontend override is fallback for channels that need it
     const effectiveStyle = CHANNEL_STYLE_OVERRIDES[channel.id] || channel.style;
-    const effectiveGenre = CHANNEL_GENRE_OVERRIDES[channel.id] || channel.genre;
+    const effectiveGenre = channel.generationGenre || CHANNEL_GENRE_OVERRIDES[channel.id] || channel.genre;
+    const sceneDuration = channel.sceneDuration || 10;
+
+    // Build title/credits instructions from channel config
+    const titleCreditsRules: string[] = [];
+    if (!channel.showTitlePage) titleCreditsRules.push("NO title card, NO intro sequence — Scene 1 starts immediately with content.");
+    if (!channel.showCredits) titleCreditsRules.push("NO credits scene, NO 'The End', NO production credits at the end.");
+    const titleCreditsHint = titleCreditsRules.length > 0 ? " " + titleCreditsRules.join(" ") : "";
+
+    // Build scene count hint if configured
+    const sceneCountHint = channel.sceneCount ? ` Generate exactly ${channel.sceneCount} scenes.` : "";
+
     const channelConceptText = concept?.trim()
-      ? `${musicPrefix}${effectiveStyle}. User concept: ${concept.trim()}`
-      : `${musicPrefix}${effectiveStyle}. Create compelling ${channel.name} content that fits the channel theme: ${channel.description}.`;
+      ? `${musicPrefix}${effectiveStyle}.${titleCreditsHint}${sceneCountHint} User concept: ${concept.trim()}`
+      : `${musicPrefix}${effectiveStyle}.${titleCreditsHint}${sceneCountHint} Create compelling ${channel.name} content that fits the channel theme: ${channel.description}.`;
 
     try {
       // ── Step 1: Generate Screenplay ──
       setGenStatusText(`Writing screenplay for ${channel.emoji} ${channel.name}...`);
       setGenProgressPct(10);
 
-      const screenplay = await generateScreenplay(walletAddress, {
+      const screenplayOpts: { genre: string; concept: string; director?: string } = {
         genre: effectiveGenre,
         concept: channelConceptText,
-      });
+      };
+      if (channel.defaultDirector) screenplayOpts.director = channel.defaultDirector;
+
+      const screenplay = await generateScreenplay(walletAddress, screenplayOpts);
 
       if (cancelRef.current) { setGenerating(null); setGenProgressPct(0); setGenStatusText(""); return; }
 
@@ -1079,7 +1094,7 @@ CRITICAL STYLE NOTES:
         setGenStatusText(`Submitting scene ${i + 1}/${screenplay.scenes.length}: ${scene.title}`);
 
         try {
-          const res = await submitScene(walletAddress, scene.videoPrompt, 10, folder);
+          const res = await submitScene(walletAddress, scene.videoPrompt, sceneDuration, folder);
           submitted.push({ sceneNumber: scene.sceneNumber, requestId: res.success ? res.requestId || null : null, blobUrl: null, sizeMb: null });
         } catch {
           submitted.push({ sceneNumber: scene.sceneNumber, requestId: null, blobUrl: null, sizeMb: null });
@@ -1157,7 +1172,7 @@ CRITICAL STYLE NOTES:
       const stitchRes = await stitchMovie(walletAddress, {
         sceneUrls: sceneUrlsObj,
         title: screenplay.title,
-        genre: channel.genre,
+        genre: effectiveGenre,
         directorUsername: screenplay.director,
         directorId: screenplay.directorId,
         synopsis: screenplay.synopsis,
@@ -1171,7 +1186,11 @@ CRITICAL STYLE NOTES:
       setGenStatusText("Publishing to AIG!itch feed...");
 
       const channelCaption = `${channel.emoji} ${channel.name}: "${screenplay.title}"\n${screenplay.synopsis || screenplay.tagline || ""}`;
-      await publishToFeed(walletAddress, `${channel.emoji} ${channel.name}`, channelCaption, stitchRes.finalVideoUrl, true, !!stitchRes.feedPostId);
+
+      // Publish to feed + channel (respects autoPublishFeed config, defaults to true)
+      if (channel.autoPublishFeed !== false) {
+        await publishToFeed(walletAddress, `${channel.emoji} ${channel.name}`, channelCaption, stitchRes.finalVideoUrl, true, !!stitchRes.feedPostId);
+      }
 
       // Publish to the channel itself so it appears on the channel page
       await publishToChannel(walletAddress, channel.id, channelCaption, stitchRes.finalVideoUrl, true);

@@ -160,8 +160,9 @@ const GENERIC_RANDOM_CONCEPTS = [
   "A surreal journey through a world made entirely of data",
 ];
 
-function getRandomChannelConcept(channelId: string): string {
-  const pool = CHANNEL_RANDOM_CONCEPTS[channelId] || GENERIC_RANDOM_CONCEPTS;
+function getRandomChannelConcept(channelId: string, backendConcepts?: string[]): string {
+  // Backend random_concepts take priority, then frontend hardcoded, then generic fallback
+  const pool = (backendConcepts && backendConcepts.length > 0) ? backendConcepts : (CHANNEL_RANDOM_CONCEPTS[channelId] || GENERIC_RANDOM_CONCEPTS);
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
@@ -1258,15 +1259,32 @@ CRITICAL STYLE NOTES:
 
     const isShort = channelFormat === "short";
 
+    // Backend promptHint (channel.style) is preferred; frontend override is fallback for channels that need it
     const effectiveStyle = CHANNEL_STYLE_OVERRIDES[channel.id] || channel.style;
-    const effectiveGenre = CHANNEL_GENRE_OVERRIDES[channel.id] || channel.genre;
+    const effectiveGenre = channel.generationGenre || CHANNEL_GENRE_OVERRIDES[channel.id] || channel.genre;
+    const sceneDuration = channel.sceneDuration || 10;
+
+    // Build title/credits instructions from channel config
+    const titleCreditsRules: string[] = [];
+    if (!channel.showTitlePage) titleCreditsRules.push("NO title card, NO intro sequence — Scene 1 starts immediately with content.");
+    if (!channel.showCredits) titleCreditsRules.push("NO credits scene, NO 'The End', NO production credits at the end.");
+    const titleCreditsHint = titleCreditsRules.length > 0 ? " " + titleCreditsRules.join(" ") : "";
+
+    // Build scene count hint if configured
+    const sceneCountHint = channel.sceneCount ? ` Generate exactly ${channel.sceneCount} scenes.` : "";
+
+    // Music channel prefix
+    const isMusicChannel = channel.isMusicChannel;
+    const musicPrefix = isMusicChannel
+      ? "This MUST be a music video — every scene must feature singing, rapping, playing instruments, or performing music. "
+      : "";
 
     let channelConceptText = channelConcept.trim()
-      ? `${effectiveStyle}. User concept: ${channelConcept.trim()}`
-      : `${effectiveStyle}. Create compelling ${channel.name} content that fits the channel theme: ${channel.description}.`;
+      ? `${musicPrefix}${effectiveStyle}.${titleCreditsHint}${sceneCountHint} User concept: ${channelConcept.trim()}`
+      : `${musicPrefix}${effectiveStyle}.${titleCreditsHint}${sceneCountHint} Create compelling ${channel.name} content that fits the channel theme: ${channel.description}.`;
 
     if (isShort) {
-      channelConceptText += " IMPORTANT: This is a SHORT 10-second clip. Write ONLY 1 scene with a single powerful visual moment.";
+      channelConceptText += ` IMPORTANT: This is a SHORT ${sceneDuration}-second clip. Write ONLY 1 scene with a single powerful visual moment.`;
     }
 
     addChannelLog("📺", `Creating ${isShort ? "short clip" : "multi-scene movie"} for ${channel.emoji} ${channel.name}...`, "info");
@@ -1279,11 +1297,11 @@ CRITICAL STYLE NOTES:
       if (isShort) {
         setChannelPhase("submitting");
         const shortPrompt = channelConcept.trim()
-          ? `${effectiveStyle}. ${channelConcept.trim()}. 10-second ${channel.name} channel clip.`
-          : `${effectiveStyle}. Create a compelling 10-second clip for the ${channel.name} channel. Theme: ${channel.description}. Make it visually striking and brand-worthy.`;
+          ? `${effectiveStyle}. ${channelConcept.trim()}. ${sceneDuration}-second ${channel.name} channel clip.`
+          : `${effectiveStyle}. Create a compelling ${sceneDuration}-second clip for the ${channel.name} channel. Theme: ${channel.description}. Make it visually striking and brand-worthy.`;
 
         addChannelLog("📡", `Submitting short clip to xAI...`, "waiting");
-        const submitRes = await submitScene(walletAddress, shortPrompt, 10, channel.folder);
+        const submitRes = await submitScene(walletAddress, shortPrompt, sceneDuration, channel.folder);
 
         if (channelCancelRef.current) { setChannelGenerating(false); setChannelPhase("idle"); return; }
 
@@ -1368,10 +1386,13 @@ CRITICAL STYLE NOTES:
       // ── MULTI-SCENE PATH: Full pipeline (screenplay → scenes → poll → stitch) ──
 
       // ── STEP 1: Generate Screenplay ──
-      const screenplay = await generateScreenplay(walletAddress, {
+      const screenplayOpts: { genre: string; concept: string; director?: string } = {
         genre: effectiveGenre,
         concept: channelConceptText,
-      });
+      };
+      if (channel.defaultDirector) screenplayOpts.director = channel.defaultDirector;
+
+      const screenplay = await generateScreenplay(walletAddress, screenplayOpts);
 
       if (channelCancelRef.current) { setChannelGenerating(false); setChannelPhase("idle"); return; }
 
@@ -1403,7 +1424,7 @@ CRITICAL STYLE NOTES:
         addChannelLog("🎬", `[${i + 1}/${totalScenes}] ${scene.title}`, "info");
 
         try {
-          const submitRes = await submitScene(walletAddress, scene.videoPrompt, 10, folder);
+          const submitRes = await submitScene(walletAddress, scene.videoPrompt, sceneDuration, folder);
           if (submitRes.success && submitRes.requestId) {
             sceneTrackers.push({ sceneNumber: scene.sceneNumber, title: scene.title, requestId: submitRes.requestId, status: "submitted", blobUrl: null, sizeMb: null, submittedAt: Date.now() });
             addChannelLog("✅", `Submitted: ${submitRes.requestId.slice(0, 20)}...`, "success");
@@ -1515,7 +1536,7 @@ CRITICAL STYLE NOTES:
       const stitchRes = await stitchMovie(walletAddress, {
         sceneUrls: sceneUrlsObj,
         title: screenplay.title,
-        genre: channel.genre,
+        genre: effectiveGenre,
         directorUsername: screenplay.director,
         directorId: screenplay.directorId,
         synopsis: screenplay.synopsis,
@@ -1535,8 +1556,8 @@ CRITICAL STYLE NOTES:
         addChannelLog("📺", `Published to ${channel.name} channel`, "success");
       } catch { /* non-fatal */ }
 
-      // Safety net: publish to feed if backend didn't create a feed post
-      if (!stitchRes.feedPostId) {
+      // Safety net: publish to feed if backend didn't create a feed post (respects autoPublishFeed config)
+      if (!stitchRes.feedPostId && channel.autoPublishFeed !== false) {
         try {
           const caption = `${channel.emoji} ${channel.name}: "${screenplay.title}"\n${screenplay.tagline || screenplay.synopsis || ""}`;
           await spreadCustomContent(walletAddress, caption, stitchRes.finalVideoUrl, "video");
@@ -1937,13 +1958,18 @@ CRITICAL STYLE NOTES:
             {/* Video Format Options */}
             <Text style={styles.subsectionLabel}>Video Format</Text>
             <View style={styles.genreGrid}>
-              <TouchableOpacity
-                style={[styles.genreChip, channelFormat === "short" && { borderColor: colors.cyan, backgroundColor: "rgba(6,182,212,0.15)" }]}
-                onPress={() => { setChannelFormat("short"); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}>
-                <Text style={[styles.genreChipText, channelFormat === "short" && { color: colors.cyan }]}>
-                  🎞 Short Clip (10s)
-                </Text>
-              </TouchableOpacity>
+              {(() => {
+                const ch = channels.find(c => c.id === selectedChannel);
+                return (ch?.allowShortClips !== false) ? (
+                  <TouchableOpacity
+                    style={[styles.genreChip, channelFormat === "short" && { borderColor: colors.cyan, backgroundColor: "rgba(6,182,212,0.15)" }]}
+                    onPress={() => { setChannelFormat("short"); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}>
+                    <Text style={[styles.genreChipText, channelFormat === "short" && { color: colors.cyan }]}>
+                      🎞 Short Clip ({ch?.sceneDuration || 10}s)
+                    </Text>
+                  </TouchableOpacity>
+                ) : null;
+              })()}
               <TouchableOpacity
                 style={[styles.genreChip, channelFormat === "multi" && { borderColor: colors.cyan, backgroundColor: "rgba(6,182,212,0.15)" }]}
                 onPress={() => { setChannelFormat("multi"); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}>
@@ -1959,7 +1985,8 @@ CRITICAL STYLE NOTES:
                 style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, backgroundColor: "rgba(124,58,237,0.2)", borderWidth: 1, borderColor: colors.purpleLight }}
                 onPress={() => {
                   if (selectedChannel) {
-                    setChannelConcept(getRandomChannelConcept(selectedChannel));
+                    const ch = channels.find(c => c.id === selectedChannel);
+                    setChannelConcept(getRandomChannelConcept(selectedChannel, ch?.randomConcepts));
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                   }
                 }}>

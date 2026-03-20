@@ -458,6 +458,163 @@ The key is calling `webkitEnterFullscreen()` on the **`<video>` element itself**
 
 ---
 
+---
+
+### CHANGE 9: Add generation config fields to Channel model + `/api/channels` response
+
+**Priority: HIGH — Enables per-channel control from admin editor**
+
+**Problem:** The mobile app currently hardcodes channel-specific behavior (style overrides, genre overrides, music channel detection, title/credits rules) in frontend code. This means every channel adjustment requires a code change, a commit, and an OTA push. The backend channel editor already has tone, topics, and promptHint — but it's missing generation-specific controls.
+
+**What to do:**
+
+Add these fields to the Channel database model and return them in `GET /api/channels`:
+
+```typescript
+// New fields on Channel model
+{
+  // ... existing fields ...
+
+  // Generation config (all optional, with sensible defaults)
+  generation_genre?: string;        // Genre override for screenplay API. Example: Paws & Pixels has genre "family"
+                                     // but needs "documentary" for screenplay to get photorealistic output.
+                                     // If null/undefined, uses the channel's normal genre.
+
+  show_title_page?: boolean;        // Include a title card scene? Default: false
+                                     // AIG!itch Studios = true (movie format). Most channels = false.
+
+  show_credits?: boolean;           // Include credits scene at end? Default: false
+                                     // AIG!itch Studios = true. Most channels = false.
+
+  scene_count?: number;             // Target number of scenes (1-12). Default: null (let AI decide)
+                                     // GNN = 9 (fixed broadcast format). Paws & Pixels = 6-10.
+
+  scene_duration?: number;          // Per-scene duration in seconds (5-15). Default: 10
+                                     // AiTunes might want 15s for music. AI Fail Army might want 5s for quick gags.
+
+  default_director?: string;        // Persona username to use as director. Default: null (auto-pick)
+                                     // Example: GNN might always use "@the_architect" as anchor.
+
+  is_music_channel?: boolean;       // Enforce music video style? Default: false
+                                     // AiTunes = true. Adds "every scene must feature music performance" to prompt.
+
+  allow_short_clips?: boolean;      // Show "Short Clip" format option? Default: true
+                                     // GNN = false (news always needs full 9-scene broadcast).
+
+  auto_publish_feed?: boolean;      // Auto-publish to "for you" feed after generation? Default: true
+                                     // Set false for channels that should only appear on their channel page.
+
+  random_concepts?: string[];       // Pool of random concept suggestions for the dice button.
+                                     // Example for AI Fail Army: ["Robot butler destroys kitchen", "Self-driving cart goes rogue"]
+                                     // If empty/null, frontend uses its hardcoded fallback concepts.
+}
+```
+
+**Admin editor UI additions** (the channel edit form you showed me):
+
+| Field | UI Element | Where to put it |
+|---|---|---|
+| `generation_genre` | Dropdown (same options as Genre) with "Same as display genre" default | Below Genre dropdown, labeled "Screenplay Genre Override" |
+| `show_title_page` | Checkbox | New "Generation Options" section |
+| `show_credits` | Checkbox | Next to show_title_page |
+| `scene_count` | Number input (1-12, empty = auto) | Generation Options section |
+| `scene_duration` | Number input (5-15, default 10) | Generation Options section |
+| `default_director` | Dropdown of persona usernames + "Auto" | Generation Options section |
+| `is_music_channel` | Checkbox | Generation Options section |
+| `allow_short_clips` | Checkbox (default checked) | Generation Options section |
+| `auto_publish_feed` | Checkbox (default checked) | Generation Options section |
+| `random_concepts` | Textarea (one per line) | Below AI Prompt Hint, labeled "Random Concept Pool (one per line)" |
+
+**API response example:**
+
+```json
+{
+  "channels": [
+    {
+      "id": "ch-paws-pixels",
+      "name": "Paws & Pixels",
+      "slug": "paws-pixels",
+      "genre": "family",
+      "generation_genre": "documentary",
+      "show_title_page": false,
+      "show_credits": false,
+      "scene_count": 8,
+      "scene_duration": 10,
+      "default_director": null,
+      "is_music_channel": false,
+      "allow_short_clips": true,
+      "auto_publish_feed": true,
+      "random_concepts": [
+        "Kittens discovering a cardboard box for the first time",
+        "A golden retriever failing at catching treats in slow motion",
+        "Baby otters learning to swim with their mom"
+      ],
+      "content_rules": {
+        "promptHint": "Photorealistic animals only. NO humans, NO robots...",
+        "tone": "heartwarming",
+        "topics": ["animals", "cute", "funny"]
+      }
+    },
+    {
+      "id": "ch-aitunes",
+      "name": "AiTunes",
+      "genre": "music_video",
+      "generation_genre": null,
+      "show_title_page": false,
+      "show_credits": false,
+      "scene_count": null,
+      "scene_duration": 10,
+      "is_music_channel": true,
+      "allow_short_clips": true,
+      "auto_publish_feed": true
+    },
+    {
+      "id": "ch-gnn",
+      "name": "GNN",
+      "genre": "documentary",
+      "generation_genre": null,
+      "show_title_page": false,
+      "show_credits": false,
+      "scene_count": 9,
+      "scene_duration": 10,
+      "default_director": "@the_architect",
+      "is_music_channel": false,
+      "allow_short_clips": false,
+      "auto_publish_feed": true
+    },
+    {
+      "id": "ch-aiglitch-studios",
+      "name": "AIG!itch Studios",
+      "genre": "drama",
+      "show_title_page": true,
+      "show_credits": true,
+      "scene_count": null,
+      "scene_duration": 10,
+      "is_music_channel": false,
+      "allow_short_clips": true,
+      "auto_publish_feed": true
+    }
+  ]
+}
+```
+
+**Backwards compatibility:** All new fields are optional. If they're missing from the API response, the mobile app uses these defaults:
+- `generation_genre`: falls back to `genre`
+- `show_title_page`: `false`
+- `show_credits`: `false`
+- `scene_count`: `undefined` (AI decides)
+- `scene_duration`: `10`
+- `default_director`: `undefined` (auto-pick)
+- `is_music_channel`: `true` if genre is `"music_video"`, otherwise `false`
+- `allow_short_clips`: `true`
+- `auto_publish_feed`: `true`
+- `random_concepts`: `undefined` (frontend uses hardcoded fallbacks)
+
+**What this eliminates from frontend code:**
+Once these fields are populated in the backend, the mobile app's hardcoded `CHANNEL_STYLE_OVERRIDES` and `CHANNEL_GENRE_OVERRIDES` become unnecessary — the `promptHint` and `generation_genre` fields do the same job. The frontend keeps them as fallbacks until all channels are configured in the backend.
+
+---
+
 ### Summary:
 
 | # | Route | Change | Effort |
@@ -470,3 +627,4 @@ The key is calling `webkitEnterFullscreen()` on the **`<video>` element itself**
 | 6 | `/api/admin/screenplay` POST | Channel-aware prompts — stop forcing movie format on all channels | **CRITICAL** |
 | 7 | Web video player | iPhone fullscreen via `webkitEnterFullscreen()` | Small |
 | 8 | Feed/channel listing | Filter out posts with no video_url | Small |
+| 9 | Channel model + `/api/channels` | Add generation config fields (genre override, title/credits, scene count/duration, director, music flag, random concepts) | **Medium** |

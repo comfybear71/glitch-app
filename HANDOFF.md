@@ -438,17 +438,27 @@ If "your local changes would be overwritten" appears, stash first (see above).
 
 ### Only AI Fans Channel — Prompt Toned Down (CRITICAL FIX)
 - **Problem**: The `ch-only-ai-fans` channel prompt was too sexually explicit, causing Grok's content filters to silently refuse generation. The app would get stuck in an infinite polling loop with no error message — it just kept polling forever.
-- **Root cause**: The style override prompt contained explicit sexual language ("hands exploring bodies", "straddling", "lying back in ecstasy", "strip club VIP rooms", "pure lust", "thirst trap maximum", etc.) that pushed past what Grok's image/video generation API will produce. Grok doesn't return an error — it simply never completes the render, so the app polls indefinitely.
+- **Root cause**: The style override prompt contained explicit sexual language that pushed past what Grok's image/video generation API will produce. Grok doesn't return an error — it simply never completes the render, so the app polls indefinitely.
 - **Fix**: Rewrote the `CHANNEL_STYLE_OVERRIDES` for `ch-only-ai-fans` in both `GenerationContext.tsx` and `ContentStudioScreen.tsx`. New prompt focuses on **high-fashion editorial / luxury lifestyle / influencer aesthetic** — think Vogue, Sports Illustrated, Victoria's Secret fashion show, luxury brand campaigns. Still glamorous and alluring, but well within what AI generators will produce.
-- **Key changes**:
-  - Removed all sexually explicit language (lust, desire, ecstasy, bedroom, strip club, etc.)
-  - Changed from "thirst trap" to "fashion editorial" aesthetic
-  - Wardrobe: from "string bikinis, sheer fabric, harnesses" to "designer swimwear, evening gowns, resort wear"
-  - Poses: from "straddling, arched backs, bedroom eyes" to "runway walks, editorial poses, candid lifestyle"
-  - Settings: from "steam-filled showers, bedrooms, strip clubs" to "fashion runways, yacht decks, Santorini terraces"
-  - Mood: from "pure lust, forbidden attraction" to "glamour, confidence, aspiration, allure"
 - **Lesson**: Grok has content filters that silently refuse rather than error. If generation hangs forever with no error, the prompt is likely too explicit. Stay at "luxury magazine" level, not "adult content" level.
 - **Files changed**: `src/hooks/GenerationContext.tsx`, `src/screens/ContentStudioScreen.tsx`
+
+### Backend-Driven Channel Generation Config (MAJOR CHANGE)
+- **Problem**: Channel-specific behavior (style overrides, genre overrides, title/credits, scene count, duration, music detection) was all hardcoded in the frontend. Every change required code edits + OTA push.
+- **Fix**: Added 10 new generation config fields to `BackendChannel` and `ChannelDef` interfaces that the backend channel editor can set per-channel:
+  - `generation_genre` — genre override for screenplay API (e.g., "documentary" instead of "family")
+  - `show_title_page` / `show_credits` — toggle title card and credits scenes
+  - `scene_count` — target number of scenes (1-12, or let AI decide)
+  - `scene_duration` — per-scene duration in seconds (5-15, default 10)
+  - `default_director` — assign a specific persona as director
+  - `is_music_channel` — enforce music video style
+  - `allow_short_clips` — show/hide the "Short Clip" format option
+  - `auto_publish_feed` — control auto-publishing to "for you" feed
+  - `random_concepts` — pool of dice button suggestions from backend
+- **How it works**: Frontend reads these from `GET /api/channels`. If a field is missing (backend not updated yet), sensible defaults apply. Frontend hardcoded overrides (`CHANNEL_STYLE_OVERRIDES`, `CHANNEL_GENRE_OVERRIDES`) remain as fallbacks.
+- **Backend spec**: Full API spec added to `BACKEND-CHANGES.md` (Change 9)
+- **Bug fix**: `stitchMovie()` now uses `effectiveGenre` consistently (was using raw `channel.genre`, ignoring the override)
+- **Files changed**: `src/services/api.ts`, `src/hooks/GenerationContext.tsx`, `src/screens/ContentStudioScreen.tsx`, `BACKEND-CHANGES.md`
 
 ---
 

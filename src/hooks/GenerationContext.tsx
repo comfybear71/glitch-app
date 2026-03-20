@@ -580,6 +580,9 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
         director: director && director !== "auto" ? director : undefined,
         concept: concept || undefined,
       });
+      // Ensure director fields are populated — backend may return empty
+      if (!screenplay.director) screenplay.director = director || "AIG!itch Studios";
+      if (!screenplay.directorId) screenplay.directorId = director || "aiglitch-studios";
       if (cancelRef.current) { setGenerating(null); return; }
 
       const totalScenes = screenplay.scenes.length;
@@ -798,6 +801,9 @@ CRITICAL STYLE NOTES:
         director: "david_attenborough_ai",
         concept: newsConcept,
       });
+      // Ensure director fields are populated — backend may return empty
+      if (!screenplay.director) screenplay.director = "david_attenborough_ai";
+      if (!screenplay.directorId) screenplay.directorId = "david_attenborough_ai";
       console.log("[NEWS] Screenplay received:", JSON.stringify({
         title: screenplay.title,
         scenes: screenplay.scenes.length,
@@ -1064,6 +1070,9 @@ CRITICAL STYLE NOTES:
       if (channel.defaultDirector && channel.showDirector) screenplayOpts.director = channel.defaultDirector;
 
       const screenplay = await generateScreenplay(walletAddress, screenplayOpts);
+      // Ensure director fields are populated — backend may return empty when no director was requested
+      if (!screenplay.director) screenplay.director = "AIG!itch Studios";
+      if (!screenplay.directorId) screenplay.directorId = "aiglitch-studios";
       // Prefix title with channel name (e.g. "AI Fail Army - Robot Kitchen Disaster")
       screenplay.title = `${channel.name} - ${screenplay.title}`;
 

@@ -1,6 +1,6 @@
 # HANDOFF.md — AI G!itch App Project Status
 
-Last updated: 2026-03-20 (Session 16 — Backend-driven generation config, hardcoded overrides removed, chat channel gen fixed)
+Last updated: 2026-03-20 (Session 17 — Fixed empty director fields crashing stitch for all channels, added validation)
 
 ## Project Overview
 
@@ -498,6 +498,17 @@ If "your local changes would be overwritten" appears, stash first (see above).
   - Humans still appeared in initial test (before the prompt fix was pushed)
   - Social posting may not be working for single clips — under investigation
 - Longer clip generation test in progress
+
+### Fixed — Session 17: Empty Director Fields Crashing Stitch
+
+**Root cause**: When a channel doesn't have `showDirector` enabled or `defaultDirector` set, the screenplay request omits the director. The backend could then return empty `director`/`directorId` fields. These empty values were passed directly to `stitchMovie`, which requires them — causing "Missing required fields" errors after all 8 scenes rendered successfully.
+
+**Fix (3 parts)**:
+1. **Fallback director values**: After every `generateScreenplay()` call (movie, news, channel — in both ContentStudioScreen.tsx and GenerationContext.tsx), we now check for empty `director`/`directorId` and set sensible defaults (e.g. "AIG!itch Studios" / "aiglitch-studios")
+2. **Pre-flight validation in `stitchMovie()`** (api.ts): Before sending the API request, validates all required fields and throws a descriptive error listing exactly which fields are missing and their current values
+3. **Removed conditional director logic**: The channel stitch call in ContentStudioScreen.tsx was conditionally omitting director based on `showDirector` — now always sends it (showDirector only controls UI display, not API payload)
+
+**Files changed**: `src/services/api.ts`, `src/screens/ContentStudioScreen.tsx`, `src/hooks/GenerationContext.tsx`
 
 ### Known Issues Being Investigated (Session 15)
 - **Humans in Paws & Pixels**: Prompt fix has been pushed but not yet confirmed on device (user testing longer clip)

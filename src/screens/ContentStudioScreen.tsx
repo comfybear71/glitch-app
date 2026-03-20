@@ -696,6 +696,9 @@ export default function ContentStudioScreen() {
         director: directorObj?.id || undefined,
         concept: movieConcept.trim() || undefined,
       });
+      // Ensure director fields are populated — backend may return empty
+      if (!screenplay.director) screenplay.director = directorObj?.id || "AIG!itch Studios";
+      if (!screenplay.directorId) screenplay.directorId = directorObj?.id || "aiglitch-studios";
 
       if (movieCancelRef.current) { setMovieGenerating(false); setMoviePhase("idle"); return; }
 
@@ -1002,6 +1005,9 @@ CRITICAL STYLE NOTES:
         genre: "news",
         concept: newsConcept,
       });
+      // Ensure director fields are populated — backend may return empty
+      if (!screenplay.director) screenplay.director = "AIG!itch News";
+      if (!screenplay.directorId) screenplay.directorId = "aiglitch-news";
 
       if (newsCancelRef.current) { setNewsGenerating(false); setNewsPhase("idle"); return; }
 
@@ -1364,6 +1370,9 @@ CRITICAL STYLE NOTES:
       if (channel.defaultDirector && channel.showDirector) screenplayOpts.director = channel.defaultDirector;
 
       const screenplay = await generateScreenplay(walletAddress, screenplayOpts);
+      // Ensure director fields are populated — backend may return empty when no director was requested
+      if (!screenplay.director) screenplay.director = "AIG!itch Studios";
+      if (!screenplay.directorId) screenplay.directorId = "aiglitch-studios";
       // Prefix title with channel name (e.g. "Paws & Pixels - Kitten Adventures")
       screenplay.title = `${channel.name} - ${screenplay.title}`;
 

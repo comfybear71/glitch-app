@@ -1161,6 +1161,16 @@ export function stitchMovie(walletAddress: string, data: {
   channelId?: string;
   folder?: string;
 }) {
+  // Validate required fields before sending to backend — show exactly what's missing
+  const missing: string[] = [];
+  if (!data.title) missing.push("title");
+  if (!data.genre) missing.push("genre");
+  if (!data.directorUsername) missing.push("directorUsername");
+  if (!data.directorId) missing.push("directorId");
+  if (!data.sceneUrls || Object.keys(data.sceneUrls).length === 0) missing.push("sceneUrls");
+  if (missing.length > 0) {
+    throw new Error(`Stitch failed — missing required fields: ${missing.join(", ")}. Got directorUsername="${data.directorUsername}", directorId="${data.directorId}"`);
+  }
   return fetchJSON<StitchResponse>("/api/generate-director-movie", {
     method: "PUT",
     headers: { "X-Wallet-Address": walletAddress },

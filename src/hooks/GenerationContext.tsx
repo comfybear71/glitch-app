@@ -8,7 +8,7 @@ import {
   generateScreenplay, submitScene, pollScene, stitchMovie,
   getBriefing, spreadCustomContent, getSpreadHistory,
   GENRE_FOLDER_MAP, ScreenplayResponse, Message,
-  CHANNELS, ChannelDef,
+  CHANNELS, ChannelDef, fetchChannels, toChannelDef,
 } from "../services/api";
 
 export interface SocialLink {
@@ -252,7 +252,7 @@ interface GenerationContextType {
   runHeroGeneration: (walletAddress: string) => void;
   runMovieGeneration: (walletAddress: string, director?: string, genre?: string, concept?: string) => void;
   runNewsGeneration: (walletAddress: string, topic?: string) => void;
-  runChannelGeneration: (walletAddress: string, channelId: string, concept?: string) => void;
+  runChannelGeneration: (walletAddress: string, channelIdOrDef: string | ChannelDef, concept?: string) => void;
 }
 
 const GenerationContext = createContext<GenerationContextType>({
@@ -1029,10 +1029,27 @@ CRITICAL STYLE NOTES:
   };
 
   // ── Channel Content Generation (same pipeline as movies but for channel-specific content) ──
-  const runChannelGeneration = useCallback(async (walletAddress: string, channelId: string, concept?: string) => {
+  const runChannelGeneration = useCallback(async (walletAddress: string, channelIdOrDef: string | ChannelDef, concept?: string) => {
     if (generating) return;
-    const channel = CHANNELS.find(ch => ch.id === channelId);
-    if (!channel) { console.warn("[CHANNEL] Unknown channel:", channelId); return; }
+
+    // Accept either a channel ID (string) or a full ChannelDef object
+    let channel: ChannelDef | undefined;
+    if (typeof channelIdOrDef === "string") {
+      // Try local cache first, then fetch from API
+      channel = CHANNELS.find(ch => ch.id === channelIdOrDef);
+      if (!channel) {
+        try {
+          const backendChannels = await fetchChannels();
+          const backendCh = backendChannels.find(ch => ch.id === channelIdOrDef);
+          if (backendCh) channel = toChannelDef(backendCh);
+        } catch (e) {
+          console.warn("[CHANNEL] Failed to fetch channels:", e);
+        }
+      }
+    } else {
+      channel = channelIdOrDef;
+    }
+    if (!channel) { console.warn("[CHANNEL] Unknown channel:", channelIdOrDef); return; }
 
     Keyboard.dismiss();
     setGenerating("channel");

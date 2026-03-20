@@ -23,7 +23,7 @@ import {
   getOnChainBalances, getMessages, sendMessage, sendImageMessage, saveGeneratedMessage,
   getBriefing, sendPostFeedback,
   Bestie, OnChainBalances, Message, TrendingPost, FeedbackAction,
-  CHANNELS,
+  ChannelDef, fetchChannels, toChannelDef,
 } from "../services/api";
 import CosmicVisualizer from "../components/CosmicVisualizer";
 import { useGeneration, SocialLink } from "../hooks/GenerationContext";
@@ -187,6 +187,7 @@ export default function HomeScreen() {
   // Inline channel picker state
   const [showChannelPicker, setShowChannelPicker] = useState(false);
   const [channelPickerConcept, setChannelPickerConcept] = useState("");
+  const [homeChannels, setHomeChannels] = useState<ChannelDef[]>([]);
 
   const [hasMore, setHasMore] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
@@ -787,8 +788,11 @@ export default function HomeScreen() {
         } else if (imgLimitReached) {
           // Already showed limit message above — skip generation
         } else if (combined.includes("channel content") || combined.includes("channel video") || combined.includes("create channel") || combined.includes("make channel") || combined.includes("generate channel")) {
-          // Show channel picker
+          // Show channel picker — fetch channels if not loaded yet
           Keyboard.dismiss();
+          if (homeChannels.length === 0) {
+            fetchChannels().then(chs => setHomeChannels(chs.map(toChannelDef))).catch(() => {});
+          }
           setShowChannelPicker(true);
           setChannelPickerConcept(text);
         } else if (combined.includes("breaking news") || combined.includes("news broadcast") || combined.includes("newscast") || combined.includes("news report") || combined.includes("news anchor") || combined.includes("news bulletin")) {
@@ -2054,7 +2058,7 @@ export default function HomeScreen() {
 
               {/* Channel grid */}
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
-                {CHANNELS.map(ch => (
+                {homeChannels.map(ch => (
                   <TouchableOpacity
                     key={ch.id}
                     style={{
@@ -2082,7 +2086,8 @@ export default function HomeScreen() {
                   setShowChannelPicker(false);
                   const selectedId = channelPickerConcept;
                   setChannelPickerConcept("");
-                  if (walletAddress && selectedId) ctxRunChannel(walletAddress, selectedId);
+                  const selectedCh = homeChannels.find(c => c.id === selectedId);
+                  if (walletAddress && selectedCh) ctxRunChannel(walletAddress, selectedCh);
                 }}>
                 <Text style={{ color: colors.cyan, fontSize: 16, fontWeight: "800" }}>Create Channel Content</Text>
               </TouchableOpacity>

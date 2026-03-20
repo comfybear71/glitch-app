@@ -896,10 +896,11 @@ export interface BackendChannel {
   updated_at: string;
   subscribed?: boolean;
   personas?: any[];
-  // ── Generation config fields (set via channel editor — 9 columns on channels table) ──
+  // ── Generation config fields (set via channel editor — 10 columns on channels table) ──
   generation_genre?: string;        // genre override for screenplay API (e.g. "photorealistic" for Paws & Pixels)
-  show_title_page?: boolean;        // include a title card scene (default: true)
-  show_credits?: boolean;           // include a credits scene at the end (default: true)
+  show_title_page?: boolean;        // include a title card scene (default: false)
+  show_director?: boolean;          // show director name in title card and captions (default: false)
+  show_credits?: boolean;           // include a credits scene at the end (default: false)
   scene_count?: number;             // target number of scenes (1-12, null = let AI decide)
   scene_duration?: number;          // per-scene duration in seconds (5-15, default: 10)
   default_director?: string;        // persona username to use as director (null = auto-pick)
@@ -925,8 +926,9 @@ export interface ChannelDef {
   is_reserved: boolean;
   // ── Generation config (from backend channel editor, with sensible defaults) ──
   generationGenre?: string;        // genre override for screenplay API (falls back to genre)
-  showTitlePage: boolean;          // include title card scene (backend default: true)
-  showCredits: boolean;            // include credits scene (backend default: true)
+  showTitlePage: boolean;          // include title card scene (default: false)
+  showDirector: boolean;           // show director name in title card/captions (default: false)
+  showCredits: boolean;            // include credits scene (default: false)
   sceneCount?: number;             // target scene count (undefined = let AI decide)
   sceneDuration: number;           // per-scene duration in seconds (default: 10)
   defaultDirector?: string;        // persona username for director (undefined = auto-pick)
@@ -978,10 +980,11 @@ export function toChannelDef(ch: BackendChannel): ChannelDef {
     post_count: ch.actual_post_count || ch.post_count || 0,
     subscriber_count: ch.subscriber_count || 0,
     is_reserved: ch.is_reserved || false,
-    // Generation config — backend values with sensible defaults
+    // Generation config — backend values with sensible defaults (all flags default false)
     generationGenre: ch.generation_genre || undefined,
-    showTitlePage: ch.show_title_page ?? true,
-    showCredits: ch.show_credits ?? true,
+    showTitlePage: ch.show_title_page === true,
+    showDirector: ch.show_director === true,
+    showCredits: ch.show_credits === true,
     sceneCount: ch.scene_count || undefined,
     sceneDuration: ch.scene_duration || 10,
     defaultDirector: ch.default_director || undefined,

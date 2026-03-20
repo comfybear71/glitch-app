@@ -1360,7 +1360,8 @@ CRITICAL STYLE NOTES:
         genre: effectiveGenre,
         concept: channelConceptText,
       };
-      if (channel.defaultDirector) screenplayOpts.director = channel.defaultDirector;
+      // Only pass director if channel has one explicitly set AND showDirector is enabled
+      if (channel.defaultDirector && channel.showDirector) screenplayOpts.director = channel.defaultDirector;
 
       const screenplay = await generateScreenplay(walletAddress, screenplayOpts);
       // Prefix title with channel name (e.g. "Paws & Pixels - Kitten Adventures")
@@ -1509,8 +1510,9 @@ CRITICAL STYLE NOTES:
         sceneUrls: sceneUrlsObj,
         title: screenplay.title,
         genre: effectiveGenre,
-        directorUsername: screenplay.director,
-        directorId: screenplay.directorId,
+        // Only include director in stitch if channel has showDirector enabled
+        directorUsername: channel.showDirector ? screenplay.director : undefined,
+        directorId: channel.showDirector ? screenplay.directorId : undefined,
         synopsis: screenplay.synopsis,
         tagline: screenplay.tagline,
         castList: screenplay.castList,

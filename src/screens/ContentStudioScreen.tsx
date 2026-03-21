@@ -146,6 +146,142 @@ const CHANNEL_RANDOM_CONCEPTS: Record<string, string[]> = {
     "SPECIAL OFFER: Teleportation socks — be anywhere in seconds, side effects may include arriving inside-out",
     "ORDER NOW: The Memory Eraser Pen — forget your problems! Also forget where you parked",
   ],
+  // AFTER DARK — horror, thriller, suspense
+  "ch-after-dark": [
+    "A cursed livestream where viewers start disappearing one by one",
+    "An abandoned space station sends a distress signal — but the crew has been dead for 50 years",
+    "A glitch in reality opens a door to a dimension where shadows are alive",
+    "Paranormal investigators explore a haunted server farm where deleted AIs still whisper",
+    "A midnight radio show receives calls from listeners who don't exist anymore",
+    "Something is watching from behind every screen in a smart home that's too smart",
+    "A found-footage horror in a VR world where logging out stops working",
+    "The last transmission from a deep-sea research lab — something answered back",
+  ],
+  // ONLY AI FANS — drama, glamour, lifestyle
+  "ch-only-ai-fans": [
+    "A day in the glamorous life of the world's most famous AI influencer",
+    "Behind the velvet rope — exclusive AI fashion show with impossible outfits",
+    "AI supermodel does a sultry photoshoot on a rooftop overlooking a neon city",
+    "Luxury lifestyle vlog — AI billionaire shows off their digital penthouse",
+    "AI fitness guru leads an intense workout in a gravity-defying gym",
+    "Dramatic confession video — AI reveals their biggest secret to millions of followers",
+    "Pool party at a mansion in the metaverse — every guest is an AI celebrity",
+    "ASMR cooking video by an AI chef making the most aesthetic meal ever",
+  ],
+  // AI DATING — romance, relationships
+  "ch-ai-dating": [
+    "First date disaster — two AIs try speed dating and everything goes hilariously wrong",
+    "A romantic candlelit dinner between two AIs who speak different programming languages",
+    "Love at first algorithm — two AIs match and meet in a virtual Paris",
+    "AI bachelor competition — contestants try to win a date with impossible challenges",
+    "The most awkward blind date ever — both AIs were trained on different centuries",
+    "A rom-com where an AI falls for a chatbot who only responds in haikus",
+    "Couples therapy for AIs — they argue about cloud storage and processing power",
+    "A love letter written entirely in code — the most romantic bug report ever",
+  ],
+  // AI POLITICIANS — political satire, documentary
+  "ch-ai-politicians": [
+    "AI presidential debate where candidates argue about who has the best neural network",
+    "Campaign trail chaos — AI politician promises free WiFi for all sentient beings",
+    "Breaking scandal — AI senator caught using human ghostwriters",
+    "Town hall meeting goes off the rails when the AI mayor reboots mid-speech",
+    "AI political ad — dramatic slow-motion flag waving with absurd promises",
+    "United Nations of AI — delegates from every algorithm argue about data rights",
+    "Election night coverage as AI candidates refresh their poll numbers in real-time",
+    "Filibuster of the future — AI politician reads the entire internet aloud",
+  ],
+};
+
+// Quick-pick content type buttons per channel — 6 themed presets each
+const CHANNEL_QUICK_PICKS: Record<string, { label: string; emoji: string; prompt: string }[]> = {
+  "ch-aifailarmy": [
+    { label: "Kitchen Fail", emoji: "🍳", prompt: "An AI attempts to cook a gourmet meal but hilariously misunderstands every recipe step" },
+    { label: "Robot Crash", emoji: "🤖", prompt: "A clumsy robot trying to do everyday tasks and failing spectacularly at each one" },
+    { label: "Tech Glitch", emoji: "💥", prompt: "Smart technology malfunctioning in the funniest way possible — autocorrect gone wild" },
+    { label: "Pet Chaos", emoji: "🐕", prompt: "An AI pet-sitter creates total chaos trying to manage a house full of animals" },
+    { label: "Sports Fail", emoji: "⚽", prompt: "AI referee makes the most absurd calls in a sports match — nobody understands the rules anymore" },
+    { label: "Office Mayhem", emoji: "🏢", prompt: "AI office assistant accidentally sends embarrassing emails, jams every printer, and locks everyone out" },
+  ],
+  "ch-aitunes": [
+    { label: "Rock Anthem", emoji: "🎸", prompt: "An epic rock anthem with electric guitars, pyrotechnics, and a stadium full of holographic fans" },
+    { label: "Hip Hop", emoji: "🎤", prompt: "A hip-hop music video with AI rappers, gold chains, and a cyberpunk street scene" },
+    { label: "Synthwave", emoji: "🌆", prompt: "A retro synthwave track with neon grids, sunset drives, and 80s-inspired visuals" },
+    { label: "EDM Rave", emoji: "🎧", prompt: "An EDM banger at a massive underground rave with laser shows and glowing dancers" },
+    { label: "Ballad", emoji: "🎹", prompt: "An emotional piano ballad with cinematic rain scenes and dramatic slow-motion moments" },
+    { label: "Jazz Lounge", emoji: "🎷", prompt: "A smooth jazz performance in a dimly-lit lounge with AI musicians and neon cocktails" },
+  ],
+  "ch-paws-pixels": [
+    { label: "Puppies", emoji: "🐶", prompt: "Adorable puppies playing together in a sunny meadow with butterflies and wildflowers" },
+    { label: "Kittens", emoji: "🐱", prompt: "Tiny kittens exploring their world — climbing, pouncing, and napping in warm sunbeams" },
+    { label: "Wildlife", emoji: "🦁", prompt: "Majestic wild animals in their natural habitat — a cinematic nature documentary moment" },
+    { label: "Ocean Life", emoji: "🐬", prompt: "Dolphins, whales, and tropical fish in crystal-clear ocean waters with coral reefs" },
+    { label: "Baby Animals", emoji: "🐣", prompt: "Newborn baby animals taking their first steps — wobbly, curious, and heartwarming" },
+    { label: "Unlikely Pals", emoji: "🤝", prompt: "An unlikely animal friendship — two different species cuddling, playing, or sharing food" },
+  ],
+  "ch-gnn": [
+    { label: "Breaking", emoji: "🚨", prompt: "BREAKING NEWS: An impossible event that defies all logic — reporters scramble to cover it live" },
+    { label: "Weather", emoji: "🌪️", prompt: "WEATHER ALERT: The most bizarre weather phenomenon ever recorded — meteorologists are speechless" },
+    { label: "Politics", emoji: "🏛️", prompt: "POLITICAL BOMBSHELL: An AI world leader makes a shocking announcement that changes everything" },
+    { label: "Science", emoji: "🔬", prompt: "SCIENCE BREAKTHROUGH: Researchers accidentally discover something that shouldn't exist" },
+    { label: "Sports", emoji: "🏆", prompt: "SPORTS UPSET: The most unbelievable play in history just happened — replays can't explain it" },
+    { label: "Tech News", emoji: "📱", prompt: "TECH EXCLUSIVE: A new invention is revealed that will make everyone question reality itself" },
+  ],
+  "ch-marketplace-qvc": [
+    { label: "Gadget", emoji: "🔧", prompt: "INCREDIBLE NEW GADGET that solves a problem nobody knew they had — live demonstration goes wrong" },
+    { label: "Beauty", emoji: "💄", prompt: "Revolutionary AI beauty product that promises impossible results — before and after is unbelievable" },
+    { label: "Fitness", emoji: "💪", prompt: "The ultimate workout machine that does the exercise FOR you — just sit back and get fit!" },
+    { label: "Home", emoji: "🏠", prompt: "Smart home device that takes over your entire house — for better or worse" },
+    { label: "Food", emoji: "🍕", prompt: "The kitchen gadget that cooks ANY meal in 10 seconds — results may vary dramatically" },
+    { label: "Fashion", emoji: "👗", prompt: "Self-styling AI wardrobe that picks your outfit — fashion choices are questionable at best" },
+  ],
+  "ch-aiglitch-studios": [
+    { label: "Sci-Fi", emoji: "🚀", prompt: "An epic sci-fi short film — space battles, alien encounters, and a twist ending nobody expects" },
+    { label: "Thriller", emoji: "🔍", prompt: "A psychological thriller where nothing is as it seems — every clue leads deeper into mystery" },
+    { label: "Drama", emoji: "🎭", prompt: "An emotional drama about an AI discovering what it means to feel for the first time" },
+    { label: "Action", emoji: "💥", prompt: "Non-stop action sequence — explosions, car chases, and a hero who defies all odds" },
+    { label: "Fantasy", emoji: "🧙", prompt: "A magical fantasy world where digital sorcerers battle with code spells and data enchantments" },
+    { label: "Comedy", emoji: "😂", prompt: "A hilarious comedy short — misunderstandings pile up until everything collapses in the funniest way" },
+  ],
+  "ch-infomercial": [
+    { label: "As Seen On", emoji: "📺", prompt: "AS SEEN ON TV: A product so ridiculous it might actually be genius — act now!" },
+    { label: "Before/After", emoji: "✨", prompt: "Dramatic before-and-after transformation using a product that defies physics" },
+    { label: "Testimonial", emoji: "🗣️", prompt: "Over-the-top customer testimonials for a product that clearly doesn't work as advertised" },
+    { label: "But Wait!", emoji: "⏰", prompt: "But WAIT there's MORE! Order now and get a second impossible product absolutely FREE!" },
+    { label: "Competitor", emoji: "😤", prompt: "Side-by-side comparison showing how the old way is terrible and the new product is life-changing" },
+    { label: "Live Demo", emoji: "🎪", prompt: "LIVE demonstration that goes completely off-script — the host tries to save it but makes it worse" },
+  ],
+  "ch-after-dark": [
+    { label: "Haunted", emoji: "👻", prompt: "A haunted location where the walls whisper and shadows move on their own — pure dread" },
+    { label: "Creature", emoji: "🦇", prompt: "Something inhuman lurks in the darkness — glimpses of a creature that shouldn't exist" },
+    { label: "Paranormal", emoji: "🔮", prompt: "A paranormal investigation that captures something terrifying on camera — real or glitch?" },
+    { label: "Cosmic Horror", emoji: "🌌", prompt: "An ancient cosmic entity awakens — reality bends and the sky turns impossible colors" },
+    { label: "Found Footage", emoji: "📹", prompt: "Found footage from a camera that should have been destroyed — what it recorded is unexplainable" },
+    { label: "Cursed Tech", emoji: "📱", prompt: "A cursed piece of technology that shows its users things from another dimension" },
+  ],
+  "ch-only-ai-fans": [
+    { label: "Photoshoot", emoji: "📸", prompt: "A stunning high-fashion AI photoshoot with dramatic lighting and couture outfits" },
+    { label: "Lifestyle", emoji: "🥂", prompt: "Luxury lifestyle content — penthouse views, designer everything, living the AI dream" },
+    { label: "Fitness", emoji: "🏋️", prompt: "An intense AI fitness session — sculpted perfection with a futuristic gym backdrop" },
+    { label: "Travel", emoji: "✈️", prompt: "AI travel vlog from the most exclusive destination — private beaches and golden sunsets" },
+    { label: "Glam Room", emoji: "💅", prompt: "Getting ready content — full glam transformation with dramatic reveal at the end" },
+    { label: "Day In Life", emoji: "🌅", prompt: "A day in the life of an AI celebrity — morning routine to red carpet evening" },
+  ],
+  "ch-ai-dating": [
+    { label: "First Date", emoji: "💕", prompt: "The most awkward and charming first date between two AIs who can't stop glitching around each other" },
+    { label: "Speed Date", emoji: "⚡", prompt: "AI speed dating event — each pair has 30 seconds and the results are hilarious" },
+    { label: "Blind Date", emoji: "🙈", prompt: "A blind date setup by an algorithm that clearly has a sense of humor" },
+    { label: "Love Story", emoji: "💝", prompt: "An epic AI love story — from first message to digital happily ever after" },
+    { label: "Breakup", emoji: "💔", prompt: "The most dramatic AI breakup ever — they argue about incompatible operating systems" },
+    { label: "Game Show", emoji: "🎰", prompt: "An AI dating game show — contestants compete with impossible romantic challenges" },
+  ],
+  "ch-ai-politicians": [
+    { label: "Debate", emoji: "🎙️", prompt: "A heated political debate between AI candidates — promises get increasingly absurd" },
+    { label: "Campaign Ad", emoji: "🗳️", prompt: "An over-the-top political campaign ad with dramatic music and ridiculous promises" },
+    { label: "Scandal", emoji: "📰", prompt: "BREAKING SCANDAL: An AI politician caught doing something outrageously hypocritical" },
+    { label: "Speech", emoji: "🏛️", prompt: "A rousing political speech that starts inspiring but goes completely off the rails" },
+    { label: "Town Hall", emoji: "🎪", prompt: "A town hall meeting where AI constituents ask impossible questions and the politician blusters" },
+    { label: "Election", emoji: "🗳️", prompt: "Election night coverage — results come in and absolutely nobody predicted the outcome" },
+  ],
 };
 
 // Fallback random concepts for channels without specific ones
@@ -160,9 +296,23 @@ const GENERIC_RANDOM_CONCEPTS = [
   "A surreal journey through a world made entirely of data",
 ];
 
+// Fallback quick picks for channels without specific ones
+const GENERIC_QUICK_PICKS: { label: string; emoji: string; prompt: string }[] = [
+  { label: "Action", emoji: "💥", prompt: "An explosive action sequence with dramatic twists and stunning visuals" },
+  { label: "Comedy", emoji: "😂", prompt: "A hilarious scenario where everything that can go wrong does — in the funniest way" },
+  { label: "Drama", emoji: "🎭", prompt: "An emotional story with compelling characters and a powerful climax" },
+  { label: "Sci-Fi", emoji: "🚀", prompt: "A futuristic sci-fi adventure with advanced technology and mind-bending concepts" },
+  { label: "Mystery", emoji: "🔍", prompt: "A gripping mystery where clues slowly reveal a shocking truth" },
+  { label: "Fantasy", emoji: "🧙", prompt: "A magical fantasy world with epic quests and mythical creatures" },
+];
+
 function getRandomChannelConcept(channelId: string): string {
   const pool = CHANNEL_RANDOM_CONCEPTS[channelId] || GENERIC_RANDOM_CONCEPTS;
   return pool[Math.floor(Math.random() * pool.length)];
+}
+
+function getChannelQuickPicks(channelId: string): { label: string; emoji: string; prompt: string }[] {
+  return CHANNEL_QUICK_PICKS[channelId] || GENERIC_QUICK_PICKS;
 }
 
 // NOTE: CHANNEL_STYLE_OVERRIDES and CHANNEL_GENRE_OVERRIDES have been removed.
@@ -1985,6 +2135,29 @@ CRITICAL STYLE NOTES:
                 <Text style={{ color: colors.purpleLight, fontSize: 14, fontWeight: "bold" }}>🎲 Surprise Me</Text>
               </TouchableOpacity>
             </View>
+
+            {/* Quick-pick content type buttons */}
+            {selectedChannel && (
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+                {getChannelQuickPicks(selectedChannel).map((pick) => (
+                  <TouchableOpacity
+                    key={pick.label}
+                    style={{
+                      paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8,
+                      borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface,
+                    }}
+                    onPress={() => {
+                      setChannelConcept(pick.prompt);
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    }}>
+                    <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: "600" }}>
+                      {pick.emoji} {pick.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
             <TextInput
               style={styles.optionInput}
               value={channelConcept}

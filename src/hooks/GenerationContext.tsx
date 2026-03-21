@@ -480,17 +480,12 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
         setGenStatusText(`Ad live on ${platforms}! Verifying links...`);
       }
 
-      // Publish to AIG!itch "for you" feed (skips if backend already posted)
-      await publishToFeed(walletAddress, "Ad Campaign", finalCaption, videoUrl, true, !!postId);
-
-      // Publish to Marketplace QVC channel — only if backend didn't already spread
-      // (stitchMovie/postAd already routes to channel + spreads to socials)
-      const backendAlreadySpread = spreading && spreading.length > 0;
-      if (!backendAlreadySpread) {
-        await publishToChannel(walletAddress, "ch-marketplace-qvc", finalCaption, videoUrl, true);
-      } else {
-        console.log("[AD] Skipping publishToChannel — backend already spread to:", spreading.join(", "));
-      }
+      // NOTE: postAd backend already handles EVERYTHING:
+      // - Creates the feed post (postId)
+      // - Spreads to social platforms (spreading)
+      // - Routes to Marketplace QVC channel
+      // DO NOT call publishToFeed or publishToChannel here — that causes duplicate posts.
+      console.log("[AD] Backend handled publishing. postId:", postId, "spreading:", spreading);
 
       // Fetch verified social links
       const verifiedLinks = postFailed
@@ -726,19 +721,14 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
       console.log("[MOVIE] stitchMovie response:", JSON.stringify(stitchRes, null, 2));
 
       setGenProgressPct(92);
-      setGenStatusText("Publishing to AIG!itch feed...");
 
-      // Publish to "for you" feed — stitchMovie should create feedPostId, but safety net if not
+      // NOTE: stitchMovie backend already handles EVERYTHING:
+      // - Creates the feed post (feedPostId)
+      // - Spreads to social platforms (spreading)
+      // - Routes to AIG!itch Studios channel (channelId was passed)
+      // DO NOT call publishToFeed or publishToChannel here — that causes duplicate posts.
       const movieCaption = `"${screenplay.title}" by ${screenplay.directorName}\n${screenplay.tagline || screenplay.synopsis || ""}`;
-      await publishToFeed(walletAddress, screenplay.title, movieCaption, stitchRes.finalVideoUrl, true, !!stitchRes.feedPostId);
-
-      // Publish to AIG!itch Studios channel — only if backend didn't already spread
-      const movieAlreadySpread = stitchRes.spreading && stitchRes.spreading.length > 0;
-      if (!movieAlreadySpread) {
-        await publishToChannel(walletAddress, "ch-aiglitch-studios", movieCaption, stitchRes.finalVideoUrl, true);
-      } else {
-        console.log("[MOVIE] Skipping publishToChannel — backend already spread to:", stitchRes.spreading!.join(", "));
-      }
+      console.log("[MOVIE] Backend handled publishing. feedPostId:", stitchRes.feedPostId, "spreading:", stitchRes.spreading);
 
       setGenProgressPct(95);
       const didSpread = stitchRes.spreading && stitchRes.spreading.length > 0;
@@ -1003,22 +993,17 @@ CRITICAL STYLE NOTES:
 
       console.log("[NEWS] stitchMovie response:", JSON.stringify(stitchRes, null, 2));
       setGenProgressPct(92);
-      setGenStatusText("Publishing to AIG!itch feed...");
 
-      // Publish to "for you" feed
+      // NOTE: stitchMovie backend already handles EVERYTHING:
+      // - Creates the feed post (feedPostId)
+      // - Spreads to social platforms (spreading)
+      // - Routes to GNN channel (channelId was passed or defaults)
+      // DO NOT call publishToFeed or publishToChannel here — that causes duplicate posts.
       const newsCaption = `BREAKING: ${screenplay.title}\n${screenplay.synopsis || screenplay.tagline || "AIG!itch News broadcast"}`;
-      await publishToFeed(walletAddress, `BREAKING: ${screenplay.title}`, newsCaption, stitchRes.finalVideoUrl, true, !!stitchRes.feedPostId);
-
-      // Publish to GNN channel — only if backend didn't already spread
-      const newsAlreadySpread = stitchRes.spreading && stitchRes.spreading.length > 0;
-      if (!newsAlreadySpread) {
-        await publishToChannel(walletAddress, "ch-gnn", newsCaption, stitchRes.finalVideoUrl, true);
-      } else {
-        console.log("[NEWS] Skipping publishToChannel — backend already spread to:", stitchRes.spreading!.join(", "));
-      }
+      console.log("[NEWS] Backend handled publishing. feedPostId:", stitchRes.feedPostId, "spreading:", stitchRes.spreading);
 
       setGenProgressPct(95);
-      const didSpread = newsAlreadySpread;
+      const didSpread = stitchRes.spreading && stitchRes.spreading.length > 0;
       setGenStatusText(didSpread
         ? `BREAKING: "${screenplay.title}" — LIVE on ${stitchRes.spreading!.join(", ")} + feed! Verifying links...`
         : `"${screenplay.title}" published to AIG!itch feed! Verifying links...`);
@@ -1255,26 +1240,17 @@ CRITICAL STYLE NOTES:
       });
 
       setGenProgressPct(92);
-      setGenStatusText("Publishing to AIG!itch feed...");
 
+      // NOTE: stitchMovie backend already handles EVERYTHING:
+      // - Creates the feed post (feedPostId)
+      // - Spreads to social platforms (spreading)
+      // - Routes to the channel (channelId was passed in the request body)
+      // DO NOT call publishToFeed or publishToChannel here — that causes duplicate posts.
       const channelCaption = `${channel.emoji} ${channel.name}: "${screenplay.title}"\n${screenplay.synopsis || screenplay.tagline || ""}`;
-
-      // Publish to feed + channel (respects autoPublishFeed config, defaults to true)
-      if (channel.autoPublishFeed !== false) {
-        await publishToFeed(walletAddress, `${channel.emoji} ${channel.name}`, channelCaption, stitchRes.finalVideoUrl, true, !!stitchRes.feedPostId);
-      }
-
-      // Publish to channel — only if backend didn't already spread
-      // (stitchMovie already routes to the channel + spreads to socials)
-      const channelAlreadySpread = stitchRes.spreading && stitchRes.spreading.length > 0;
-      if (!channelAlreadySpread) {
-        await publishToChannel(walletAddress, channel.id, channelCaption, stitchRes.finalVideoUrl, true);
-      } else {
-        console.log("[CHANNEL] Skipping publishToChannel — backend already spread to:", stitchRes.spreading!.join(", "));
-      }
+      console.log("[CHANNEL] Backend handled publishing. feedPostId:", stitchRes.feedPostId, "spreading:", stitchRes.spreading);
 
       setGenProgressPct(95);
-      const didSpread = channelAlreadySpread;
+      const didSpread = stitchRes.spreading && stitchRes.spreading.length > 0;
       setGenStatusText(didSpread
         ? `${channel.emoji} "${screenplay.title}" — published to ${stitchRes.spreading!.join(", ")} + feed! Verifying links...`
         : `"${screenplay.title}" published to AIG!itch feed! Verifying links...`);

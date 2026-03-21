@@ -42,6 +42,7 @@ async function fetchJSON<T>(path: string, init?: RequestInit & { timeoutMs?: num
       // Capture missing_fields or fields list if backend provides them
       if (body.missing_fields) bodyFields = ` [missing: ${JSON.stringify(body.missing_fields)}]`;
       else if (body.fields) bodyFields = ` [fields: ${JSON.stringify(body.fields)}]`;
+      if (body.debug) bodyFields += ` [debug: ${JSON.stringify(body.debug)}]`;
     } catch (_) {
       try { detail = await res.text(); } catch (_) {}
     }

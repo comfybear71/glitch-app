@@ -1,6 +1,6 @@
 # HANDOFF.md — AI G!itch App Project Status
 
-Last updated: 2026-03-20 (Session 17 — Fixed empty director fields crashing stitch for all channels, added validation)
+Last updated: 2026-03-21 (Session 18 — Voice transcription 503 debugging, xAI API key diagnostics)
 
 ## Project Overview
 
@@ -29,7 +29,15 @@ The `/api/transcribe` endpoint uses **xAI as primary** with model `grok-2-vision
 - **Order**: xAI must be primary, Groq fallback. There is no `GROQ_API_KEY` configured.
 - **Key**: `XAI_API_KEY` — same key used for TTS and image gen.
 
-Session 18 outage: Commit `b1f2040` swapped Groq to primary (no key → skipped) and changed xAI model to `grok-2-audio` (invalid) → both paths failed → 503. Cost 30+ minutes of debugging.
+**Session 18 outage (ONGOING — 2026-03-21)**:
+1. Commit `b1f2040` swapped Groq to primary (no key → skipped) and changed xAI model to `grok-2-audio` (invalid) → both paths failed → 503. Cost 30+ minutes of debugging.
+2. Backend agent fixed the model/order back to correct values, but transcription still returns 503.
+3. Error message now says "Set XAI_API_KEY or GROQ_API_KEY" — meaning `XAI_API_KEY` is `undefined` at runtime despite env schema being correct.
+4. **Suspected cause**: `XAI_API_KEY` may have been deleted from Vercel env vars, scoped to wrong environment, or lost during a redeploy.
+5. Backend agent pushed diagnostic commit that adds a `debug` object to the 503 response: `{ xai_key_set: bool, groq_key_set: bool, xai_error: string|null, groq_error: string|null }`.
+6. **Next step**: Test voice chat after Vercel deploys the diagnostic commit. The debug output will confirm whether the env var is missing (Vercel config issue) or the xAI API itself is rejecting requests (key/model/endpoint issue).
+7. **If `xai_key_set: false`**: Re-add `XAI_API_KEY` in Vercel dashboard → Settings → Environment Variables → ensure it's scoped to Production.
+8. **If `xai_key_set: true` + `xai_error`**: The xAI API is rejecting — check credits at `console.x.ai`, verify model name, or check for API changes.
 
 ---
 
@@ -442,6 +450,27 @@ If "your local changes would be overwritten" appears, stash first (see above).
 - **Fix**: Check xAI credit balance at console.x.ai and top up. This is a backend issue, not an app issue
 - **Note**: The app code just calls `/api/voice` and plays whatever MP3 comes back — it doesn't know which TTS engine was used
 - **Where to check credits**: console.x.ai → API Keys → Usage (NOT console.x.com — that's the X Developer Portal)
+
+---
+
+## Recent Changes — Session 2026-03-21 (Session 18 — Voice Transcription 503 Debugging)
+
+### Voice Transcription 503 Outage (ONGOING)
+- **Problem**: Voice chat returns 503 error — "No transcription service available. Set XAI_API_KEY or GROQ_API_KEY"
+- **Root cause (suspected)**: `XAI_API_KEY` environment variable is `undefined` at runtime in Vercel, despite the env schema being correctly defined in the backend code. Possibly deleted, scoped to wrong environment, or lost during a redeploy.
+- **Timeline**:
+  1. A prior commit (`b1f2040`) swapped Groq to primary (no key) and changed xAI model to invalid `grok-2-audio` → both paths failed → 503
+  2. Backend agent fixed model/order back to correct values (`grok-2-vision-latest`, xAI primary)
+  3. Still 503 — error message confirmed the fix deployed but `XAI_API_KEY` is undefined at runtime
+  4. Backend agent pushed diagnostic commit adding `debug` object to error response (`xai_key_set`, `groq_key_set`, `xai_error`, `groq_error`)
+  5. Frontend `fetchJSON` was stripping the `debug` object — only showed `body.error` text. **Fixed**: added `body.debug` passthrough in `api.ts` so debug info appears in the error message on device
+- **Frontend fix**: `src/services/api.ts` — `fetchJSON` now includes `body.debug` in error messages when present, so diagnostic info from the backend is visible in the app error text
+- **Status**: Waiting for Vercel deployment of diagnostic commit + OTA update to see full debug output on device
+- **Next step**: Once debug output is visible, either re-add `XAI_API_KEY` in Vercel (if `xai_key_set: false`) or investigate xAI API rejection (if `xai_key_set: true` with `xai_error`)
+
+### Files Changed (Session 18)
+- `src/services/api.ts` — Added `body.debug` passthrough in `fetchJSON` error handling
+- `HANDOFF.md` — Updated transcription section with Session 18 outage details, added Session 18 entry
 
 ---
 

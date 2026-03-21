@@ -12,7 +12,7 @@ import { Audio } from "expo-av";
 import { WebView } from "react-native-webview";
 import { colors } from "../theme/colors";
 import { useSession } from "../hooks/useSession";
-import { File } from "expo-file-system/next";
+import { File } from "expo-file-system";
 import { API_BASE, getMessages, sendMessage, sendImageMessage, setChatMode, transcribeAudio, Message } from "../services/api";
 
 export default function ChatScreen() {
@@ -368,16 +368,26 @@ export default function ChatScreen() {
         setMessages((prev) => [...prev, tempMsg]);
 
         try {
-          // Transcribe audio to text (same as VoiceChatScreen)
-          const file = new File(uri);
-          const base64 = await file.base64();
+          // Transcribe audio to text
+          console.log("[CHAT] Reading audio file:", uri);
+          const audioFile = new File(uri);
+          const base64 = await audioFile.base64();
+          console.log("[CHAT] Audio base64 length:", base64.length, "chars (~", Math.round(base64.length * 0.75 / 1024), "KB)");
+
           let userText: string;
-          try {
-            const result = await transcribeAudio(base64, "audio/m4a");
-            userText = result.text;
-          } catch (e) {
-            console.warn("[CHAT] Transcription failed:", e);
-            userText = "[Voice message - please respond naturally]";
+          if (!base64 || base64.length < 100) {
+            userText = "[Voice recording was empty]";
+          } else {
+            try {
+              const result = await transcribeAudio(base64, "audio/m4a");
+              console.log("[CHAT] Transcription result:", result.text?.slice(0, 100));
+              userText = result.text && result.text.trim().length > 0
+                ? result.text
+                : "[Couldn't understand audio — please try again]";
+            } catch (e: any) {
+              console.error("[CHAT] Transcription FAILED:", e?.message, e);
+              userText = "[Voice transcription failed — please type instead]";
+            }
           }
 
           // Update temp message with transcribed text

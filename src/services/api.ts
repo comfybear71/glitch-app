@@ -459,6 +459,7 @@ export function transcribeAudio(audioBase64: string, mimeType: string = "audio/m
   return fetchJSON<{ text: string; source: string }>("/api/transcribe", {
     method: "POST",
     body: JSON.stringify({ audio_base64: audioBase64, mime_type: mimeType }),
+    timeoutMs: 60000, // 60s — upload + Whisper processing can take time
   });
 }
 

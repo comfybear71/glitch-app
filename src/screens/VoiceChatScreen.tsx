@@ -5,7 +5,7 @@ import {
 } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import { Audio } from "expo-av";
-import { File } from "expo-file-system/next";
+import { File } from "expo-file-system";
 import * as Haptics from "expo-haptics";
 import { colors } from "../theme/colors";
 import { useSession } from "../hooks/useSession";
@@ -175,19 +175,34 @@ export default function VoiceChatScreen() {
         return;
       }
 
-      // Read audio file as base64 using new Expo File API
-      const file = new File(uri);
-      const base64 = await file.base64();
+      // Read audio file as base64
+      console.log("[VOICE] Reading audio file:", uri);
+      const audioFile = new File(uri);
+      const base64 = await audioFile.base64();
+      console.log("[VOICE] Audio base64 length:", base64.length, "chars (~", Math.round(base64.length * 0.75 / 1024), "KB)");
 
-      // Transcribe
+      if (!base64 || base64.length < 100) {
+        setError("Audio recording was empty — try speaking louder or longer");
+        setState("idle");
+        return;
+      }
+
+      // Transcribe — give it 60s since upload + Whisper processing takes time
       let userText: string;
       try {
         const result = await transcribeAudio(base64, "audio/m4a");
+        console.log("[VOICE] Transcription result:", result.text?.slice(0, 100), "source:", result.source);
+        if (!result.text || result.text.trim().length === 0) {
+          setError("Couldn't hear you — try speaking louder or closer to the mic");
+          setState("idle");
+          return;
+        }
         userText = result.text;
-      } catch (e) {
-        console.warn("Transcription failed:", e);
-        // Fallback: send as voice message
-        userText = "[Voice message - please respond naturally]";
+      } catch (e: any) {
+        console.error("[VOICE] Transcription FAILED:", e?.message, e);
+        setError(`Voice transcription failed: ${e?.message || "Unknown error"}`);
+        setState("idle");
+        return;
       }
 
       setTranscript(userText);

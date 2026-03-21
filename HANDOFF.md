@@ -40,8 +40,8 @@ The `/api/transcribe` endpoint uses **Groq Whisper** for speech-to-text. Require
 **Session 18 history (2026-03-21)**:
 1. Voice transcription reported as 503 — investigation revealed xAI has no STT endpoint (never worked)
 2. Backend agent switched to Groq Whisper as transcription provider
-3. **Action required**: Add `GROQ_API_KEY` in Vercel → Settings → Environment Variables → Production
-4. Get a free key at `console.groq.com`
+3. `GROQ_API_KEY` provided — **must be added to Vercel → Settings → Environment Variables → Production, then redeploy**
+4. Once deployed, voice transcription will work immediately (no app update needed)
 
 ---
 

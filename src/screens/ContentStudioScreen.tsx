@@ -306,13 +306,28 @@ const GENERIC_QUICK_PICKS: { label: string; emoji: string; prompt: string }[] = 
   { label: "Fantasy", emoji: "🧙", prompt: "A magical fantasy world with epic quests and mythical creatures" },
 ];
 
+// Look up channel data by ID, falling back to slug-based matching
+function findChannelKey(channelId: string, map: Record<string, any>): string | null {
+  // Direct match
+  if (map[channelId]) return channelId;
+  // Try matching by slug portion (e.g. "aiglitch-studios" in "ch-aiglitch-studios")
+  const slug = channelId.replace(/^ch-/, "");
+  for (const key of Object.keys(map)) {
+    const keySlug = key.replace(/^ch-/, "");
+    if (keySlug === slug || slug.includes(keySlug) || keySlug.includes(slug)) return key;
+  }
+  return null;
+}
+
 function getRandomChannelConcept(channelId: string): string {
-  const pool = CHANNEL_RANDOM_CONCEPTS[channelId] || GENERIC_RANDOM_CONCEPTS;
+  const key = findChannelKey(channelId, CHANNEL_RANDOM_CONCEPTS);
+  const pool = key ? CHANNEL_RANDOM_CONCEPTS[key] : GENERIC_RANDOM_CONCEPTS;
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
 function getChannelQuickPicks(channelId: string): { label: string; emoji: string; prompt: string }[] {
-  return CHANNEL_QUICK_PICKS[channelId] || GENERIC_QUICK_PICKS;
+  const key = findChannelKey(channelId, CHANNEL_QUICK_PICKS);
+  return key ? CHANNEL_QUICK_PICKS[key] : GENERIC_QUICK_PICKS;
 }
 
 // NOTE: CHANNEL_STYLE_OVERRIDES and CHANNEL_GENRE_OVERRIDES have been removed.
@@ -2128,7 +2143,9 @@ CRITICAL STYLE NOTES:
                 style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, backgroundColor: "rgba(124,58,237,0.2)", borderWidth: 1, borderColor: colors.purpleLight }}
                 onPress={() => {
                   if (selectedChannel) {
-                    setChannelConcept(getRandomChannelConcept(selectedChannel));
+                    const concept = getRandomChannelConcept(selectedChannel);
+                    console.log("[SURPRISE-ME] channelId:", selectedChannel, "concept:", concept);
+                    setChannelConcept(concept);
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                   }
                 }}>
@@ -2137,26 +2154,30 @@ CRITICAL STYLE NOTES:
             </View>
 
             {/* Quick-pick content type buttons */}
-            {selectedChannel && (
-              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
-                {getChannelQuickPicks(selectedChannel).map((pick) => (
-                  <TouchableOpacity
-                    key={pick.label}
-                    style={{
-                      paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8,
-                      borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface,
-                    }}
-                    onPress={() => {
-                      setChannelConcept(pick.prompt);
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    }}>
-                    <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: "600" }}>
-                      {pick.emoji} {pick.label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
+            {selectedChannel && (() => {
+              const picks = getChannelQuickPicks(selectedChannel);
+              console.log("[QUICK-PICKS] channelId:", selectedChannel, "picks:", picks.length, picks.map(p => p.label).join(", "));
+              return (
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 4, marginBottom: 8 }}>
+                  {picks.map((pick) => (
+                    <TouchableOpacity
+                      key={pick.label}
+                      style={{
+                        paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10,
+                        borderWidth: 1, borderColor: "rgba(6,182,212,0.3)", backgroundColor: "rgba(6,182,212,0.08)",
+                      }}
+                      onPress={() => {
+                        setChannelConcept(pick.prompt);
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      }}>
+                      <Text style={{ color: colors.cyan, fontSize: 12, fontWeight: "600" }}>
+                        {pick.emoji} {pick.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              );
+            })()}
 
             <TextInput
               style={styles.optionInput}

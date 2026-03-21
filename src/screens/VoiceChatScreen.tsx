@@ -90,6 +90,21 @@ export default function VoiceChatScreen() {
   const [selectedVoice, setSelectedVoice] = useState("alloy");
   const [showVoicePicker, setShowVoicePicker] = useState(false);
 
+  // Chat mood (mirrors HomeScreen moods)
+  const CHAT_MOODS = [
+    { id: "casual", emoji: "😎", label: "Playful" },
+    { id: "serious", emoji: "🧠", label: "Serious" },
+    { id: "scientific", emoji: "🔬", label: "Scientific" },
+    { id: "whimsical", emoji: "🦄", label: "Whimsical" },
+    { id: "unfiltered", emoji: "🤬", label: "Unfiltered" },
+  ];
+  const [chatMode, setChatMode] = useState("casual");
+  const [showMoodPicker, setShowMoodPicker] = useState(false);
+  const [showCreateMenu, setShowCreateMenu] = useState(false);
+  const [typedInput, setTypedInput] = useState("");
+  const [isTyping, setIsTyping] = useState(false);
+  const typedInputRef = useRef<any>(null);
+
   // Content generation picker modals
   const [showMoviePicker, setShowMoviePicker] = useState(false);
   const [pickerDirector, setPickerDirector] = useState("auto");
@@ -355,7 +370,7 @@ export default function VoiceChatScreen() {
         return;
       }
 
-      const data = await sendMessage(sessionId, personaId, userText, "casual");
+      const data = await sendMessage(sessionId, personaId, userText, chatMode);
       if (!data.success) {
         setError("Failed to get response");
         setState("idle");
@@ -464,6 +479,87 @@ export default function VoiceChatScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   }, []);
 
+  // Handle typed text submission — same flow as voice but skips recording/transcription
+  const handleTypedSubmit = useCallback(async () => {
+    const text = typedInput.trim();
+    if (!text || state !== "idle") return;
+    Keyboard.dismiss();
+    setIsTyping(false);
+    setTypedInput("");
+    setTranscript(text);
+    setError("");
+    setAiResponse("");
+    setState("thinking");
+
+    // Same intent detection as voice
+    const lower = text.toLowerCase();
+    if (isAdmin && walletAddress) {
+      if (lower.includes("channel content") || lower.includes("channel video") ||
+          lower.includes("create channel") || lower.includes("make channel") ||
+          (lower.includes("channel") && (lower.includes("generate") || lower.includes("create") || lower.includes("make") || lower.includes("launch") || lower.includes("start") || lower.includes("new")))) {
+        if (voiceChannels.length === 0) {
+          fetchChannels().then(chs => setVoiceChannels(chs.map(toChannelDef))).catch(() => {});
+        }
+        setShowChannelPicker(true);
+        setChannelPickerConcept(text);
+        setChannelPickerSelected("");
+        await speakReply("Opening the channel picker for you!");
+        return;
+      }
+      if (lower.includes("breaking news") || lower.includes("news broadcast") || lower.includes("newscast") ||
+          (lower.includes("news") && (lower.includes("generate") || lower.includes("create") || lower.includes("make") || lower.includes("launch")))) {
+        setShowNewsPicker(true);
+        setNewsTopic(text);
+        await speakReply("News desk is ready!");
+        return;
+      }
+      if (lower.includes("movie") || lower.includes("director") || lower.includes("screenplay") || lower.includes("film") || lower.includes("premiere")) {
+        setShowMoviePicker(true);
+        setPickerConcept(text);
+        await speakReply("Lights, camera, action!");
+        return;
+      }
+      if (lower.includes("ad ") || lower.includes("advertis") || lower.includes("infomercial") || lower.includes("generate an ad") || lower.includes("make an ad") || lower.includes("ad campaign")) {
+        setShowAdPicker(true);
+        setAdConcept(text);
+        await speakReply("Ad studio is open!");
+        return;
+      }
+      if (lower.includes("poster") || lower.includes("promo")) {
+        ctxRunPoster(walletAddress);
+        await speakReply("Generating a promo poster!");
+        return;
+      }
+      if (lower.includes("hero image") || lower.includes("hero banner") || lower.includes("hero photo") || lower.includes("landing page")) {
+        ctxRunHero(walletAddress);
+        await speakReply("Creating a hero banner!");
+        return;
+      }
+    }
+
+    if (!sessionId) {
+      setError("No session");
+      setState("idle");
+      return;
+    }
+
+    try {
+      const data = await sendMessage(sessionId, personaId, text, chatMode);
+      if (!data.success) {
+        setError("Failed to get response");
+        setState("idle");
+        return;
+      }
+      const reply = data.ai_message.content;
+      setAiResponse(reply);
+      await speakReply(reply);
+    } catch (e) {
+      console.error("Typed submit error:", e);
+      setError("Something went wrong");
+      setState("idle");
+    }
+  }, [typedInput, state, sessionId, personaId, chatMode, isAdmin, walletAddress]);
+
   const handleMicPress = useCallback(() => {
     if (state === "idle") {
       startListening();
@@ -521,6 +617,7 @@ export default function VoiceChatScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
       {/* Main area — CosmicVisualizer or Generation Progress */}
       <View style={styles.mainArea}>
         {ctxGenerating ? (
@@ -552,6 +649,19 @@ export default function VoiceChatScreen() {
               active={state === "listening" || state === "speaking" || state === "thinking"}
               height={200}
             />
+            {/* Show transcript and AI response */}
+            {transcript ? (
+              <View style={styles.transcriptArea}>
+                <Text style={styles.youSaid}>You said:</Text>
+                <Text style={styles.transcriptText} numberOfLines={3}>{transcript}</Text>
+              </View>
+            ) : null}
+            {aiResponse ? (
+              <View style={styles.responseArea}>
+                <Text style={styles.aiSaid}>{title} said:</Text>
+                <Text style={styles.responseText} numberOfLines={5}>{aiResponse}</Text>
+              </View>
+            ) : null}
             {error ? <Text style={styles.errorText}>{error}</Text> : null}
           </>
         )}
@@ -560,10 +670,15 @@ export default function VoiceChatScreen() {
       {/* Status label */}
       <View style={styles.statusArea}>
         <Text style={styles.stateLabel}>{ctxGenerating ? (genStatusText || "Generating...") : stateLabel()}</Text>
-        {!ctxGenerating && selectedVoice && (
-          <Text style={styles.voiceLabel}>
-            Voice: {VOICE_OPTIONS.find(v => v.id === selectedVoice)?.label || selectedVoice}
-          </Text>
+        {!ctxGenerating && (
+          <View style={{ flexDirection: "row", gap: 16, marginTop: 4 }}>
+            <Text style={styles.voiceLabel}>
+              Voice: {VOICE_OPTIONS.find(v => v.id === selectedVoice)?.label || selectedVoice}
+            </Text>
+            <Text style={[styles.voiceLabel, { color: colors.cyan }]}>
+              Mood: {CHAT_MOODS.find(m => m.id === chatMode)?.label || "Playful"}
+            </Text>
+          </View>
         )}
       </View>
 
@@ -572,6 +687,11 @@ export default function VoiceChatScreen() {
         {/* Voice picker */}
         <TouchableOpacity style={styles.controlBtn} onPress={() => setShowVoicePicker(true)}>
           <Text style={styles.controlIcon}>🎭</Text>
+        </TouchableOpacity>
+
+        {/* Mood selector */}
+        <TouchableOpacity style={[styles.controlBtn, { borderWidth: 1, borderColor: "rgba(124,58,237,0.4)" }]} onPress={() => setShowMoodPicker(true)}>
+          <Text style={styles.controlIcon}>{CHAT_MOODS.find(m => m.id === chatMode)?.emoji || "😎"}</Text>
         </TouchableOpacity>
 
         {/* Mic button - main action */}
@@ -596,28 +716,154 @@ export default function VoiceChatScreen() {
           </TouchableOpacity>
         </Animated.View>
 
-        {/* Settings */}
+        {/* Create menu (admin only) */}
+        {isAdmin ? (
+          <TouchableOpacity style={[styles.controlBtn, { backgroundColor: "rgba(124,58,237,0.15)", borderWidth: 1, borderColor: colors.purple }]} onPress={() => setShowCreateMenu(true)}>
+            <Text style={[styles.controlIcon, { fontSize: 26, fontWeight: "800", color: colors.purpleLight }]}>+</Text>
+          </TouchableOpacity>
+        ) : (
+          <View style={{ width: 56 }} />
+        )}
+
+        {/* Close */}
         <TouchableOpacity style={styles.controlBtn} onPress={() => nav.goBack()}>
           <Text style={styles.controlIcon}>✕</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Bottom bar - text input + stop */}
+      {/* Bottom bar - functional text input + stop */}
       <View style={styles.bottomBar}>
-        <TouchableOpacity
-          style={styles.askAnything}
-          onPress={() => nav.goBack()}
-        >
-          <Text style={styles.askAnythingText}>Type instead...</Text>
-        </TouchableOpacity>
-
-        {state !== "idle" && (
+        <View style={styles.askAnything}>
+          <TextInput
+            ref={typedInputRef}
+            style={styles.askAnythingInput}
+            value={typedInput}
+            onChangeText={setTypedInput}
+            placeholder="Type instead..."
+            placeholderTextColor={colors.textMuted}
+            onFocus={() => setIsTyping(true)}
+            onBlur={() => { if (!typedInput.trim()) setIsTyping(false); }}
+            returnKeyType="send"
+            onSubmitEditing={handleTypedSubmit}
+            editable={state === "idle"}
+          />
+        </View>
+        {typedInput.trim() ? (
+          <TouchableOpacity style={[styles.stopBtn, { backgroundColor: colors.purple }]} onPress={handleTypedSubmit}>
+            <Text style={[styles.stopText, { color: "#fff" }]}>Send</Text>
+          </TouchableOpacity>
+        ) : state !== "idle" ? (
           <TouchableOpacity style={styles.stopBtn} onPress={handleStop}>
             <View style={styles.stopSquare} />
             <Text style={styles.stopText}>Stop</Text>
           </TouchableOpacity>
-        )}
+        ) : null}
       </View>
+      {/* ── Mood Picker Modal ── */}
+      <Modal visible={showMoodPicker} animationType="slide" transparent>
+        <View style={styles.voicePickerOverlay}>
+          <View style={styles.voicePickerModal}>
+            <View style={styles.voicePickerHeader}>
+              <Text style={styles.voicePickerTitle}>Chat Mood</Text>
+              <TouchableOpacity onPress={() => setShowMoodPicker(false)}>
+                <Text style={styles.voicePickerClose}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.voicePickerList}>
+              {CHAT_MOODS.map((mood) => (
+                <TouchableOpacity
+                  key={mood.id}
+                  style={[
+                    styles.voiceOption,
+                    chatMode === mood.id && styles.voiceOptionActive,
+                  ]}
+                  onPress={() => {
+                    setChatMode(mood.id);
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setShowMoodPicker(false);
+                  }}
+                >
+                  <View style={styles.voiceOptionInfo}>
+                    <Text style={[
+                      styles.voiceOptionLabel,
+                      chatMode === mood.id && styles.voiceOptionLabelActive,
+                    ]}>{mood.emoji}  {mood.label}</Text>
+                  </View>
+                  {chatMode === mood.id && (
+                    <Text style={styles.voiceOptionCheck}>✓</Text>
+                  )}
+                </TouchableOpacity>
+              ))}
+              <View style={{ height: 20 }} />
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── Create Menu Modal (Admin) ── */}
+      <Modal visible={showCreateMenu} animationType="slide" transparent>
+        <View style={styles.voicePickerOverlay}>
+          <View style={styles.voicePickerModal}>
+            <View style={styles.voicePickerHeader}>
+              <Text style={styles.voicePickerTitle}>Create Content</Text>
+              <TouchableOpacity onPress={() => setShowCreateMenu(false)}>
+                <Text style={styles.voicePickerClose}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.voicePickerList}>
+              <TouchableOpacity style={styles.voiceOption} onPress={() => {
+                setShowCreateMenu(false);
+                if (voiceChannels.length === 0) fetchChannels().then(chs => setVoiceChannels(chs.map(toChannelDef))).catch(() => {});
+                setShowChannelPicker(true);
+                setChannelPickerConcept("");
+                setChannelPickerSelected("");
+              }}>
+                <Text style={styles.voiceOptionLabel}>📺  Channel Content</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.voiceOption} onPress={() => {
+                setShowCreateMenu(false);
+                setShowMoviePicker(true);
+                setPickerConcept("");
+                setPickerDirector("auto");
+                setPickerGenre("any");
+              }}>
+                <Text style={styles.voiceOptionLabel}>🎬  Director Movie</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.voiceOption} onPress={() => {
+                setShowCreateMenu(false);
+                setShowNewsPicker(true);
+                setNewsTopic("");
+              }}>
+                <Text style={styles.voiceOptionLabel}>📰  Breaking News</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.voiceOption} onPress={() => {
+                setShowCreateMenu(false);
+                setShowAdPicker(true);
+                setAdConcept("");
+                setAdStyle("auto");
+                setSelectedProduct(null);
+                setProductChoices([]);
+              }}>
+                <Text style={styles.voiceOptionLabel}>📢  Ad Campaign</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.voiceOption} onPress={() => {
+                setShowCreateMenu(false);
+                if (walletAddress) ctxRunPoster(walletAddress);
+              }}>
+                <Text style={styles.voiceOptionLabel}>🖼  Promo Poster</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.voiceOption} onPress={() => {
+                setShowCreateMenu(false);
+                if (walletAddress) ctxRunHero(walletAddress);
+              }}>
+                <Text style={styles.voiceOptionLabel}>🦸  Hero Image</Text>
+              </TouchableOpacity>
+              <View style={{ height: 20 }} />
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
       {/* Voice Picker Modal */}
       <Modal visible={showVoicePicker} animationType="slide" transparent>
         <View style={styles.voicePickerOverlay}>
@@ -958,6 +1204,7 @@ export default function VoiceChatScreen() {
         </View>
         </KeyboardAvoidingView>
       </Modal>
+    </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -1100,9 +1347,10 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     paddingHorizontal: 20,
   },
-  askAnythingText: {
-    color: colors.textMuted,
+  askAnythingInput: {
+    color: colors.text,
     fontSize: 14,
+    flex: 1,
   },
   stopBtn: {
     flexDirection: "row",

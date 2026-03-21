@@ -28,6 +28,7 @@ import {
 import CosmicVisualizer from "../components/CosmicVisualizer";
 import { useGeneration, SocialLink } from "../hooks/GenerationContext";
 import { getRandomMarketplaceItem, getRandomMarketplaceItems, formatItemForAd, MarketplaceItem } from "../data/marketplaceItems";
+import { getRandomChannelConcept, getChannelQuickPicks } from "./ContentStudioScreen";
 const APP_VERSION = "1.0.2";
 
 function HealthBar({ health }: { health: number }) {
@@ -2090,16 +2091,54 @@ export default function HomeScreen() {
                 ))}
               </View>
 
+              {/* Quick-pick content ideas — shown when a channel is selected */}
+              {channelPickerSelected ? (
+                <>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                    <Text style={{ color: colors.textSecondary, fontSize: 11, fontWeight: "700", textTransform: "uppercase", letterSpacing: 1 }}>Quick Ideas</Text>
+                    <TouchableOpacity
+                      style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, backgroundColor: "rgba(124,58,237,0.2)", borderWidth: 1, borderColor: "#a78bfa" }}
+                      onPress={() => {
+                        const concept = getRandomChannelConcept(channelPickerSelected);
+                        setChannelPickerConcept(concept);
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                      }}>
+                      <Text style={{ color: "#a78bfa", fontSize: 13, fontWeight: "bold" }}>🎲 Surprise Me</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+                    {getChannelQuickPicks(channelPickerSelected).map((pick) => (
+                      <TouchableOpacity
+                        key={pick.label}
+                        style={{
+                          width: 85, alignItems: "center" as const, padding: 10,
+                          backgroundColor: channelPickerConcept === pick.prompt ? "rgba(6,182,212,0.08)" : "#1a1a2e",
+                          borderRadius: 10, borderWidth: 1.5,
+                          borderColor: channelPickerConcept === pick.prompt ? "rgba(6,182,212,0.8)" : "#374151",
+                          marginRight: 8,
+                        }}
+                        onPress={() => {
+                          setChannelPickerConcept(pick.prompt);
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        }}>
+                        <Text style={{ fontSize: 24, marginBottom: 4 }}>{pick.emoji}</Text>
+                        <Text style={{ color: channelPickerConcept === pick.prompt ? colors.cyan : colors.text, fontSize: 10, fontWeight: "700", textAlign: "center" as const }} numberOfLines={1}>{pick.label}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </>
+              ) : null}
+
               {/* Concept input */}
               <Text style={{ color: colors.textSecondary, fontSize: 11, fontWeight: "700", marginBottom: 6, textTransform: "uppercase", letterSpacing: 1 }}>Content Concept (optional)</Text>
               <TextInput
                 style={{ backgroundColor: "#1a1a2e", borderRadius: 10, borderWidth: 1, borderColor: "#374151", color: colors.text, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, marginBottom: 16, minHeight: 48, fontFamily: "monospace" }}
                 value={channelPickerConcept}
                 onChangeText={setChannelPickerConcept}
-                placeholder="Describe what the video should be about..."
+                placeholder={channelPickerSelected ? "Describe what the video should be about, or tap a Quick Idea above..." : "Select a channel first..."}
                 placeholderTextColor={colors.textMuted}
                 multiline
-                maxLength={300}
+                maxLength={500}
               />
 
               {/* Generate button */}

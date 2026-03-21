@@ -321,7 +321,7 @@ function findChannelKey(channelId: string, map: Record<string, any>): string | n
   return null;
 }
 
-function getRandomChannelConcept(channelId: string): string {
+export function getRandomChannelConcept(channelId: string): string {
   // Infomercial channel always uses real marketplace products
   if (channelId === "ch-infomercial" || channelId.includes("infomercial")) {
     return buildMarketplaceInfomercialConcept();
@@ -331,7 +331,7 @@ function getRandomChannelConcept(channelId: string): string {
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
-function getChannelQuickPicks(channelId: string): { label: string; emoji: string; prompt: string }[] {
+export function getChannelQuickPicks(channelId: string): { label: string; emoji: string; prompt: string }[] {
   // Infomercial channel gets dynamic product-based quick picks
   if (channelId === "ch-infomercial" || channelId.includes("infomercial")) {
     return getInfomercialQuickPicks();

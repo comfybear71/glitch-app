@@ -11,6 +11,32 @@ import {
   CHANNELS, ChannelDef, fetchChannels, toChannelDef,
 } from "../services/api";
 
+// ── Branded Outro Scene Prompt Builder ──
+// Generates a 6-second closing scene: AIG!itch logo + channel name, styled per channel
+const CHANNEL_OUTRO_THEMES: Record<string, string> = {
+  "After Dark": "dark, eerie neon glow, shadows creeping, horror movie end card vibe, blood-red accents",
+  "Paws & Pixels": "adorable pixel art animals surrounding the logo, warm colors, cute sparkles, 8-bit hearts",
+  "AI Infomercial": "flashy QVC/HSN style, gold burst, 'CALL NOW' energy, sparkle effects, price tag confetti",
+  "Marketplace QVC": "flashy QVC/HSN style, gold burst, shopping channel energy, sparkle effects, price tags flying",
+  "GNN": "news broadcast style, ticker tape, breaking news desk, professional studio lighting, red and blue",
+  "Only AI Fans": "glamorous, pink and gold, luxury aesthetic, velvet, champagne bubbles, VIP energy",
+  "AI Dating": "romantic sunset, heart particles, soft pink lighting, dreamy bokeh, love in the air",
+  "AI Politicians": "patriotic bunting, podium, campaign poster style, red white and blue confetti",
+  "AI Fail Army": "glitchy, chaotic, things crashing and breaking around the logo, comedy vibe",
+  "AIG!itch Studios": "cinematic, golden spotlight, red carpet premiere, film strip border, Oscar-night energy",
+  "MTV AIG!itch": "music video energy, speakers thumping, neon lights pulsing, concert stage vibes",
+};
+
+function buildChannelOutroPrompt(channelName: string, channelEmoji: string): string {
+  // Find a theme that matches the channel name (partial match)
+  const themeKey = Object.keys(CHANNEL_OUTRO_THEMES).find(k =>
+    channelName.toLowerCase().includes(k.toLowerCase()) || k.toLowerCase().includes(channelName.toLowerCase())
+  );
+  const themeStyle = themeKey ? CHANNEL_OUTRO_THEMES[themeKey] : "futuristic, neon glow, digital particles, cinematic";
+
+  return `LOGO END CARD — AIG!itch ${channelEmoji} ${channelName}. A stunning animated logo reveal for the "AIG!itch" brand with the text "${channelName}" underneath. The AIG!itch logo glitches, flickers, and materializes with digital distortion effects. Style: ${themeStyle}. The logo is centered, large, and dramatic. Text must be clearly readable: "AIG!itch" as the main logo and "${channelName}" as the subtitle. Background should match the channel aesthetic. This is a 6-second bumper/end card — pure branding, no characters, no narrative.`;
+}
+
 export interface SocialLink {
   platform: string;
   emoji: string;
@@ -1100,6 +1126,19 @@ CRITICAL STYLE NOTES:
         } catch {
           submitted.push({ sceneNumber: scene.sceneNumber, requestId: null, blobUrl: null, sizeMb: null });
         }
+      }
+
+      // ── Step 2b: Submit branded outro scene (6s AIG!itch logo + channel name) ──
+      // Not added for Director Movies (they have rolling credits)
+      const outroSceneNumber = screenplay.scenes.length + 1;
+      const outroPrompt = buildChannelOutroPrompt(channel.name, channel.emoji);
+      setGenStatusText(`Submitting outro: AIG!itch × ${channel.name}...`);
+      try {
+        const outroRes = await submitScene(walletAddress, outroPrompt, 6, folder);
+        submitted.push({ sceneNumber: outroSceneNumber, requestId: outroRes.success ? outroRes.requestId || null : null, blobUrl: null, sizeMb: null });
+      } catch {
+        console.warn("[CHANNEL] Outro scene failed to submit — will stitch without it");
+        submitted.push({ sceneNumber: outroSceneNumber, requestId: null, blobUrl: null, sizeMb: null });
       }
 
       if (cancelRef.current) { setGenerating(null); setGenProgressPct(0); setGenStatusText(""); return; }

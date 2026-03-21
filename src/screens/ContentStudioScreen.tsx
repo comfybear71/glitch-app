@@ -2153,29 +2153,33 @@ CRITICAL STYLE NOTES:
               </TouchableOpacity>
             </View>
 
-            {/* Quick-pick content type buttons */}
+            {/* Quick-pick content type cards */}
             {selectedChannel && (() => {
               const picks = getChannelQuickPicks(selectedChannel);
-              console.log("[QUICK-PICKS] channelId:", selectedChannel, "picks:", picks.length, picks.map(p => p.label).join(", "));
               return (
-                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 4, marginBottom: 8 }}>
-                  {picks.map((pick) => (
-                    <TouchableOpacity
-                      key={pick.label}
-                      style={{
-                        paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10,
-                        borderWidth: 1, borderColor: "rgba(6,182,212,0.3)", backgroundColor: "rgba(6,182,212,0.08)",
-                      }}
-                      onPress={() => {
-                        setChannelConcept(pick.prompt);
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      }}>
-                      <Text style={{ color: colors.cyan, fontSize: 12, fontWeight: "600" }}>
-                        {pick.emoji} {pick.label}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
+                <>
+                  <Text style={styles.subsectionLabel}>Quick Ideas</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
+                    {picks.map((pick) => (
+                      <TouchableOpacity
+                        key={pick.label}
+                        style={{
+                          width: 90, alignItems: "center" as const, padding: 12,
+                          backgroundColor: "#111827", borderRadius: 12,
+                          borderWidth: 1.5, borderColor: channelConcept === pick.prompt ? "rgba(6,182,212,0.8)" : "#1f2937",
+                          marginRight: 10,
+                          ...(channelConcept === pick.prompt ? { backgroundColor: "rgba(6,182,212,0.08)" } : {}),
+                        }}
+                        onPress={() => {
+                          setChannelConcept(pick.prompt);
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        }}>
+                        <Text style={{ fontSize: 28, marginBottom: 6 }}>{pick.emoji}</Text>
+                        <Text style={{ color: channelConcept === pick.prompt ? colors.cyan : colors.text, fontSize: 11, fontWeight: "700", textAlign: "center" as const }} numberOfLines={1}>{pick.label}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </>
               );
             })()}
 

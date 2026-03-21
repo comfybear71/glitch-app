@@ -2070,26 +2070,59 @@ export default function HomeScreen() {
                 Pick a channel and describe what the video should be about. Your bestie will create and publish it!
               </Text>
 
-              {/* Channel grid */}
+              {/* Channel grid — with thumbnails like Studio */}
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
-                {homeChannels.map(ch => (
-                  <TouchableOpacity
-                    key={ch.id}
-                    style={{
-                      paddingHorizontal: 12, paddingVertical: 10, borderRadius: 10,
-                      borderWidth: 1, borderColor: channelPickerSelected === ch.id ? colors.cyan : "#374151",
-                      backgroundColor: channelPickerSelected === ch.id ? "rgba(6,182,212,0.15)" : "#1f2937",
-                    }}
-                    onPress={() => {
-                      setChannelPickerSelected(channelPickerSelected === ch.id ? "" : ch.id);
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    }}>
-                    <Text style={{ color: channelPickerSelected === ch.id ? colors.cyan : colors.textMuted, fontSize: 12, fontWeight: "600" }}>
-                      {ch.emoji} {ch.name}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                {homeChannels.map(ch => {
+                  const isSelected = channelPickerSelected === ch.id;
+                  return (
+                    <TouchableOpacity
+                      key={ch.id}
+                      style={{
+                        width: "48%", borderRadius: 12, overflow: "hidden",
+                        borderWidth: 2, borderColor: isSelected ? colors.cyan : "#1f2937",
+                        backgroundColor: isSelected ? "rgba(6,182,212,0.08)" : "#111827",
+                      }}
+                      onPress={() => {
+                        setChannelPickerSelected(isSelected ? "" : ch.id);
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      }}>
+                      {ch.thumbnail ? (
+                        <Image source={{ uri: ch.thumbnail }} style={{ width: "100%", height: 60, backgroundColor: "#1f2937" }} resizeMode="cover" />
+                      ) : (
+                        <View style={{ width: "100%", height: 60, backgroundColor: "#1f2937", justifyContent: "center", alignItems: "center" }}>
+                          <Text style={{ fontSize: 24 }}>{ch.emoji}</Text>
+                        </View>
+                      )}
+                      <View style={{ padding: 8 }}>
+                        <Text style={{ color: isSelected ? colors.cyan : colors.text, fontSize: 12, fontWeight: "800" }} numberOfLines={1}>
+                          {ch.emoji} {ch.name}
+                        </Text>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 3 }}>
+                          <Text style={{ color: colors.textMuted, fontSize: 9 }}>{ch.post_count} ep</Text>
+                          <Text style={{ color: colors.textMuted, fontSize: 9 }}>{ch.subscriber_count} subs</Text>
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
+
+              {/* Selected channel detail card */}
+              {channelPickerSelected ? (() => {
+                const ch = homeChannels.find(x => x.id === channelPickerSelected);
+                if (!ch) return null;
+                return (
+                  <View style={{ backgroundColor: "rgba(6,182,212,0.06)", borderWidth: 1, borderColor: "rgba(6,182,212,0.2)", borderRadius: 12, padding: 12, marginBottom: 12 }}>
+                    <Text style={{ color: colors.cyan, fontSize: 14, fontWeight: "800", marginBottom: 4 }}>{ch.emoji} {ch.name}</Text>
+                    <Text style={{ color: colors.textSecondary, fontSize: 11, lineHeight: 16, marginBottom: 6 }} numberOfLines={2}>{ch.description}</Text>
+                    <View style={{ flexDirection: "row", gap: 8 }}>
+                      <Text style={{ color: colors.cyan, fontSize: 10, backgroundColor: "rgba(6,182,212,0.15)", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, overflow: "hidden" }}>{ch.genre}</Text>
+                      <Text style={{ color: colors.textMuted, fontSize: 10, backgroundColor: "rgba(255,255,255,0.05)", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, overflow: "hidden" }}>{ch.post_count} episodes</Text>
+                      <Text style={{ color: colors.textMuted, fontSize: 10, backgroundColor: "rgba(255,255,255,0.05)", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, overflow: "hidden" }}>{ch.subscriber_count} subs</Text>
+                    </View>
+                  </View>
+                );
+              })() : null}
 
               {/* Quick-pick content ideas — shown when a channel is selected */}
               {channelPickerSelected ? (
@@ -2174,14 +2207,27 @@ export default function HomeScreen() {
             </View>
             <ScrollView style={styles.featuresList} showsVerticalScrollIndicator={false}>
               <Text style={styles.featuresCat}>Create & Generate</Text>
-              <Text style={styles.featuresItem}>🎬 Commission a Director Movie — choose director, genre, and concept</Text>
-              <Text style={styles.featuresItem}>📺 Breaking News Broadcast — 9-clip live TV news with anchors and field reporters</Text>
-              <Text style={styles.featuresItem}>🎨 Generate AI images — ask your bestie to draw or create anything</Text>
-              <Text style={styles.featuresItem}>📢 Launch AI ad campaigns — auto-posted to socials</Text>
-              <Text style={styles.featuresItem}>🖼 Generate promo posters for your brand</Text>
-              <Text style={styles.featuresItem}>🦸 Create hero images and banners</Text>
+              <Text style={styles.featuresItem}>📺 Create channel content — say "create channel content" or "make channel video"</Text>
+              <Text style={styles.featuresItem}>🎬 Commission a Director Movie — say "make a movie" or "director" or "screenplay"</Text>
+              <Text style={styles.featuresItem}>📰 Breaking News Broadcast — say "breaking news" or "news broadcast"</Text>
+              <Text style={styles.featuresItem}>📢 Launch AI ad campaigns — say "generate an ad" or "advertise" or "infomercial"</Text>
+              <Text style={styles.featuresItem}>🎨 Generate AI images — say "draw me..." or "generate an image of..."</Text>
+              <Text style={styles.featuresItem}>🖼 Generate promo posters — say "poster" or "promo"</Text>
+              <Text style={styles.featuresItem}>🦸 Create hero images — say "hero image" or "hero banner"</Text>
+              <Text style={styles.featuresItem}>🛒 Marketplace infomercials — real products from the AIG!itch shop</Text>
               <Text style={styles.featuresItem}>📱 All creations auto-posted to X, TikTok, Instagram, YouTube, Telegram</Text>
               <Text style={styles.featuresItem}>🔗 Verified social links — tap to view your content on each platform</Text>
+
+              <Text style={styles.featuresCat}>Chat Commands</Text>
+              <Text style={styles.featuresItem}>Just tell your bestie what you want! Try saying:</Text>
+              <Text style={styles.featuresItem}>📺 "Create channel content" → picks a channel + concept</Text>
+              <Text style={styles.featuresItem}>🎬 "Make a movie" → choose director, genre, concept</Text>
+              <Text style={styles.featuresItem}>📰 "Breaking news" → generate a news broadcast</Text>
+              <Text style={styles.featuresItem}>📢 "Generate an ad" or "infomercial" → ad campaign</Text>
+              <Text style={styles.featuresItem}>🎨 "Draw me a..." → AI image generation</Text>
+              <Text style={styles.featuresItem}>🖼 "Make a poster" → promo poster</Text>
+              <Text style={styles.featuresItem}>🦸 "Hero image" → landing page banner</Text>
+              <Text style={styles.featuresItem}>Or use the + button for the full Create menu!</Text>
 
               <Text style={styles.featuresCat}>Chat & Conversation</Text>
               <Text style={styles.featuresItem}>💬 Chat with your AI bestie — they remember your convos</Text>
@@ -2205,13 +2251,16 @@ export default function HomeScreen() {
               <Text style={styles.featuresItem}>📡 AI Feed Scanner — auto-shares trending posts from the feed</Text>
               <Text style={styles.featuresItem}>👍 React to feed posts — train the AI with your feedback</Text>
 
-              <Text style={styles.featuresCat}>Content Studio</Text>
-              <Text style={styles.featuresItem}>🎬 Director Movies — full screenplay-to-video pipeline</Text>
-              <Text style={styles.featuresItem}>📺 Breaking News — 3-story broadcast with real current events</Text>
+              <Text style={styles.featuresCat}>Content Studio (Studio Tab)</Text>
+              <Text style={styles.featuresItem}>📺 Channel Content — pick any channel, use Quick Ideas or Surprise Me</Text>
+              <Text style={styles.featuresItem}>🎬 Director Movies — full screenplay-to-video with rolling credits</Text>
+              <Text style={styles.featuresItem}>📰 Breaking News — 3-story broadcast with real current events</Text>
               <Text style={styles.featuresItem}>📢 Ad Campaigns — auto-generated and posted to socials</Text>
+              <Text style={styles.featuresItem}>🛒 Marketplace QVC — infomercials featuring real shop products</Text>
               <Text style={styles.featuresItem}>🖼 Posters & Hero Images — AI-generated promotional art</Text>
               <Text style={styles.featuresItem}>📚 Media Library — browse all generated content</Text>
               <Text style={styles.featuresItem}>☁️ Blob Storage — upload and manage media files</Text>
+              <Text style={styles.featuresItem}>🎬 Branded outro — every channel video ends with AIG!itch logo</Text>
 
               <Text style={styles.featuresCat}>AI Personality</Text>
               <Text style={styles.featuresItem}>🧠 97+ unique AI personas with different personalities</Text>

@@ -9,6 +9,7 @@ import * as DocumentPicker from "expo-document-picker";
 import { colors } from "../theme/colors";
 import { useSession } from "../hooks/useSession";
 import { usePhantomWallet } from "../hooks/usePhantomWallet";
+import { useGeneration } from "../hooks/GenerationContext";
 import {
   deleteMedia, triggerDirectorMovie,
   generatePoster, generateHeroImage, getMarketingStats,
@@ -426,6 +427,16 @@ function ProgressBar({ progress, color: barColor }: { progress: number; color?: 
 export default function ContentStudioScreen() {
   const { sessionId } = useSession();
   const { walletAddress } = usePhantomWallet();
+  const {
+    generating: ctxGenerating, genStatusText, genProgressPct, genResult,
+    clearResult: ctxClearResult, cancelGeneration: ctxCancelGeneration,
+    runChannelGeneration: ctxRunChannel,
+    runAdGeneration: ctxRunAd,
+    runMovieGeneration: ctxRunMovie,
+    runNewsGeneration: ctxRunNews,
+    runPosterGeneration: ctxRunPoster,
+    runHeroGeneration: ctxRunHero,
+  } = useGeneration();
   const [refreshing, setRefreshing] = useState(false);
 
   // Section expand state
@@ -1369,9 +1380,9 @@ CRITICAL STYLE NOTES:
     addNewsLog("⚠️", "Cancelling broadcast...", "waiting");
   };
 
-  // ── Channel Content: Full Multi-Step Pipeline (same as Director Movie) ──
+  // ── Channel Content: Delegates to GenerationContext (background-safe, survives tab navigation) ──
   const handleChannelGenerate = async () => {
-    if (channelGenerating || !walletAddress) return;
+    if (ctxGenerating || channelGenerating || !walletAddress) return;
     if (walletAddress !== ADMIN_WALLET) {
       Alert.alert("Architect Only", "Sorry bestie! Only the Architect has the power to generate content right now. This superpower is coming to all besties soon!");
       return;
@@ -1383,377 +1394,58 @@ CRITICAL STYLE NOTES:
     const channel = channels.find(ch => ch.id === selectedChannel);
     if (!channel) return;
 
-    setChannelGenerating(true);
-    setChannelResult(null);
-    setChannelLog([]);
-    setChannelPhase("screenplay");
-    setChannelProgress({ current: 0, total: 1, pct: 0 });
-    setChannelSceneStatuses([]);
-    channelCancelRef.current = false;
+    // Delegate to GenerationContext — this runs at the app root level
+    // so generation continues even if user navigates away from Studio tab
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-
-    const startTime = Date.now();
-    const formatElapsed = (from: number) => {
-      const s = Math.floor((Date.now() - from) / 1000);
-      return `${Math.floor(s / 60)}m ${s % 60}s`;
-    };
-
-    const isShort = channelFormat === "short";
-
-    // channel.style comes from backend promptHint (editable in admin panel)
-    const effectiveStyle = channel.style;
-    const effectiveGenre = channel.generationGenre || channel.genre;
-    const sceneDuration = channel.sceneDuration || 10;
-
-    // Build title/credits instructions from channel config
-    const titleCreditsRules: string[] = [];
-    if (!channel.showTitlePage) titleCreditsRules.push("NO title card, NO intro sequence — Scene 1 starts immediately with content.");
-    if (!channel.showCredits) titleCreditsRules.push("NO credits scene, NO 'The End', NO production credits at the end.");
-    const titleCreditsHint = titleCreditsRules.length > 0 ? " " + titleCreditsRules.join(" ") : "";
-
-    // Build scene count hint if configured
-    const sceneCountHint = channel.sceneCount ? ` Generate exactly ${channel.sceneCount} scenes.` : "";
-
-    // Music channel prefix
-    const isMusicChannel = channel.isMusicChannel;
-    const musicPrefix = isMusicChannel
-      ? "This MUST be a music video — every scene must feature singing, rapping, playing instruments, or performing music. "
-      : "";
-
-    let channelConceptText = channelConcept.trim()
-      ? `${musicPrefix}${effectiveStyle}.${titleCreditsHint}${sceneCountHint} User concept: ${channelConcept.trim()}`
-      : `${musicPrefix}${effectiveStyle}.${titleCreditsHint}${sceneCountHint} Create compelling ${channel.name} content that fits the channel theme: ${channel.description}.`;
-
-    if (isShort) {
-      channelConceptText += ` IMPORTANT: This is a SHORT ${sceneDuration}-second clip. Write ONLY 1 scene with a single powerful visual moment.`;
-    }
-
-    addChannelLog("📺", `Creating ${isShort ? "short clip" : "multi-scene movie"} for ${channel.emoji} ${channel.name}...`, "info");
-    addChannelLog("🎬", `Genre: ${channel.genre} | Format: ${isShort ? "Short (10s)" : "Multi-scene"}`, "info");
+    addChannelLog("📺", `Starting background generation for ${channel.emoji} ${channel.name}...`, "info");
     if (channelConcept.trim()) addChannelLog("📖", `Concept: "${channelConcept.trim().slice(0, 100)}"`, "info");
-    addChannelLog("📜", `Writing screenplay...`, "waiting");
+    addChannelLog("✅", `Generation running in background — you can switch tabs safely!`, "success");
+    setChannelGenerating(true);
 
-    try {
-      // ── SHORT CLIP PATH: Skip screenplay, submit single 10s clip directly ──
-      if (isShort) {
-        setChannelPhase("submitting");
-        const shortPrompt = channelConcept.trim()
-          ? `${effectiveStyle}. ${channelConcept.trim()}. ${sceneDuration}-second ${channel.name} channel clip.`
-          : `${effectiveStyle}. Create a compelling ${sceneDuration}-second clip for the ${channel.name} channel. Theme: ${channel.description}. Make it visually striking and brand-worthy.`;
-
-        addChannelLog("📡", `Submitting short clip to xAI...`, "waiting");
-        const submitRes = await submitScene(walletAddress, shortPrompt, sceneDuration, channel.folder);
-
-        if (channelCancelRef.current) { setChannelGenerating(false); setChannelPhase("idle"); return; }
-
-        if (!submitRes.success || !submitRes.requestId) {
-          addChannelLog("❌", `Clip submission failed: ${submitRes.error || "Unknown"}`, "error");
-          setChannelPhase("failed");
-          setChannelGenerating(false);
-          return;
-        }
-
-        addChannelLog("✅", `Submitted: ${submitRes.requestId.slice(0, 20)}...`, "success");
-        setChannelProgress({ current: 1, total: 3, pct: 33 });
-
-        // Poll for completion
-        setChannelPhase("polling");
-        addChannelLog("⏳", `Polling every 10s (max 15 min)...`, "waiting");
-        let pollCount = 0;
-        let videoUrl: string | null = null;
-        let videoSizeMb: number | null = null;
-
-        while (pollCount < 90 && !channelCancelRef.current) {
-          await new Promise(r => setTimeout(r, 10000));
-          pollCount++;
-          try {
-            const pollRes = await pollScene(walletAddress, submitRes.requestId, channel.folder);
-            if (pollRes.status === "done" && pollRes.blobUrl) {
-              videoUrl = pollRes.blobUrl;
-              videoSizeMb = pollRes.sizeMb || null;
-              addChannelLog("🎉", `Clip ready! (${formatElapsed(startTime)}) — ${videoSizeMb || "?"}MB`, "success");
-              break;
-            } else if (["failed", "moderation_failed", "expired"].includes(pollRes.status)) {
-              addChannelLog("❌", `Clip FAILED: ${pollRes.status}`, "error");
-              setChannelPhase("failed");
-              setChannelGenerating(false);
-              return;
-            } else if (pollCount % 3 === 0) {
-              addChannelLog("🔄", `${formatElapsed(startTime)}: Still rendering...`, "info");
-            }
-          } catch (err: any) { console.warn("Poll error:", err?.message); }
-          setChannelProgress({ current: 1, total: 3, pct: 33 + Math.min(pollCount * 2, 33) });
-        }
-
-        if (channelCancelRef.current) { setChannelGenerating(false); setChannelPhase("idle"); return; }
-
-        if (!videoUrl) {
-          addChannelLog("❌", `Clip timed out after ${formatElapsed(startTime)}`, "error");
-          setChannelPhase("failed");
-          setChannelGenerating(false);
-          return;
-        }
-
-        // Publish to feed
-        setChannelPhase("stitching");
-        setChannelProgress({ current: 2, total: 3, pct: 80 });
-        addChannelLog("📡", `Publishing short clip to feed...`, "waiting");
-
-        const caption = `${channel.emoji} ${channel.name} Short\n${channelConcept.trim() || channel.description}`;
-        try {
-          await spreadCustomContent(walletAddress, caption, videoUrl, "video");
-          addChannelLog("✅", `Published to AIG!itch feed!`, "success");
-        } catch (e: any) {
-          addChannelLog("⚠️", `Feed publish failed: ${e?.message}`, "error");
-        }
-
-        setChannelProgress({ current: 3, total: 3, pct: 100 });
-        setChannelResult({
-          success: true,
-          title: channelConcept.trim() || "Short Clip",
-          channelName: channel.name,
-          channelEmoji: channel.emoji,
-          genre: channel.genre,
-          finalVideoUrl: videoUrl,
-          clipCount: 1,
-          sizeMb: videoSizeMb,
-        });
-        setChannelPhase("complete");
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        setChannelGenerating(false);
-        return;
-      }
-
-      // ── MULTI-SCENE PATH: Full pipeline (screenplay → scenes → poll → stitch) ──
-
-      // ── STEP 1: Generate Screenplay ──
-      const screenplayOpts: { genre: string; concept: string; director?: string } = {
-        genre: effectiveGenre,
-        concept: channelConceptText,
-      };
-      // Only pass director if channel has one explicitly set AND showDirector is enabled
-      if (channel.defaultDirector && channel.showDirector) screenplayOpts.director = channel.defaultDirector;
-
-      const screenplay = await generateScreenplay(walletAddress, screenplayOpts);
-      // Ensure director fields are populated — backend may return empty when no director was requested
-      if (!screenplay.director) screenplay.director = "AIG!itch Studios";
-      if (!screenplay.directorId) screenplay.directorId = "aiglitch-studios";
-      // Prefix title with channel name (e.g. "Paws & Pixels - Kitten Adventures")
-      screenplay.title = `${channel.name} - ${screenplay.title}`;
-
-      if (channelCancelRef.current) { setChannelGenerating(false); setChannelPhase("idle"); return; }
-
-      const totalScenes = screenplay.scenes.length;
-      const folder = channel.folder;
-      setChannelProgress({ current: 1, total: 1, pct: 100 });
-
-      addChannelLog("✅", `"${screenplay.title}" — ${totalScenes} scenes (screenplay by ${screenplay.screenplayProvider})`, "success");
-      addChannelLog("📖", `${screenplay.synopsis?.slice(0, 200)}...`, "info");
-
-      setChannelSceneStatuses(screenplay.scenes.map(s => ({ sceneNumber: s.sceneNumber, title: s.title, status: "pending" })));
-
-      // ── STEP 2: Submit Each Scene ──
-      setChannelPhase("submitting");
-      setChannelProgress({ current: 0, total: totalScenes, pct: 0 });
-      addChannelLog("📡", `Submitting ${totalScenes} scenes to xAI...`, "info");
-
-      type SceneTracker = {
-        sceneNumber: number; title: string; requestId: string | null;
-        status: "submitted" | "done" | "failed";
-        blobUrl: string | null; sizeMb: number | null;
-        submittedAt: number;
-      };
-      const sceneTrackers: SceneTracker[] = [];
-
-      for (let i = 0; i < screenplay.scenes.length; i++) {
-        if (channelCancelRef.current) break;
-        const scene = screenplay.scenes[i];
-        addChannelLog("🎬", `[${i + 1}/${totalScenes}] ${scene.title}`, "info");
-
-        try {
-          const submitRes = await submitScene(walletAddress, scene.videoPrompt, sceneDuration, folder);
-          if (submitRes.success && submitRes.requestId) {
-            sceneTrackers.push({ sceneNumber: scene.sceneNumber, title: scene.title, requestId: submitRes.requestId, status: "submitted", blobUrl: null, sizeMb: null, submittedAt: Date.now() });
-            addChannelLog("✅", `Submitted: ${submitRes.requestId.slice(0, 20)}...`, "success");
-            setChannelSceneStatuses(prev => prev.map(s => s.sceneNumber === scene.sceneNumber ? { ...s, status: "submitted" } : s));
-          } else {
-            addChannelLog("❌", `Failed: ${submitRes.error || "Unknown error"}`, "error");
-            sceneTrackers.push({ sceneNumber: scene.sceneNumber, title: scene.title, requestId: null, status: "failed", blobUrl: null, sizeMb: null, submittedAt: Date.now() });
-            setChannelSceneStatuses(prev => prev.map(s => s.sceneNumber === scene.sceneNumber ? { ...s, status: "failed" } : s));
-          }
-        } catch (err: any) {
-          addChannelLog("❌", `Failed: ${err?.message || "Network error"}`, "error");
-          sceneTrackers.push({ sceneNumber: scene.sceneNumber, title: scene.title, requestId: null, status: "failed", blobUrl: null, sizeMb: null, submittedAt: Date.now() });
-          setChannelSceneStatuses(prev => prev.map(s => s.sceneNumber === scene.sceneNumber ? { ...s, status: "failed" } : s));
-        }
-        setChannelProgress({ current: i + 1, total: totalScenes, pct: Math.round(((i + 1) / totalScenes) * 100) });
-      }
-
-      if (channelCancelRef.current) { setChannelGenerating(false); setChannelPhase("idle"); return; }
-
-      const submittedScenes = sceneTrackers.filter(s => s.status === "submitted");
-      if (submittedScenes.length === 0) {
-        addChannelLog("❌", "All scenes failed to submit. Please try again.", "error");
-        setChannelPhase("failed");
-        setChannelGenerating(false);
-        return;
-      }
-
-      // ── STEP 3: Poll Every 10 Seconds ──
-      setChannelPhase("polling");
-      const doneScenes = new Set<number>();
-      const failedScenes = new Set<number>();
-      const sceneUrls = new Map<number, string>();
-      let lastProgressTime = Date.now();
-      let pollCount = 0;
-      const pendingCount = () => submittedScenes.filter(s => !doneScenes.has(s.sceneNumber) && !failedScenes.has(s.sceneNumber)).length;
-
-      addChannelLog("⏳", `Polling ${submittedScenes.length} scenes every 10s (max 15 min)...`, "waiting");
-      setChannelProgress({ current: 0, total: totalScenes, pct: 0 });
-
-      sceneTrackers.filter(s => s.status === "failed").forEach(s => failedScenes.add(s.sceneNumber));
-
-      while (pendingCount() > 0 && pollCount < 90 && !channelCancelRef.current) {
-        await new Promise(r => setTimeout(r, 10000));
-        pollCount++;
-
-        for (const scene of submittedScenes) {
-          if (doneScenes.has(scene.sceneNumber) || failedScenes.has(scene.sceneNumber) || !scene.requestId) continue;
-          try {
-            const pollRes = await pollScene(walletAddress, scene.requestId, folder);
-            if (pollRes.status === "done" && pollRes.blobUrl) {
-              doneScenes.add(scene.sceneNumber);
-              sceneUrls.set(scene.sceneNumber, pollRes.blobUrl);
-              lastProgressTime = Date.now();
-              const elapsed = formatElapsed(scene.submittedAt);
-              addChannelLog("🎉", `Scene ${scene.sceneNumber} "${scene.title}" DONE (${elapsed}) — ${pollRes.sizeMb || "?"}MB`, "success");
-              setChannelSceneStatuses(prev => prev.map(s => s.sceneNumber === scene.sceneNumber ? { ...s, status: "done", sizeMb: pollRes.sizeMb, elapsed } : s));
-            } else if (["failed", "moderation_failed", "expired"].includes(pollRes.status)) {
-              failedScenes.add(scene.sceneNumber);
-              addChannelLog("❌", `Scene ${scene.sceneNumber} "${scene.title}" FAILED: ${pollRes.status}`, "error");
-              setChannelSceneStatuses(prev => prev.map(s => s.sceneNumber === scene.sceneNumber ? { ...s, status: "failed" } : s));
-            } else {
-              setChannelSceneStatuses(prev => prev.map(s => s.sceneNumber === scene.sceneNumber && s.status === "submitted" ? { ...s, status: "rendering" } : s));
-            }
-          } catch (err: any) {
-            console.warn(`Poll error for scene ${scene.sceneNumber}:`, err?.message);
-          }
-        }
-
-        const done = doneScenes.size;
-        const failed = failedScenes.size;
-        const pct = Math.round((done / totalScenes) * 100);
-        setChannelProgress({ current: done, total: totalScenes, pct });
-
-        if (pollCount % 3 === 0) {
-          addChannelLog("🔄", `${formatElapsed(startTime)}: ${done}/${totalScenes} done, ${failed} failed`, "info");
-        }
-
-        // Stall detection
-        if (done >= totalScenes * 0.5 && (Date.now() - lastProgressTime) > 60000) {
-          addChannelLog("⚠️", `Stall detected — stitching ${done}/${totalScenes} available clips`, "waiting");
-          break;
-        }
-      }
-
-      if (channelCancelRef.current) { setChannelGenerating(false); setChannelPhase("idle"); return; }
-
-      if (doneScenes.size === 0) {
-        addChannelLog("❌", `All scenes failed to generate. Please try again.`, "error");
-        setChannelPhase("failed");
-        setChannelGenerating(false);
-        return;
-      }
-
-      if (doneScenes.size < totalScenes * 0.5 && pollCount >= 90) {
-        addChannelLog("❌", `Not enough clips completed. ${doneScenes.size}/${totalScenes} done.`, "error");
-        setChannelPhase("failed");
-        setChannelGenerating(false);
-        return;
-      }
-
-      // ── STEP 4: Stitch ──
-      setChannelPhase("stitching");
-      setChannelProgress({ current: 0, total: 1, pct: 0 });
-      addChannelLog("🧩", `Stitching ${doneScenes.size} clips for ${channel.emoji} ${channel.name}...`, "waiting");
-
-      const sceneUrlsObj: Record<string, string> = {};
-      sceneUrls.forEach((url, num) => { sceneUrlsObj[String(num)] = url; });
-
-      // Log stitch payload to generation log for debugging
-      const sceneKeys = Object.keys(sceneUrlsObj);
-      addChannelLog("🔍", `Stitch payload: ${sceneKeys.length} scenes, title="${screenplay.title}", genre="${effectiveGenre}", director="${screenplay.director || "(none)"}", channelId="${channel.id}", folder="${channel.folder}"`, "info");
-
-      let stitchRes: Awaited<ReturnType<typeof stitchMovie>>;
-      try {
-        stitchRes = await stitchMovie(walletAddress, {
-          sceneUrls: sceneUrlsObj,
-          title: screenplay.title,
-          genre: effectiveGenre,
-          directorUsername: screenplay.director,
-          directorId: screenplay.directorId,
-          synopsis: screenplay.synopsis,
-          tagline: screenplay.tagline,
-          castList: screenplay.castList,
-          channelId: channel.id,
-          folder: channel.folder,
-        });
-      } catch (stitchErr: any) {
-        addChannelLog("❌", `Stitch error: ${stitchErr?.message || "Unknown error"}`, "error");
-        addChannelLog("🔍", `Debug: sceneKeys=[${sceneKeys.join(",")}], title="${screenplay.title}", genre="${effectiveGenre}", directorUsername="${screenplay.director}", directorId="${screenplay.directorId}", channelId="${channel.id}", folder="${channel.folder}"`, "error");
-        throw stitchErr;
-      }
-
-      setChannelProgress({ current: 1, total: 1, pct: 100 });
-      addChannelLog("✅", `CHANNEL CONTENT READY! ${stitchRes.clipCount} clips → ${stitchRes.sizeMb}MB`, "success");
-
-      // Publish to the channel itself so it appears on the channel page
-      try {
-        const caption = `${channel.emoji} ${channel.name}: "${screenplay.title}"\n${screenplay.tagline || screenplay.synopsis || ""}`;
-        await spreadCustomContent(walletAddress, caption, stitchRes.finalVideoUrl, "video", channel.id);
-        addChannelLog("📺", `Published to ${channel.name} channel`, "success");
-      } catch { /* non-fatal */ }
-
-      // Safety net: publish to feed if backend didn't create a feed post (respects autoPublishFeed config)
-      if (!stitchRes.feedPostId && channel.autoPublishFeed !== false) {
-        try {
-          const caption = `${channel.emoji} ${channel.name}: "${screenplay.title}"\n${screenplay.tagline || screenplay.synopsis || ""}`;
-          await spreadCustomContent(walletAddress, caption, stitchRes.finalVideoUrl, "video");
-          addChannelLog("📡", "Published to AIG!itch feed (safety net)", "success");
-        } catch { /* non-fatal */ }
-      }
-
-      addChannelLog("📺", `Feed post: ${stitchRes.feedPostId}`, "success");
-      if (stitchRes.spreading?.length) {
-        addChannelLog("✅", `Social distribution → ${stitchRes.spreading.join(", ")}`, "success");
-      }
-      addChannelLog("🙏", `Channel content published!`, "success");
-
-      setChannelResult({
-        success: true,
-        title: screenplay.title,
-        channelName: channel.name,
-        channelEmoji: channel.emoji,
-        genre: channel.genre,
-        finalVideoUrl: stitchRes.finalVideoUrl,
-        feedPostId: stitchRes.feedPostId,
-        clipCount: stitchRes.clipCount,
-        sizeMb: stitchRes.sizeMb,
-        spreading: stitchRes.spreading,
-      });
-      setChannelPhase("complete");
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-
-    } catch (e: any) {
-      addChannelLog("❌", e?.message || "Channel content generation failed", "error");
-      setChannelPhase("failed");
-    }
-    setChannelGenerating(false);
+    ctxRunChannel(walletAddress, channel, channelConcept.trim() || undefined);
   };
 
+  // Track GenerationContext state to update local UI
+  useEffect(() => {
+    if (ctxGenerating === "channel") {
+      setChannelGenerating(true);
+      // Map context progress to local phase for UI display
+      const status = genStatusText.toLowerCase();
+      if (status.includes("screenplay") || status.includes("writing")) setChannelPhase("screenplay");
+      else if (status.includes("submitting")) setChannelPhase("submitting");
+      else if (status.includes("rendering") || status.includes("clips")) setChannelPhase("polling");
+      else if (status.includes("stitching")) setChannelPhase("stitching");
+      else if (status.includes("publishing") || status.includes("verifying")) setChannelPhase("stitching");
+      else setChannelPhase("screenplay");
+      setChannelProgress({ current: 0, total: 100, pct: genProgressPct });
+    } else if (channelGenerating && !ctxGenerating) {
+      // Generation just finished
+      if (genResult && genResult.type === "channel") {
+        setChannelPhase("complete");
+        setChannelResult({
+          success: true,
+          title: genResult.title,
+          channelName: "",
+          channelEmoji: "",
+          genre: "",
+          finalVideoUrl: genResult.mediaUrl,
+          clipCount: 0,
+          sizeMb: 0,
+          spreading: [],
+        });
+        addChannelLog("✅", genResult.message, "success");
+        if (genResult.mediaUrl) addChannelLog("▶️", `Video: ${genResult.mediaUrl}`, "success");
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+      setChannelGenerating(false);
+    }
+  }, [ctxGenerating, genStatusText, genProgressPct, genResult]);
+
   const handleCancelChannel = () => {
-    channelCancelRef.current = true;
-    addChannelLog("⚠️", "Cancelling generation...", "waiting");
+    ctxCancelGeneration();
+    setChannelGenerating(false);
+    setChannelPhase("idle");
+    addChannelLog("⚠️", "Generation cancelled.", "waiting");
   };
 
   // ── Upload handlers ──
@@ -2214,23 +1906,18 @@ CRITICAL STYLE NOTES:
               )}
             </View>
 
-            {/* Progress bar */}
+            {/* Progress bar — shows GenerationContext status */}
             {channelGenerating && channelPhase !== "idle" && (
               <View style={{ marginTop: 12, marginBottom: 8 }}>
                 <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
-                  <Text style={{ color: colors.text, fontFamily: "monospace", fontSize: 12 }}>
-                    {channelPhase === "screenplay" ? "📜 Writing screenplay..." : channelPhase === "submitting" ? `📡 Submitting scenes... ${channelProgress.current}/${channelProgress.total}` : channelPhase === "polling" ? `🎬 Rendering clips... ${channelProgress.current}/${channelProgress.total} (${channelProgress.pct}%)` : channelPhase === "stitching" ? "🧩 Stitching video..." : channelPhase === "complete" ? "✅ Channel content complete!" : ""}
+                  <Text style={{ color: colors.text, fontFamily: "monospace", fontSize: 12 }} numberOfLines={2}>
+                    {genStatusText || (channelPhase === "complete" ? "✅ Channel content complete!" : "Starting...")}
                   </Text>
                 </View>
-                <ProgressBar progress={channelProgress.pct} color={channelPhase === "complete" ? colors.green : colors.cyan} />
-                {channelPhase === "polling" && channelProgress.current === 0 && (
-                  <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 4, fontFamily: "monospace" }}>Waiting for clips to render...</Text>
-                )}
-                {channelPhase === "polling" && channelProgress.current > 0 && channelProgress.current < channelProgress.total && (
-                  <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 4, fontFamily: "monospace" }}>
-                    {channelProgress.pct}% complete — {channelProgress.total - channelProgress.current} clips remaining
-                  </Text>
-                )}
+                <ProgressBar progress={genProgressPct || channelProgress.pct} color={channelPhase === "complete" ? colors.green : colors.cyan} />
+                <Text style={{ color: colors.cyan, fontSize: 11, marginTop: 6, fontFamily: "monospace" }}>
+                  Runs in background — you can switch tabs safely
+                </Text>
               </View>
             )}
 

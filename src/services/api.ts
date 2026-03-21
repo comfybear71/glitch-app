@@ -818,6 +818,7 @@ export function generatePoster(walletAddress: string) {
   return fetchJSON<{ success: boolean; url?: string; message?: string; spreading?: string[]; post?: any }>(`/api/admin/mktg?wallet_address=${encodeURIComponent(walletAddress)}`, {
     method: "POST",
     body: JSON.stringify({ action: "generate_poster", wallet_address: walletAddress }),
+    timeoutMs: 120000,
   });
 }
 
@@ -825,6 +826,7 @@ export function generateHeroImage(walletAddress: string) {
   return fetchJSON<{ success: boolean; url?: string; message?: string; spreading?: string[]; post?: any }>(`/api/admin/mktg?wallet_address=${encodeURIComponent(walletAddress)}`, {
     method: "POST",
     body: JSON.stringify({ action: "generate_hero", wallet_address: walletAddress }),
+    timeoutMs: 120000,
   });
 }
 
@@ -858,6 +860,7 @@ export function generateAd(walletAddress: string, style?: string, concept?: stri
   return fetchJSON<{ success: boolean; job_id?: string; message?: string; post?: any }>(`/api/generate-ads?wallet_address=${encodeURIComponent(walletAddress)}`, {
     method: "POST",
     body: JSON.stringify({ wallet_address: walletAddress, ...(style && { style }), ...(concept && { concept }) }),
+    timeoutMs: 120000,
   });
 }
 
@@ -1117,6 +1120,7 @@ export function generateScreenplay(walletAddress: string, opts?: { genre?: strin
     method: "POST",
     headers: { "X-Wallet-Address": walletAddress },
     body: JSON.stringify({ ...opts }),
+    timeoutMs: 120000, // Screenplay generation can take 60-90s on busy servers
   });
 }
 
@@ -1132,6 +1136,7 @@ export function submitScene(walletAddress: string, prompt: string, duration: num
     method: "POST",
     headers: { "X-Wallet-Address": walletAddress },
     body: JSON.stringify({ prompt, duration, folder }),
+    timeoutMs: 120000, // Scene submission can take time on busy servers
   });
 }
 

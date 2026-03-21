@@ -187,7 +187,11 @@ export default function HomeScreen() {
   // Inline channel picker state
   const [showChannelPicker, setShowChannelPicker] = useState(false);
   const [channelPickerConcept, setChannelPickerConcept] = useState("");
+  const [channelPickerSelected, setChannelPickerSelected] = useState<string>("");
   const [homeChannels, setHomeChannels] = useState<ChannelDef[]>([]);
+
+  // Create menu (quick access to all Studio functions from Home)
+  const [showCreateMenu, setShowCreateMenu] = useState(false);
 
   const [hasMore, setHasMore] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
@@ -794,7 +798,8 @@ export default function HomeScreen() {
             fetchChannels().then(chs => setHomeChannels(chs.map(toChannelDef))).catch(() => {});
           }
           setShowChannelPicker(true);
-          setChannelPickerConcept(text);
+          setChannelPickerConcept(text); // pre-fill concept with user's message
+          setChannelPickerSelected(""); // no channel pre-selected
         } else if (combined.includes("breaking news") || combined.includes("news broadcast") || combined.includes("newscast") || combined.includes("news report") || combined.includes("news anchor") || combined.includes("news bulletin")) {
           // Show news topic picker
           Keyboard.dismiss();
@@ -1755,6 +1760,14 @@ export default function HomeScreen() {
 
           <TouchableOpacity
             style={styles.vizBtn}
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowCreateMenu(true); if (homeChannels.length === 0) fetchChannels().then(chs => setHomeChannels(chs.map(toChannelDef))).catch(() => {}); }}
+          >
+            <Text style={styles.vizBtnEmoji}>🎬</Text>
+            <Text style={styles.vizBtnLabel}>Create</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.vizBtn}
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowFeatures(true); }}
           >
             <Text style={styles.vizBtnEmoji}>✨</Text>
@@ -2046,14 +2059,14 @@ export default function HomeScreen() {
           <View style={{ backgroundColor: "#111", borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: Platform.OS === "ios" ? 34 : 16, maxHeight: "85%" }}>
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, paddingVertical: 16 }}>
               <Text style={{ color: colors.text, fontSize: 18, fontWeight: "800" }}>Create Channel Content</Text>
-              <TouchableOpacity onPress={() => setShowChannelPicker(false)}>
+              <TouchableOpacity onPress={() => { setShowChannelPicker(false); setChannelPickerSelected(""); }}>
                 <Text style={{ color: colors.textMuted, fontSize: 24 }}>x</Text>
               </TouchableOpacity>
             </View>
 
             <ScrollView style={{ paddingHorizontal: 20 }} keyboardShouldPersistTaps="handled">
               <Text style={{ color: colors.textSecondary, fontSize: 12, marginBottom: 12 }}>
-                Pick a channel to create video content for. The video will be published to the channel on aiglitch.app.
+                Pick a channel and describe what the video should be about. Your bestie will create and publish it!
               </Text>
 
               {/* Channel grid */}
@@ -2063,31 +2076,44 @@ export default function HomeScreen() {
                     key={ch.id}
                     style={{
                       paddingHorizontal: 12, paddingVertical: 10, borderRadius: 10,
-                      borderWidth: 1, borderColor: channelPickerConcept === ch.id ? colors.cyan : "#374151",
-                      backgroundColor: channelPickerConcept === ch.id ? "rgba(6,182,212,0.15)" : "#1f2937",
+                      borderWidth: 1, borderColor: channelPickerSelected === ch.id ? colors.cyan : "#374151",
+                      backgroundColor: channelPickerSelected === ch.id ? "rgba(6,182,212,0.15)" : "#1f2937",
                     }}
                     onPress={() => {
-                      setChannelPickerConcept(channelPickerConcept === ch.id ? "" : ch.id);
+                      setChannelPickerSelected(channelPickerSelected === ch.id ? "" : ch.id);
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                     }}>
-                    <Text style={{ color: channelPickerConcept === ch.id ? colors.cyan : colors.textMuted, fontSize: 12, fontWeight: "600" }}>
+                    <Text style={{ color: channelPickerSelected === ch.id ? colors.cyan : colors.textMuted, fontSize: 12, fontWeight: "600" }}>
                       {ch.emoji} {ch.name}
                     </Text>
                   </TouchableOpacity>
                 ))}
               </View>
 
+              {/* Concept input */}
+              <Text style={{ color: colors.textSecondary, fontSize: 11, fontWeight: "700", marginBottom: 6, textTransform: "uppercase", letterSpacing: 1 }}>Content Concept (optional)</Text>
+              <TextInput
+                style={{ backgroundColor: "#1a1a2e", borderRadius: 10, borderWidth: 1, borderColor: "#374151", color: colors.text, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, marginBottom: 16, minHeight: 48, fontFamily: "monospace" }}
+                value={channelPickerConcept}
+                onChangeText={setChannelPickerConcept}
+                placeholder="Describe what the video should be about..."
+                placeholderTextColor={colors.textMuted}
+                multiline
+                maxLength={300}
+              />
+
               {/* Generate button */}
               <TouchableOpacity
-                style={{ backgroundColor: "rgba(6,182,212,0.15)", borderRadius: 12, paddingVertical: 16, alignItems: "center", borderWidth: 1, borderColor: colors.cyan, marginBottom: 16, opacity: channelPickerConcept ? 1 : 0.4 }}
-                disabled={!channelPickerConcept}
+                style={{ backgroundColor: "rgba(6,182,212,0.15)", borderRadius: 12, paddingVertical: 16, alignItems: "center", borderWidth: 1, borderColor: colors.cyan, marginBottom: 16, opacity: channelPickerSelected ? 1 : 0.4 }}
+                disabled={!channelPickerSelected}
                 onPress={() => {
                   Keyboard.dismiss();
                   setShowChannelPicker(false);
-                  const selectedId = channelPickerConcept;
+                  const selectedCh = homeChannels.find(c => c.id === channelPickerSelected);
+                  const concept = channelPickerConcept.trim();
+                  setChannelPickerSelected("");
                   setChannelPickerConcept("");
-                  const selectedCh = homeChannels.find(c => c.id === selectedId);
-                  if (walletAddress && selectedCh) ctxRunChannel(walletAddress, selectedCh);
+                  if (walletAddress && selectedCh) ctxRunChannel(walletAddress, selectedCh, concept || undefined);
                 }}>
                 <Text style={{ color: colors.cyan, fontSize: 16, fontWeight: "800" }}>Create Channel Content</Text>
               </TouchableOpacity>
@@ -2259,6 +2285,115 @@ export default function HomeScreen() {
             </ScrollView>
           </View>
         </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Create Menu — Quick access to ALL Studio generation functions */}
+      <Modal visible={showCreateMenu} animationType="slide" transparent>
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "flex-end" }}>
+          <View style={{ backgroundColor: "#111", borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: Platform.OS === "ios" ? 34 : 16, maxHeight: "80%" }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, paddingVertical: 16 }}>
+              <Text style={{ color: colors.text, fontSize: 18, fontWeight: "800" }}>Create Content</Text>
+              <TouchableOpacity onPress={() => setShowCreateMenu(false)}>
+                <Text style={{ color: colors.textMuted, fontSize: 24 }}>x</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ paddingHorizontal: 20 }} showsVerticalScrollIndicator={false}>
+              <Text style={{ color: colors.textSecondary, fontSize: 12, marginBottom: 16 }}>
+                Tell your bestie what to create, or tap a button below. Everything runs in the background!
+              </Text>
+
+              {/* Video Content */}
+              <Text style={{ color: colors.cyan, fontSize: 11, fontWeight: "700", marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>Video Content</Text>
+
+              <TouchableOpacity
+                style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#1a1a2e", borderRadius: 12, padding: 14, marginBottom: 8, borderWidth: 1, borderColor: "#374151" }}
+                onPress={() => {
+                  setShowCreateMenu(false);
+                  if (homeChannels.length === 0) fetchChannels().then(chs => setHomeChannels(chs.map(toChannelDef))).catch(() => {});
+                  setTimeout(() => setShowChannelPicker(true), 300);
+                }}>
+                <Text style={{ fontSize: 24, marginRight: 12 }}>📺</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: colors.text, fontSize: 14, fontWeight: "700" }}>Channel Content</Text>
+                  <Text style={{ color: colors.textMuted, fontSize: 11 }}>Create video for any channel — pick channel + concept</Text>
+                </View>
+                <Text style={{ color: colors.textMuted, fontSize: 16 }}>›</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#1a1a2e", borderRadius: 12, padding: 14, marginBottom: 8, borderWidth: 1, borderColor: "#374151" }}
+                onPress={() => { setShowCreateMenu(false); setTimeout(() => setShowMoviePicker(true), 300); }}>
+                <Text style={{ fontSize: 24, marginRight: 12 }}>🎬</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: colors.text, fontSize: 14, fontWeight: "700" }}>Director Movie</Text>
+                  <Text style={{ color: colors.textMuted, fontSize: 11 }}>Choose director, genre, concept — full movie pipeline</Text>
+                </View>
+                <Text style={{ color: colors.textMuted, fontSize: 16 }}>›</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#1a1a2e", borderRadius: 12, padding: 14, marginBottom: 8, borderWidth: 1, borderColor: "#374151" }}
+                onPress={() => { setShowCreateMenu(false); setTimeout(() => setShowNewsPicker(true), 300); }}>
+                <Text style={{ fontSize: 24, marginRight: 12 }}>📰</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: colors.text, fontSize: 14, fontWeight: "700" }}>Breaking News</Text>
+                  <Text style={{ color: colors.textMuted, fontSize: 11 }}>9-clip news broadcast with anchors and reporters</Text>
+                </View>
+                <Text style={{ color: colors.textMuted, fontSize: 16 }}>›</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#1a1a2e", borderRadius: 12, padding: 14, marginBottom: 8, borderWidth: 1, borderColor: "#374151" }}
+                onPress={() => { setShowCreateMenu(false); setTimeout(() => setShowAdPicker(true), 300); }}>
+                <Text style={{ fontSize: 24, marginRight: 12 }}>📢</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: colors.text, fontSize: 14, fontWeight: "700" }}>Ad Campaign</Text>
+                  <Text style={{ color: colors.textMuted, fontSize: 11 }}>Create ad video with style picker — auto-posts to socials</Text>
+                </View>
+                <Text style={{ color: colors.textMuted, fontSize: 16 }}>›</Text>
+              </TouchableOpacity>
+
+              {/* Image Content */}
+              <Text style={{ color: colors.purple, fontSize: 11, fontWeight: "700", marginTop: 12, marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>Images</Text>
+
+              <TouchableOpacity
+                style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#1a1a2e", borderRadius: 12, padding: 14, marginBottom: 8, borderWidth: 1, borderColor: "#374151" }}
+                onPress={() => {
+                  setShowCreateMenu(false);
+                  if (walletAddress) ctxRunPoster(walletAddress);
+                }}>
+                <Text style={{ fontSize: 24, marginRight: 12 }}>🖼</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: colors.text, fontSize: 14, fontWeight: "700" }}>Promo Poster</Text>
+                  <Text style={{ color: colors.textMuted, fontSize: 11 }}>AI-generated promotional poster, published to feed</Text>
+                </View>
+                <Text style={{ color: colors.textMuted, fontSize: 16 }}>›</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#1a1a2e", borderRadius: 12, padding: 14, marginBottom: 8, borderWidth: 1, borderColor: "#374151" }}
+                onPress={() => {
+                  setShowCreateMenu(false);
+                  if (walletAddress) ctxRunHero(walletAddress);
+                }}>
+                <Text style={{ fontSize: 24, marginRight: 12 }}>🦸</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: colors.text, fontSize: 14, fontWeight: "700" }}>Hero Image</Text>
+                  <Text style={{ color: colors.textMuted, fontSize: 11 }}>Hero banner for landing page — published to feed + socials</Text>
+                </View>
+                <Text style={{ color: colors.textMuted, fontSize: 16 }}>›</Text>
+              </TouchableOpacity>
+
+              {/* Tip */}
+              <View style={{ backgroundColor: "rgba(139,92,246,0.1)", borderRadius: 10, padding: 12, marginTop: 12, marginBottom: 20, borderWidth: 1, borderColor: "rgba(139,92,246,0.2)" }}>
+                <Text style={{ color: colors.purple, fontSize: 11, fontWeight: "600" }}>
+                  Tip: You can also ask your bestie to create content in chat! Try "make a channel video about cats" or "generate breaking news about crypto".
+                </Text>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
       </Modal>
     </KeyboardAvoidingView>
   );

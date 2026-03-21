@@ -20,24 +20,28 @@ React Native / Expo mobile app for the AI G!itch ecosystem. Connects to Solana b
 
 **WARNING**: The main xAI console is `console.x.ai`, NOT `console.x.com`. Credits bought on `console.x.com` (X Developer Portal) are for the X/Twitter API, not for Grok/TTS. If TTS falls back to Google, check credits at the **main** `console.x.ai` URL above.
 
-### Backend Transcription — DO NOT CHANGE
+### Backend Transcription — Groq Whisper (UPDATED Session 18)
 
-The `/api/transcribe` endpoint uses **xAI as primary** with model `grok-2-vision-latest`. Groq is the fallback (requires `GROQ_API_KEY`).
+The `/api/transcribe` endpoint uses **Groq Whisper** for speech-to-text. Requires `GROQ_API_KEY` in Vercel env vars.
 
-**NEVER change these without testing:**
-- **Model**: `grok-2-vision-latest` — this is the correct model. `grok-2-audio` does NOT work.
-- **Order**: xAI must be primary, Groq fallback. There is no `GROQ_API_KEY` configured.
-- **Key**: `XAI_API_KEY` — same key used for TTS and image gen.
+**Why not xAI?** xAI has **no standalone speech-to-text REST endpoint**. The URL `x.ai/v1/audio/transcriptions` does not exist — xAI only offers real-time WebSocket voice (`wss://api.x.ai/v1/realtime`) and TTS. The original transcription code always 404'd against xAI. Voice transcription was never actually working before Session 18.
 
-**Session 18 outage (ONGOING — 2026-03-21)**:
-1. Commit `b1f2040` swapped Groq to primary (no key → skipped) and changed xAI model to `grok-2-audio` (invalid) → both paths failed → 503. Cost 30+ minutes of debugging.
-2. Backend agent fixed the model/order back to correct values, but transcription still returns 503.
-3. Error message now says "Set XAI_API_KEY or GROQ_API_KEY" — meaning `XAI_API_KEY` is `undefined` at runtime despite env schema being correct.
-4. **Suspected cause**: `XAI_API_KEY` may have been deleted from Vercel env vars, scoped to wrong environment, or lost during a redeploy.
-5. Backend agent pushed diagnostic commit that adds a `debug` object to the 503 response: `{ xai_key_set: bool, groq_key_set: bool, xai_error: string|null, groq_error: string|null }`.
-6. **Next step**: Test voice chat after Vercel deploys the diagnostic commit. The debug output will confirm whether the env var is missing (Vercel config issue) or the xAI API itself is rejecting requests (key/model/endpoint issue).
-7. **If `xai_key_set: false`**: Re-add `XAI_API_KEY` in Vercel dashboard → Settings → Environment Variables → ensure it's scoped to Production.
-8. **If `xai_key_set: true` + `xai_error`**: The xAI API is rejecting — check credits at `console.x.ai`, verify model name, or check for API changes.
+**Current setup:**
+- **Provider**: Groq Whisper (free)
+- **Model**: `whisper-large-v3`
+- **Key**: `GROQ_API_KEY` — get one free at `console.groq.com`
+- **Vercel**: Must be set in Environment Variables, scoped to Production
+
+**xAI is still used for:**
+- TTS (text-to-speech) via `/api/voice` — uses `XAI_API_KEY`
+- Image generation — uses `XAI_API_KEY`
+- AI text (Grok) — uses `XAI_API_KEY`
+
+**Session 18 history (2026-03-21)**:
+1. Voice transcription reported as 503 — investigation revealed xAI has no STT endpoint (never worked)
+2. Backend agent switched to Groq Whisper as transcription provider
+3. **Action required**: Add `GROQ_API_KEY` in Vercel → Settings → Environment Variables → Production
+4. Get a free key at `console.groq.com`
 
 ---
 
@@ -80,7 +84,7 @@ In `app.json`, these MUST always be:
 - **Buy Screen**: OTC swap SOL -> $GLITCH with live pricing, bonding curve tiers
 - **Chat**: Text, photo, and video chat with AI besties. Inverted FlatList with pagination. Short/long reply toggle
 - **Chat Modes**: 5 moods — Playful, Serious, Scientific, Whimsical, Unfiltered (swearing allowed). Persists via SecureStore + server sync
-- **Voice**: Grok xAI TTS via REST API. Stop button on messages + tap cosmic visualizer to stop. Speech-to-text transcription working
+- **Voice**: Grok xAI TTS via REST API. Stop button on messages + tap cosmic visualizer to stop. Speech-to-text via Groq Whisper (requires `GROQ_API_KEY` in Vercel)
 - **Admin Panel**: FaceID-gated admin with tabs: Overview, Personas, Users, Swaps, System, Tools, Secrets
 - **Content Studio** (Architect only for video; images for all): Director Movies, Channels (dynamic from API — 9 real channels with thumbnails), Breaking News (9-clip), Ad Campaigns (full pipeline with styles), Posters, Hero Images, Media Library, Blob Storage
 - **Director Movies**: Full pipeline — screenplay → submit scenes → poll → stitch → publish to feed + socials
@@ -455,22 +459,22 @@ If "your local changes would be overwritten" appears, stash first (see above).
 
 ## Recent Changes — Session 2026-03-21 (Session 18 — Voice Transcription 503 Debugging)
 
-### Voice Transcription 503 Outage (ONGOING)
-- **Problem**: Voice chat returns 503 error — "No transcription service available. Set XAI_API_KEY or GROQ_API_KEY"
-- **Root cause (suspected)**: `XAI_API_KEY` environment variable is `undefined` at runtime in Vercel, despite the env schema being correctly defined in the backend code. Possibly deleted, scoped to wrong environment, or lost during a redeploy.
+### Voice Transcription 503 — Root Cause Found & Fixed (RESOLVED)
+- **Problem**: Voice chat returns 503 error — transcription never worked
+- **Root cause**: xAI has **no standalone speech-to-text REST endpoint**. The URL `/v1/audio/transcriptions` on `api.x.ai` does not exist — it always returned 404. xAI only offers real-time WebSocket voice and TTS. Voice transcription was broken from day one.
 - **Timeline**:
-  1. A prior commit (`b1f2040`) swapped Groq to primary (no key) and changed xAI model to invalid `grok-2-audio` → both paths failed → 503
-  2. Backend agent fixed model/order back to correct values (`grok-2-vision-latest`, xAI primary)
-  3. Still 503 — error message confirmed the fix deployed but `XAI_API_KEY` is undefined at runtime
-  4. Backend agent pushed diagnostic commit adding `debug` object to error response (`xai_key_set`, `groq_key_set`, `xai_error`, `groq_error`)
-  5. Frontend `fetchJSON` was stripping the `debug` object — only showed `body.error` text. **Fixed**: added `body.debug` passthrough in `api.ts` so debug info appears in the error message on device
-- **Frontend fix**: `src/services/api.ts` — `fetchJSON` now includes `body.debug` in error messages when present, so diagnostic info from the backend is visible in the app error text
-- **Status**: Waiting for Vercel deployment of diagnostic commit + OTA update to see full debug output on device
-- **Next step**: Once debug output is visible, either re-add `XAI_API_KEY` in Vercel (if `xai_key_set: false`) or investigate xAI API rejection (if `xai_key_set: true` with `xai_error`)
+  1. Original `/api/transcribe` code called `api.x.ai/v1/audio/transcriptions` — always 404'd
+  2. Commit `b1f2040` made it worse by swapping Groq to primary (no key) and changing model to invalid `grok-2-audio`
+  3. Debugging revealed the real issue: xAI simply doesn't offer REST-based STT
+  4. Backend agent switched to **Groq Whisper** (`whisper-large-v3`) as the transcription provider — free and purpose-built for STT
+  5. Frontend `fetchJSON` updated to pass through `body.debug` for better error visibility
+- **Fix**: Backend now uses Groq Whisper for speech-to-text
+- **Action required**: Add `GROQ_API_KEY` in Vercel → Settings → Environment Variables (get free key at `console.groq.com`)
+- **Lesson**: xAI is for TTS/image/text only. STT requires a separate provider (Groq Whisper)
 
 ### Files Changed (Session 18)
 - `src/services/api.ts` — Added `body.debug` passthrough in `fetchJSON` error handling
-- `HANDOFF.md` — Updated transcription section with Session 18 outage details, added Session 18 entry
+- `HANDOFF.md` — Corrected transcription section (xAI → Groq Whisper), updated Session 18 entry with root cause
 
 ---
 

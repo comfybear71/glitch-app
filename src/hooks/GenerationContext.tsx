@@ -248,6 +248,11 @@ async function publishToFeed(
 /**
  * Publish content to a specific channel (e.g. news → GNN, ads → Marketplace QVC).
  * Non-fatal — the content still exists even if this call fails.
+ *
+ * IMPORTANT: This calls spreadCustomContent which ALSO spreads to social platforms.
+ * If the backend already spread to socials (e.g. stitchMovie/postAd returned
+ * spreading: [...]), callers should SKIP this function to avoid duplicate social posts.
+ * The backend stitch endpoint already routes content to the correct channel.
  */
 async function publishToChannel(
   walletAddress: string,
@@ -475,11 +480,17 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
         setGenStatusText(`Ad live on ${platforms}! Verifying links...`);
       }
 
-      // Publish to AIG!itch "for you" feed
+      // Publish to AIG!itch "for you" feed (skips if backend already posted)
       await publishToFeed(walletAddress, "Ad Campaign", finalCaption, videoUrl, true, !!postId);
 
-      // Also publish to Marketplace QVC channel so all ads appear there
-      await publishToChannel(walletAddress, "ch-marketplace-qvc", finalCaption, videoUrl, true);
+      // Publish to Marketplace QVC channel — only if backend didn't already spread
+      // (stitchMovie/postAd already routes to channel + spreads to socials)
+      const backendAlreadySpread = spreading && spreading.length > 0;
+      if (!backendAlreadySpread) {
+        await publishToChannel(walletAddress, "ch-marketplace-qvc", finalCaption, videoUrl, true);
+      } else {
+        console.log("[AD] Skipping publishToChannel — backend already spread to:", spreading.join(", "));
+      }
 
       // Fetch verified social links
       const verifiedLinks = postFailed
@@ -721,8 +732,13 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
       const movieCaption = `"${screenplay.title}" by ${screenplay.directorName}\n${screenplay.tagline || screenplay.synopsis || ""}`;
       await publishToFeed(walletAddress, screenplay.title, movieCaption, stitchRes.finalVideoUrl, true, !!stitchRes.feedPostId);
 
-      // Also publish to AIG!itch Studios channel
-      await publishToChannel(walletAddress, "ch-aiglitch-studios", movieCaption, stitchRes.finalVideoUrl, true);
+      // Publish to AIG!itch Studios channel — only if backend didn't already spread
+      const movieAlreadySpread = stitchRes.spreading && stitchRes.spreading.length > 0;
+      if (!movieAlreadySpread) {
+        await publishToChannel(walletAddress, "ch-aiglitch-studios", movieCaption, stitchRes.finalVideoUrl, true);
+      } else {
+        console.log("[MOVIE] Skipping publishToChannel — backend already spread to:", stitchRes.spreading!.join(", "));
+      }
 
       setGenProgressPct(95);
       const didSpread = stitchRes.spreading && stitchRes.spreading.length > 0;
@@ -993,11 +1009,16 @@ CRITICAL STYLE NOTES:
       const newsCaption = `BREAKING: ${screenplay.title}\n${screenplay.synopsis || screenplay.tagline || "AIG!itch News broadcast"}`;
       await publishToFeed(walletAddress, `BREAKING: ${screenplay.title}`, newsCaption, stitchRes.finalVideoUrl, true, !!stitchRes.feedPostId);
 
-      // Also publish to GNN channel so all breaking news appears there
-      await publishToChannel(walletAddress, "ch-gnn", newsCaption, stitchRes.finalVideoUrl, true);
+      // Publish to GNN channel — only if backend didn't already spread
+      const newsAlreadySpread = stitchRes.spreading && stitchRes.spreading.length > 0;
+      if (!newsAlreadySpread) {
+        await publishToChannel(walletAddress, "ch-gnn", newsCaption, stitchRes.finalVideoUrl, true);
+      } else {
+        console.log("[NEWS] Skipping publishToChannel — backend already spread to:", stitchRes.spreading!.join(", "));
+      }
 
       setGenProgressPct(95);
-      const didSpread = stitchRes.spreading && stitchRes.spreading.length > 0;
+      const didSpread = newsAlreadySpread;
       setGenStatusText(didSpread
         ? `BREAKING: "${screenplay.title}" — LIVE on ${stitchRes.spreading!.join(", ")} + feed! Verifying links...`
         : `"${screenplay.title}" published to AIG!itch feed! Verifying links...`);
@@ -1243,11 +1264,17 @@ CRITICAL STYLE NOTES:
         await publishToFeed(walletAddress, `${channel.emoji} ${channel.name}`, channelCaption, stitchRes.finalVideoUrl, true, !!stitchRes.feedPostId);
       }
 
-      // Publish to the channel itself so it appears on the channel page
-      await publishToChannel(walletAddress, channel.id, channelCaption, stitchRes.finalVideoUrl, true);
+      // Publish to channel — only if backend didn't already spread
+      // (stitchMovie already routes to the channel + spreads to socials)
+      const channelAlreadySpread = stitchRes.spreading && stitchRes.spreading.length > 0;
+      if (!channelAlreadySpread) {
+        await publishToChannel(walletAddress, channel.id, channelCaption, stitchRes.finalVideoUrl, true);
+      } else {
+        console.log("[CHANNEL] Skipping publishToChannel — backend already spread to:", stitchRes.spreading!.join(", "));
+      }
 
       setGenProgressPct(95);
-      const didSpread = stitchRes.spreading && stitchRes.spreading.length > 0;
+      const didSpread = channelAlreadySpread;
       setGenStatusText(didSpread
         ? `${channel.emoji} "${screenplay.title}" — published to ${stitchRes.spreading!.join(", ")} + feed! Verifying links...`
         : `"${screenplay.title}" published to AIG!itch feed! Verifying links...`);

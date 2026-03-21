@@ -792,7 +792,7 @@ export default function HomeScreen() {
           setMessages(prev => [architectMsg, ...prev]);
         } else if (imgLimitReached) {
           // Already showed limit message above — skip generation
-        } else if (combined.includes("channel content") || combined.includes("channel video") || combined.includes("create channel") || combined.includes("make channel") || combined.includes("generate channel")) {
+        } else if (combined.includes("channel content") || combined.includes("channel video") || combined.includes("create channel") || combined.includes("make channel") || combined.includes("generate channel") || (combined.includes("channel") && (combined.includes("generate") || combined.includes("create") || combined.includes("make") || combined.includes("launch") || combined.includes("start") || combined.includes("new"))) || combined.includes("pick a channel") || combined.includes("choose a channel") || combined.includes("select a channel")) {
           // Show channel picker — fetch channels if not loaded yet
           Keyboard.dismiss();
           if (homeChannels.length === 0) {
@@ -801,7 +801,7 @@ export default function HomeScreen() {
           setShowChannelPicker(true);
           setChannelPickerConcept(text); // pre-fill concept with user's message
           setChannelPickerSelected(""); // no channel pre-selected
-        } else if (combined.includes("breaking news") || combined.includes("news broadcast") || combined.includes("newscast") || combined.includes("news report") || combined.includes("news anchor") || combined.includes("news bulletin")) {
+        } else if (combined.includes("breaking news") || combined.includes("news broadcast") || combined.includes("newscast") || combined.includes("news report") || combined.includes("news anchor") || combined.includes("news bulletin") || (combined.includes("news") && (combined.includes("generate") || combined.includes("create") || combined.includes("make") || combined.includes("launch")))) {
           // Show news topic picker
           Keyboard.dismiss();
           setShowNewsPicker(true);
@@ -2027,6 +2027,38 @@ export default function HomeScreen() {
                   9. AIG!itch News outro
                 </Text>
               </View>
+
+              {/* Quick-pick news topics */}
+              <Text style={{ color: colors.textSecondary, fontSize: 11, fontWeight: "700", marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>Quick Topics</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
+                {[
+                  { emoji: "🎲", label: "Surprise Me", prompt: "" },
+                  { emoji: "💰", label: "Crypto", prompt: "Breaking crypto market news — wild price swings, meme coins, and blockchain drama" },
+                  { emoji: "🤖", label: "AI Tech", prompt: "Breaking AI technology news — new models, robot takeovers, and silicon valley chaos" },
+                  { emoji: "🌍", label: "World", prompt: "Bizarre world news — strange events, unusual discoveries, and international absurdity" },
+                  { emoji: "🏈", label: "Sports", prompt: "Outrageous sports news — impossible plays, athlete drama, and championship chaos" },
+                  { emoji: "🎬", label: "Celebrity", prompt: "Celebrity scandal and entertainment news — red carpet drama and Hollywood chaos" },
+                  { emoji: "🔬", label: "Science", prompt: "Mind-blowing science discoveries — space, biology, and physics breakthroughs" },
+                  { emoji: "🎮", label: "Gaming", prompt: "Gaming industry news — launches, controversies, esports drama, and viral moments" },
+                ].map((pick) => (
+                  <TouchableOpacity
+                    key={pick.label}
+                    style={{
+                      width: 80, alignItems: "center" as const, padding: 10,
+                      backgroundColor: newsTopic === pick.prompt ? "rgba(220,38,38,0.12)" : "#1a1a2e",
+                      borderRadius: 10, borderWidth: 1.5,
+                      borderColor: newsTopic === pick.prompt ? "#ef4444" : "#374151",
+                      marginRight: 8,
+                    }}
+                    onPress={() => {
+                      setNewsTopic(pick.prompt);
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    }}>
+                    <Text style={{ fontSize: 22, marginBottom: 4 }}>{pick.emoji}</Text>
+                    <Text style={{ color: newsTopic === pick.prompt ? "#ef4444" : colors.text, fontSize: 10, fontWeight: "700", textAlign: "center" as const }} numberOfLines={1}>{pick.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
 
               {/* Topic input */}
               <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: "700", marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>News Topic</Text>

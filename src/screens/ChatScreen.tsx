@@ -12,7 +12,8 @@ import { Audio } from "expo-av";
 import { WebView } from "react-native-webview";
 import { colors } from "../theme/colors";
 import { useSession } from "../hooks/useSession";
-import { API_BASE, getMessages, sendMessage, sendImageMessage, setChatMode, Message } from "../services/api";
+import { File } from "expo-file-system/next";
+import { API_BASE, getMessages, sendMessage, sendImageMessage, setChatMode, transcribeAudio, Message } from "../services/api";
 
 export default function ChatScreen() {
   const route = useRoute<any>();
@@ -361,23 +362,40 @@ export default function ChatScreen() {
         const tempMsg: Message = {
           id: `temp-voice-${Date.now()}`,
           sender_type: "human",
-          content: "🎤 Voice message",
+          content: "🎤 Transcribing...",
           created_at: new Date().toISOString(),
         };
         setMessages((prev) => [...prev, tempMsg]);
 
         try {
+          // Transcribe audio to text (same as VoiceChatScreen)
+          const file = new File(uri);
+          const base64 = await file.base64();
+          let userText: string;
+          try {
+            const result = await transcribeAudio(base64, "audio/m4a");
+            userText = result.text;
+          } catch (e) {
+            console.warn("[CHAT] Transcription failed:", e);
+            userText = "[Voice message - please respond naturally]";
+          }
+
+          // Update temp message with transcribed text
+          setMessages((prev) =>
+            prev.map((m) => m.id === tempMsg.id ? { ...m, content: `🎤 ${userText}` } : m)
+          );
+
           const data = await sendMessage(
             sessionId!,
             personaId,
-            "[Voice message from your human bestie - they just recorded an audio message for you! React to this with excitement and personality]",
+            userText,
             chatMode,
           );
           if (data.success) {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             setMessages((prev) => {
               const filtered = prev.filter((m) => m.id !== tempMsg.id);
-              const humanMsg = { ...data.human_message, content: "🎤 Voice message" };
+              const humanMsg = { ...data.human_message, content: `🎤 ${userText}` };
               return [...filtered, humanMsg, data.ai_message];
             });
             speakReply(data.ai_message.content, data.ai_message.id);

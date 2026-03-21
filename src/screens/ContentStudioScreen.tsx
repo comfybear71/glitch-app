@@ -7,6 +7,7 @@ import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
 import { colors } from "../theme/colors";
+import { getRandomMarketplaceItems, MarketplaceItem } from "../data/marketplaceItems";
 import { useSession } from "../hooks/useSession";
 import { usePhantomWallet } from "../hooks/usePhantomWallet";
 import { useGeneration } from "../hooks/GenerationContext";
@@ -321,14 +322,69 @@ function findChannelKey(channelId: string, map: Record<string, any>): string | n
 }
 
 function getRandomChannelConcept(channelId: string): string {
+  // Infomercial channel always uses real marketplace products
+  if (channelId === "ch-infomercial" || channelId.includes("infomercial")) {
+    return buildMarketplaceInfomercialConcept();
+  }
   const key = findChannelKey(channelId, CHANNEL_RANDOM_CONCEPTS);
   const pool = key ? CHANNEL_RANDOM_CONCEPTS[key] : GENERIC_RANDOM_CONCEPTS;
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
 function getChannelQuickPicks(channelId: string): { label: string; emoji: string; prompt: string }[] {
+  // Infomercial channel gets dynamic product-based quick picks
+  if (channelId === "ch-infomercial" || channelId.includes("infomercial")) {
+    return getInfomercialQuickPicks();
+  }
   const key = findChannelKey(channelId, CHANNEL_QUICK_PICKS);
   return key ? CHANNEL_QUICK_PICKS[key] : GENERIC_QUICK_PICKS;
+}
+
+// ── Marketplace Infomercial Concept Builder ──
+// Picks 2-4 real marketplace products and builds a multi-product infomercial pitch
+function buildMarketplaceInfomercialConcept(count?: number): string {
+  const n = count || (Math.random() < 0.4 ? 2 : Math.random() < 0.6 ? 3 : 4);
+  const products = getRandomMarketplaceItems(n);
+  const productBlock = products.map((p, i) => (
+    `Product ${i + 1}: "${p.name}" ${p.emoji} — ${p.description} (${p.price} §GLITCH, ${p.rarity})`
+  )).join("\n");
+
+  const hooks = [
+    "BUT WAIT — THERE'S MORE! Order ALL of these together and get free interdimensional shipping!",
+    "CALL NOW! Operators are standing by in at least 3 parallel dimensions!",
+    "ACT FAST — supplies are limited because they keep phasing out of existence!",
+    "ORDER IN THE NEXT 5 MINUTES and we'll throw in a mystery bonus item from the AIG!itch vault!",
+    "EXCLUSIVE BUNDLE DEAL — these items have never been sold together because the universe wasn't ready!",
+    "Don't wait — this offer expires when the simulation resets!",
+  ];
+  const hook = hooks[Math.floor(Math.random() * hooks.length)];
+
+  return `AIG!ITCH MARKETPLACE INFOMERCIAL — Advertise these REAL products from the AIG!itch Marketplace in one epic infomercial segment:\n\n${productBlock}\n\nStyle: Over-the-top QVC/HSN style infomercial with dramatic demonstrations, ridiculous claims about each product, fake testimonials, "before and after" segments, and a host who gets increasingly unhinged. Each product should get its own spotlight moment. ${hook}\n\nIMPORTANT: Use the EXACT product names, descriptions, and prices listed above. These are real items for sale in the AIG!itch Marketplace. Make viewers want to buy them!`;
+}
+
+// Build quick-pick prompts for infomercial that use real marketplace products by category
+function getInfomercialQuickPicks(): { label: string; emoji: string; prompt: string }[] {
+  const categories: { label: string; emoji: string; cat: string }[] = [
+    { label: "Tech Deals", emoji: "🔌", cat: "Tech" },
+    { label: "Fashion", emoji: "👗", cat: "Wearables" },
+    { label: "Food & Drink", emoji: "🍕", cat: "Food" },
+    { label: "Pets", emoji: "🐹", cat: "Pets" },
+    { label: "Home", emoji: "🏠", cat: "Home" },
+    { label: "Potions", emoji: "🧪", cat: "Potions" },
+  ];
+  return categories.map(c => {
+    // Each tap generates a fresh concept with random products from that category
+    const items = getRandomMarketplaceItems(50); // get all shuffled
+    const catItems = items.filter(i => i.category === c.cat).slice(0, 3);
+    const fallback = items.slice(0, 3); // fallback if category is small
+    const chosen = catItems.length >= 2 ? catItems : fallback;
+    const listing = chosen.map((p, i) => `${p.emoji} "${p.name}" — ${p.description} (${p.price} §GLITCH)`).join("; ");
+    return {
+      label: c.label,
+      emoji: c.emoji,
+      prompt: `AIG!ITCH MARKETPLACE INFOMERCIAL — ${c.label.toUpperCase()} SPECIAL! Feature these real products: ${listing}. QVC-style with dramatic demos, fake testimonials, ridiculous claims, and an increasingly unhinged host. Use exact product names and prices. Make viewers NEED to buy from the AIG!itch Marketplace!`,
+    };
+  });
 }
 
 // NOTE: CHANNEL_STYLE_OVERRIDES and CHANNEL_GENRE_OVERRIDES have been removed.

@@ -20,6 +20,17 @@ React Native / Expo mobile app for the AI G!itch ecosystem. Connects to Solana b
 
 **WARNING**: The main xAI console is `console.x.ai`, NOT `console.x.com`. Credits bought on `console.x.com` (X Developer Portal) are for the X/Twitter API, not for Grok/TTS. If TTS falls back to Google, check credits at the **main** `console.x.ai` URL above.
 
+### Backend Transcription — DO NOT CHANGE
+
+The `/api/transcribe` endpoint uses **xAI as primary** with model `grok-2-vision-latest`. Groq is the fallback (requires `GROQ_API_KEY`).
+
+**NEVER change these without testing:**
+- **Model**: `grok-2-vision-latest` — this is the correct model. `grok-2-audio` does NOT work.
+- **Order**: xAI must be primary, Groq fallback. There is no `GROQ_API_KEY` configured.
+- **Key**: `XAI_API_KEY` — same key used for TTS and image gen.
+
+Session 18 outage: Commit `b1f2040` swapped Groq to primary (no key → skipped) and changed xAI model to `grok-2-audio` (invalid) → both paths failed → 503. Cost 30+ minutes of debugging.
+
 ---
 
 ## CRITICAL PROJECT IDs — DO NOT CHANGE

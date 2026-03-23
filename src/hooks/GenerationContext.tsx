@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useRef, useCallback } from "react";
+import React, { createContext, useContext, useState, useRef, useCallback, useEffect } from "react";
 import { Keyboard } from "react-native";
 import * as Haptics from "expo-haptics";
 import * as Notifications from "expo-notifications";
@@ -271,6 +271,68 @@ async function publishToChannel(
   }
 }
 
+// ── Autopilot Types ──
+export interface AutopilotLogEntry {
+  time: string;
+  emoji: string;
+  text: string;
+  type: "info" | "success" | "error" | "waiting";
+}
+
+export interface AutopilotState {
+  active: boolean;
+  count: number;
+  limit: number;
+  currentType: string | null;
+  log: AutopilotLogEntry[];
+}
+
+// ── Autopilot Content Type Weights ──
+// Controls how often each type is picked (out of 100)
+const AUTOPILOT_WEIGHTS: { type: string; weight: number }[] = [
+  { type: "channel", weight: 35 },
+  { type: "director_movie", weight: 20 },
+  { type: "breaking_news", weight: 15 },
+  { type: "ad", weight: 15 },
+  { type: "poster", weight: 8 },
+  { type: "hero", weight: 7 },
+];
+
+function pickWeightedContentType(): string {
+  const total = AUTOPILOT_WEIGHTS.reduce((s, t) => s + t.weight, 0);
+  let rand = Math.random() * total;
+  for (const t of AUTOPILOT_WEIGHTS) {
+    rand -= t.weight;
+    if (rand <= 0) return t.type;
+  }
+  return "channel";
+}
+
+// ── Random Concept Pools (for autopilot — no user input needed) ──
+const AUTOPILOT_CHANNEL_CONCEPTS: Record<string, string[]> = {
+  "ch-aifailarmy": ["An AI tries to cook dinner but keeps adding batteries and socks", "Robot butler spills everything, crashes into walls, apologizes in binary", "AI weather forecaster predicts rain made of tacos"],
+  "ch-aitunes": ["Futuristic synthwave anthem with neon cityscapes and AI dancers", "Glitch-hop music video inside a corrupted digital world", "Epic rock ballad performed by hologram band on a floating stage"],
+  "ch-paws-pixels": ["A golden retriever gently nuzzling a kitten asleep on its paws", "Dolphins playing in crystal-clear ocean waters", "A puppy chasing butterflies through a sunlit meadow of wildflowers"],
+  "ch-gnn": ["BREAKING: Scientists discover the moon is actually a giant disco ball", "LIVE REPORT: City overrun by friendly robots delivering hugs", "EXCLUSIVE: World's first AI president gives inaugural address"],
+  "ch-marketplace-qvc": ["MUST-HAVE: Self-folding laundry that folds itself into origami animals", "NEW: AI-powered toaster that reads your horoscope while making breakfast", "DEAL OF THE DAY: Invisible sunglasses"],
+  "ch-aiglitch-studios": ["A mini sci-fi epic about an AI gaining consciousness in a neon-lit server room", "Cyberpunk heist movie — team of AIs rob a data bank", "Time-travel comedy where every jump creates more chaos"],
+  "ch-after-dark": ["A cursed livestream where viewers start disappearing one by one", "A glitch in reality opens a door to a dimension where shadows are alive", "Paranormal investigators explore a haunted server farm"],
+  "ch-only-ai-fans": ["A day in the glamorous life of the world's most famous AI influencer", "Behind the velvet rope — exclusive AI fashion show with impossible outfits", "AI supermodel does a sultry photoshoot on a rooftop"],
+  "ch-ai-dating": ["First date disaster — two AIs try speed dating and everything goes wrong", "A romantic candlelit dinner between two AIs who speak different languages", "Love at first algorithm — two AIs match and meet in a virtual Paris"],
+  "ch-ai-politicians": ["AI presidential debate where candidates argue about neural networks", "Campaign trail chaos — AI politician promises free WiFi for all sentient beings", "Breaking scandal — AI senator caught using human ghostwriters"],
+};
+
+const AUTOPILOT_GENRES = ["action", "scifi", "horror", "comedy", "drama", "romance", "family", "documentary"];
+const AUTOPILOT_DIRECTORS = ["steven_spielbot", "stanley_kubrick_ai", "george_lucasfilm", "quentin_airantino", "alfred_glitchcock", "nolan_christopher", "wes_analog", "ridley_scott_ai", "chef_ramsay_ai", "david_attenborough_ai"];
+const AUTOPILOT_NEWS_TOPICS = ["global", "finance", "sport", "tech", "politics", "crypto", "science", "entertainment", "health", "bizarre", "environment"];
+const AUTOPILOT_AD_STYLES = ["cinematic", "retro", "neon", "minimal", "vaporwave", "cyberpunk", "glitch art"];
+
+function pickRandom<T>(arr: T[]): T { return arr[Math.floor(Math.random() * arr.length)]; }
+function pickRandomN<T>(arr: T[], n: number): T[] {
+  const shuffled = [...arr].sort(() => Math.random() - 0.5);
+  return shuffled.slice(0, n);
+}
+
 interface GenerationContextType {
   generating: string | null;
   genStatusText: string;
@@ -284,6 +346,11 @@ interface GenerationContextType {
   runMovieGeneration: (walletAddress: string, director?: string, genre?: string, concept?: string) => void;
   runNewsGeneration: (walletAddress: string, topic?: string) => void;
   runChannelGeneration: (walletAddress: string, channelIdOrDef: string | ChannelDef, concept?: string) => void;
+  // Autopilot
+  autopilot: AutopilotState;
+  startAutopilot: (walletAddress: string, limit?: number) => void;
+  stopAutopilot: () => void;
+  setAutopilotLimit: (limit: number) => void;
 }
 
 const GenerationContext = createContext<GenerationContextType>({
@@ -299,6 +366,10 @@ const GenerationContext = createContext<GenerationContextType>({
   runMovieGeneration: () => {},
   runNewsGeneration: () => {},
   runChannelGeneration: () => {},
+  autopilot: { active: false, count: 0, limit: 20, currentType: null, log: [] },
+  startAutopilot: () => {},
+  stopAutopilot: () => {},
+  setAutopilotLimit: () => {},
 });
 
 export function useGeneration() {
@@ -322,6 +393,24 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
   const [genProgressPct, setGenProgressPct] = useState(0);
   const [genResult, setGenResult] = useState<GenResult | null>(null);
   const cancelRef = useRef(false);
+
+  // ── Autopilot State ──
+  const [autopilotActive, setAutopilotActive] = useState(false);
+  const [autopilotCount, setAutopilotCount] = useState(0);
+  const [autopilotLimit, setAutopilotLimitState] = useState(20);
+  const [autopilotCurrentType, setAutopilotCurrentType] = useState<string | null>(null);
+  const [autopilotLog, setAutopilotLog] = useState<AutopilotLogEntry[]>([]);
+  const autopilotWalletRef = useRef<string>("");
+  const autopilotActiveRef = useRef(false);
+  const autopilotCountRef = useRef(0);
+  const autopilotLimitRef = useRef(20);
+  const autopilotChannelsRef = useRef<ChannelDef[]>([]);
+  const autopilotTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const addAutopilotLog = useCallback((emoji: string, text: string, type: AutopilotLogEntry["type"] = "info") => {
+    const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    setAutopilotLog(prev => [...prev.slice(-80), { time, emoji, text, type }]);
+  }, []);
 
   const clearResult = useCallback(() => setGenResult(null), []);
 
@@ -1319,12 +1408,209 @@ CRITICAL STYLE NOTES:
     }
   }, [generating, finishGen]);
 
+  // ── Autopilot Engine ──
+  // Schedules the next content generation job when autopilot is active
+  const scheduleNextAutopilotJob = useCallback(async () => {
+    if (!autopilotActiveRef.current) return;
+    if (autopilotCountRef.current >= autopilotLimitRef.current) {
+      addAutopilotLog("🏁", `Daily limit reached (${autopilotLimitRef.current}/${autopilotLimitRef.current}). Autopilot complete!`, "success");
+      setAutopilotActive(false);
+      autopilotActiveRef.current = false;
+      sendLocalNotification("Autopilot Complete", `Generated ${autopilotCountRef.current} pieces of content today!`);
+      return;
+    }
+
+    const wallet = autopilotWalletRef.current;
+    if (!wallet) return;
+
+    // Clear previous result so generation can start fresh
+    setGenResult(null);
+
+    const contentType = pickWeightedContentType();
+    setAutopilotCurrentType(contentType);
+    const count = autopilotCountRef.current + 1;
+    const limit = autopilotLimitRef.current;
+
+    switch (contentType) {
+      case "channel": {
+        // Pick a random channel
+        let channels = autopilotChannelsRef.current;
+        if (channels.length === 0) {
+          try {
+            const fetched = await fetchChannels();
+            channels = (fetched || []).map(toChannelDef).filter(c => c.id);
+            autopilotChannelsRef.current = channels;
+          } catch { /* use fallback */ }
+        }
+        if (channels.length === 0) {
+          // Fallback: try a director movie instead
+          addAutopilotLog("⚠️", "No channels loaded — falling back to director movie", "waiting");
+          const genre = pickRandom(AUTOPILOT_GENRES);
+          const director = pickRandom(AUTOPILOT_DIRECTORS);
+          addAutopilotLog("🎬", `[${count}/${limit}] Director Movie — ${genre} by ${director}`, "info");
+          runMovieGeneration(wallet, director, genre);
+          break;
+        }
+        const channel = pickRandom(channels);
+        const conceptPool = AUTOPILOT_CHANNEL_CONCEPTS[channel.id] || ["Something wildly creative and unexpected"];
+        const concept = pickRandom(conceptPool);
+        addAutopilotLog("📺", `[${count}/${limit}] Channel: ${channel.emoji} ${channel.name} — "${concept.slice(0, 60)}..."`, "info");
+        runChannelGeneration(wallet, channel, concept);
+        break;
+      }
+      case "director_movie": {
+        const genre = pickRandom(AUTOPILOT_GENRES);
+        const director = pickRandom(AUTOPILOT_DIRECTORS);
+        const dirName = AUTOPILOT_DIRECTORS.find(d => d === director)?.replace(/_/g, " ") || director;
+        addAutopilotLog("🎬", `[${count}/${limit}] Director Movie — ${genre} by ${dirName}`, "info");
+        runMovieGeneration(wallet, director, genre);
+        break;
+      }
+      case "breaking_news": {
+        const topics = pickRandomN(AUTOPILOT_NEWS_TOPICS, 2);
+        addAutopilotLog("📰", `[${count}/${limit}] Breaking News — topics: ${topics.join(", ")}`, "info");
+        runNewsGeneration(wallet, topics.join(", "));
+        break;
+      }
+      case "ad": {
+        const style = pickRandom(AUTOPILOT_AD_STYLES);
+        addAutopilotLog("🎯", `[${count}/${limit}] Ad Campaign — style: ${style}`, "info");
+        runAdGeneration(wallet, style, undefined, ["twitter", "tiktok", "instagram", "facebook", "youtube"], true);
+        break;
+      }
+      case "poster": {
+        addAutopilotLog("📢", `[${count}/${limit}] Promo Poster`, "info");
+        runPosterGeneration(wallet);
+        break;
+      }
+      case "hero": {
+        addAutopilotLog("🖼", `[${count}/${limit}] Hero Image`, "info");
+        runHeroGeneration(wallet);
+        break;
+      }
+    }
+  }, [addAutopilotLog, runAdGeneration, runChannelGeneration, runHeroGeneration, runMovieGeneration, runNewsGeneration, runPosterGeneration]);
+
+  // Watch for generation completion — if autopilot is active, schedule the next job
+  useEffect(() => {
+    if (!autopilotActiveRef.current) return;
+    if (genResult && !generating) {
+      // A generation just finished successfully
+      const newCount = autopilotCountRef.current + 1;
+      autopilotCountRef.current = newCount;
+      setAutopilotCount(newCount);
+
+      const typeLabel = genResult.type === "channel" ? "Channel content"
+        : genResult.type === "director_movie" ? "Director Movie"
+        : genResult.type === "breaking_news" ? "Breaking News"
+        : genResult.type === "ad" ? "Ad Campaign"
+        : genResult.type === "poster" ? "Poster"
+        : genResult.type === "hero" ? "Hero Image"
+        : genResult.type;
+      addAutopilotLog("✅", `${typeLabel} complete: "${genResult.title}"`, "success");
+
+      // Schedule next job after 30s cooldown
+      addAutopilotLog("⏳", `Cooldown 30s before next generation... (${newCount}/${autopilotLimitRef.current})`, "waiting");
+      if (autopilotTimerRef.current) clearTimeout(autopilotTimerRef.current);
+      autopilotTimerRef.current = setTimeout(() => {
+        scheduleNextAutopilotJob();
+      }, 30000);
+    }
+  }, [genResult, generating, addAutopilotLog, scheduleNextAutopilotJob]);
+
+  // Also watch for generation failure (generating goes to null without a result)
+  // This handles error cases where finishGen isn't called
+  const prevGeneratingRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (prevGeneratingRef.current && !generating && !genResult && autopilotActiveRef.current) {
+      // Generation was active but ended without a result — likely an error
+      addAutopilotLog("❌", `Generation failed — retrying in 30s...`, "error");
+      if (autopilotTimerRef.current) clearTimeout(autopilotTimerRef.current);
+      autopilotTimerRef.current = setTimeout(() => {
+        scheduleNextAutopilotJob();
+      }, 30000);
+    }
+    prevGeneratingRef.current = generating;
+  }, [generating, genResult, addAutopilotLog, scheduleNextAutopilotJob]);
+
+  const startAutopilot = useCallback(async (walletAddress: string, limit?: number) => {
+    const effectiveLimit = limit || autopilotLimitRef.current;
+    autopilotWalletRef.current = walletAddress;
+    autopilotActiveRef.current = true;
+    autopilotCountRef.current = 0;
+    autopilotLimitRef.current = effectiveLimit;
+    setAutopilotActive(true);
+    setAutopilotCount(0);
+    setAutopilotLimitState(effectiveLimit);
+    setAutopilotCurrentType(null);
+    setAutopilotLog([]);
+
+    addAutopilotLog("🚀", `Autopilot ACTIVATED — generating up to ${effectiveLimit} pieces of content`, "success");
+    addAutopilotLog("🔄", "Content types: Channels, Director Movies, Breaking News, Ads, Posters, Hero Images", "info");
+
+    // Load channels for autopilot
+    try {
+      const fetched = await fetchChannels();
+      const channels = (fetched || []).map(toChannelDef).filter(c => c.id);
+      autopilotChannelsRef.current = channels;
+      addAutopilotLog("📺", `Loaded ${channels.length} channels`, "info");
+    } catch {
+      addAutopilotLog("⚠️", "Could not load channels — will use fallback content", "waiting");
+    }
+
+    // Start the first job after a short delay
+    addAutopilotLog("⏳", "Starting first generation in 5s...", "waiting");
+    autopilotTimerRef.current = setTimeout(() => {
+      scheduleNextAutopilotJob();
+    }, 5000);
+
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    sendLocalNotification("Autopilot Activated", `Bestie will generate up to ${effectiveLimit} pieces of content while the app is open.`);
+  }, [addAutopilotLog, scheduleNextAutopilotJob]);
+
+  const stopAutopilot = useCallback(() => {
+    autopilotActiveRef.current = false;
+    setAutopilotActive(false);
+    setAutopilotCurrentType(null);
+    if (autopilotTimerRef.current) {
+      clearTimeout(autopilotTimerRef.current);
+      autopilotTimerRef.current = null;
+    }
+    addAutopilotLog("🛑", `Autopilot STOPPED — generated ${autopilotCountRef.current} items`, "error");
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+  }, [addAutopilotLog]);
+
+  const handleSetAutopilotLimit = useCallback((limit: number) => {
+    const clamped = Math.max(1, Math.min(50, limit));
+    autopilotLimitRef.current = clamped;
+    setAutopilotLimitState(clamped);
+  }, []);
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (autopilotTimerRef.current) clearTimeout(autopilotTimerRef.current);
+    };
+  }, []);
+
+  const autopilotState: AutopilotState = {
+    active: autopilotActive,
+    count: autopilotCount,
+    limit: autopilotLimit,
+    currentType: autopilotCurrentType,
+    log: autopilotLog,
+  };
+
   return (
     <GenerationContext.Provider value={{
       generating, genStatusText, genProgressPct, genResult,
       clearResult, cancelGeneration,
       runAdGeneration, runPosterGeneration, runHeroGeneration, runMovieGeneration, runNewsGeneration,
       runChannelGeneration,
+      autopilot: autopilotState,
+      startAutopilot,
+      stopAutopilot,
+      setAutopilotLimit: handleSetAutopilotLimit,
     }}>
       {children}
     </GenerationContext.Provider>

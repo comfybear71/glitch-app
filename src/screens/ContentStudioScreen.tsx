@@ -492,11 +492,14 @@ export default function ContentStudioScreen() {
     runNewsGeneration: ctxRunNews,
     runPosterGeneration: ctxRunPoster,
     runHeroGeneration: ctxRunHero,
+    autopilot, startAutopilot, stopAutopilot, setAutopilotLimit,
   } = useGeneration();
   const [refreshing, setRefreshing] = useState(false);
+  const [autopilotLimitInput, setAutopilotLimitInput] = useState("20");
 
   // Section expand state
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
+    autopilot: false,
     create: true,
     directors: false,
     channels: false,
@@ -1652,6 +1655,117 @@ CRITICAL STYLE NOTES:
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.purple} />}
         keyboardShouldPersistTaps="handled"
       >
+        {/* ══════════════ AUTOPILOT ══════════════ */}
+        <SectionHeader title={autopilot.active ? `Autopilot ON (${autopilot.count}/${autopilot.limit})` : "Autopilot"} emoji="🤖" expanded={expandedSections.autopilot} onToggle={() => toggleSection("autopilot")} accent={autopilot.active ? colors.green : "#a855f7"} />
+        {expandedSections.autopilot && (
+          <View style={styles.sectionBody}>
+            {/* Description */}
+            <Text style={{ color: colors.textSecondary, fontSize: 13, lineHeight: 20, marginBottom: 16 }}>
+              Let Bestie generate content all day while the app is open. Rotates through channels, director movies, breaking news, ads, posters, and hero images automatically.
+            </Text>
+
+            {/* Daily Limit Setting */}
+            {!autopilot.active && (
+              <View style={{ marginBottom: 16 }}>
+                <Text style={styles.subsectionLabel}>Daily Limit</Text>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                  {[5, 10, 15, 20, 30].map(n => (
+                    <TouchableOpacity
+                      key={n}
+                      style={[styles.genreChip, autopilot.limit === n && styles.genreChipActive]}
+                      onPress={() => { setAutopilotLimit(n); setAutopilotLimitInput(String(n)); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}>
+                      <Text style={[styles.genreChipText, autopilot.limit === n && styles.genreChipTextActive]}>{n}</Text>
+                    </TouchableOpacity>
+                  ))}
+                  <TextInput
+                    style={{ backgroundColor: "#1f2937", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, color: colors.text, fontSize: 14, width: 60, textAlign: "center", borderWidth: 1, borderColor: "#374151" }}
+                    value={autopilotLimitInput}
+                    onChangeText={t => { setAutopilotLimitInput(t); const n = parseInt(t); if (!isNaN(n) && n > 0) setAutopilotLimit(n); }}
+                    keyboardType="number-pad"
+                    placeholder="#"
+                    placeholderTextColor={colors.textMuted}
+                  />
+                </View>
+              </View>
+            )}
+
+            {/* Big Toggle Button */}
+            <TouchableOpacity
+              style={[
+                styles.generateBtn,
+                {
+                  backgroundColor: autopilot.active ? "rgba(239,68,68,0.15)" : "rgba(34,197,94,0.15)",
+                  borderWidth: 2,
+                  borderColor: autopilot.active ? colors.red : colors.green,
+                  paddingVertical: 20,
+                },
+              ]}
+              onPress={() => {
+                if (autopilot.active) {
+                  stopAutopilot();
+                } else if (walletAddress) {
+                  const limit = parseInt(autopilotLimitInput) || 20;
+                  startAutopilot(walletAddress, limit);
+                }
+              }}
+              disabled={!walletAddress || (!!ctxGenerating && !autopilot.active)}
+            >
+              <Text style={[styles.generateBtnText, { fontSize: 18, color: autopilot.active ? colors.red : colors.green }]}>
+                {autopilot.active ? "STOP AUTOPILOT" : "START AUTOPILOT"}
+              </Text>
+            </TouchableOpacity>
+
+            {/* Status Dashboard */}
+            {autopilot.active && (
+              <View style={{ marginTop: 16 }}>
+                <View style={styles.statsGrid}>
+                  <StatCard emoji="📊" value={`${autopilot.count}/${autopilot.limit}`} label="Generated" color={colors.green} />
+                  <StatCard emoji="🎯" value={ctxGenerating ? (autopilot.currentType || ctxGenerating).replace(/_/g, " ") : "Cooldown"} label="Current" color={ctxGenerating ? colors.purple : colors.yellow} />
+                </View>
+
+                {/* Generation progress (from GenerationContext) */}
+                {ctxGenerating && (
+                  <View style={{ marginTop: 12 }}>
+                    <ProgressBar progress={genProgressPct} color={colors.purple} />
+                    <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 6, fontFamily: "Courier" }}>{genStatusText}</Text>
+                  </View>
+                )}
+              </View>
+            )}
+
+            {/* Autopilot Log */}
+            {autopilot.log.length > 0 && (
+              <View style={[styles.logContainer, { marginTop: 16 }]}>
+                <View style={styles.logHeaderRow}>
+                  <Text style={styles.logHeader}>Autopilot Log</Text>
+                  {!autopilot.active && (
+                    <TouchableOpacity onPress={() => {}} style={styles.logClearBtn}>
+                      <Text style={styles.logClearText}>Stopped</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+                <ScrollView style={styles.logScroll} nestedScrollEnabled>
+                  {autopilot.log.map((e, i) => (
+                    <Text key={i} style={[styles.logLine, e.type === "error" && { color: colors.red }, e.type === "success" && { color: colors.green }, e.type === "waiting" && { color: colors.yellow }]}>
+                      {e.emoji} [{e.time}] {e.text}
+                    </Text>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+
+            {/* Content Mix Info */}
+            {!autopilot.active && (
+              <View style={{ marginTop: 16, backgroundColor: "rgba(124,58,237,0.06)", borderRadius: 12, padding: 14, borderWidth: 1, borderColor: "rgba(124,58,237,0.15)" }}>
+                <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: "700", marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>Content Mix</Text>
+                <Text style={{ color: colors.textMuted, fontSize: 12, lineHeight: 20, fontFamily: "Courier" }}>
+                  {"35% Channel Content (all 9+ channels)\n20% Director Movies (10 directors x 8 genres)\n15% Breaking News (real current events)\n15% Ad Campaigns (all platforms)\n 8% Promo Posters\n 7% Hero Images"}
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
+
         {/* ══════════════ CREATE CONTENT ══════════════ */}
         <SectionHeader title="Create Content" emoji="🎨" expanded={expandedSections.create} onToggle={() => toggleSection("create")} accent={colors.purpleLight} />
         {expandedSections.create && (

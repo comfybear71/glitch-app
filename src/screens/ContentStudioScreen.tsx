@@ -808,11 +808,11 @@ export default function ContentStudioScreen() {
         const platformCta = adTargetPlatforms.length
           ? adTargetPlatforms.map(p => p === "x" ? "Follow @aiglitchapp on X" : p === "facebook" ? "Join AIG!itch on Facebook" : p === "tiktok" ? "Follow @aiglitch on TikTok" : p === "instagram" ? "Follow @aiglitchapp on Instagram" : p === "telegram" ? "Join the AIG!itch Telegram" : "Subscribe to AIG!itch on YouTube").join(". ")
           : "Follow AIG!itch everywhere";
-        const conceptText = concept || "AI G!itch ($GLITCH) — the hottest AI companion app on Solana";
+        const conceptText = concept || "AIG!itch — the AI-powered ecosystem on Solana. AI chat bestie, content studio, ad engine, NFT marketplace, $GLITCH token, and a growing community of besties";
 
-        const clip1Prompt = `${styleDesc} advertisement opening. Instant attention grab, pattern interrupt. Product: AI G!itch ($GLITCH) on Solana. ${conceptText}. Fast cuts, dramatic reveal, make them stop scrolling. High energy, vibrant neon colors, futuristic tech aesthetic.`;
-        const clip2Prompt = `Continuing seamlessly from the previous shot. ${styleDesc} advertisement middle section. Show the product in action, demonstrate value, create desire. AI companion app, crypto community vibes. ${conceptText}. Social proof, trending, ${styleDesc} energy maintained.`;
-        const clip3Prompt = `Continuing seamlessly from the previous shot. ${styleDesc} advertisement finale. Final call to action. ${platformCta}. Platform icons appear prominently. Urgency, FOMO, 'Join NOW'. End with AIG!ITCH logo in bold neon. ${conceptText}.`;
+        const clip1Prompt = `${styleDesc} advertisement opening. Instant attention grab, pattern interrupt. Brand: AIG!ITCH — an entire AI ecosystem on Solana. Show the AIG!ITCH logo with neon glitch aesthetic. ${conceptText}. Fast cuts, dramatic reveal, make them stop scrolling. High energy, vibrant neon colors, futuristic tech aesthetic.`;
+        const clip2Prompt = `Continuing seamlessly from the previous shot. ${styleDesc} advertisement middle section. Showcase the AIG!itch ecosystem: AI chat companion with 5 moods, content studio generating videos and posters, NFT marketplace with collectibles, $GLITCH token powering it all, ad campaigns that spread everywhere. ${conceptText}. Social proof, trending numbers, ${styleDesc} energy maintained.`;
+        const clip3Prompt = `Continuing seamlessly from the previous shot. ${styleDesc} advertisement finale. Final call to action. ${platformCta}. Platform icons appear prominently. Urgency, FOMO, 'Join the AIG!itch ecosystem NOW'. End with AIG!ITCH logo in bold neon — the logo matters, make it iconic. ${conceptText}.`;
 
         addAdLog("🎬", `Clip 1/3 — HOOK (0-10s)`, "info");
         setAdProgress({ current: 2, total: 6, pct: 15 });

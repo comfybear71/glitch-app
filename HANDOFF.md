@@ -1,6 +1,6 @@
 # HANDOFF.md — AI G!itch App Project Status
 
-Last updated: 2026-03-21 (Session 18 — Voice transcription 503 debugging, xAI API key diagnostics)
+Last updated: 2026-03-23 (Session 19 — Ad Campaigns upgrade: target platforms, Grok 30s Extend, backend prompt)
 
 ## Project Overview
 
@@ -89,7 +89,7 @@ In `app.json`, these MUST always be:
 - **Content Studio** (Architect only for video; images for all): Director Movies, Channels (dynamic from API — 9 real channels with thumbnails), Breaking News (9-clip), Ad Campaigns (full pipeline with styles), Posters, Hero Images, Media Library, Blob Storage
 - **Director Movies**: Full pipeline — screenplay → submit scenes → poll → stitch → publish to feed + socials
 - **Breaking News**: 9-clip / 3-story broadcast — real TV news style (CNN/BBC). Based on real current events. No director selection (auto-directed)
-- **Ad Campaigns**: Multi-step ad generation with style/concept picker, auto-posts to socials
+- **Ad Campaigns**: Multi-step ad generation with style picker, **target platform selector** (X, Facebook, TikTok, Instagram, Telegram, YouTube), **Grok 30s Extend** toggle, optional concept, auto-posts to socials with platform-specific CTAs
 - **Generation Context**: Background-safe generation that persists across tab navigation with push notifications on completion
 - **AI Feed Scanner**: Auto-shares trending posts from "for you" feed into chat with ML feedback reactions
 - **Push Notifications**: Registered via expo-push-token + local notifications on generation completion
@@ -454,6 +454,47 @@ If "your local changes would be overwritten" appears, stash first (see above).
 - **Fix**: Check xAI credit balance at console.x.ai and top up. This is a backend issue, not an app issue
 - **Note**: The app code just calls `/api/voice` and plays whatever MP3 comes back — it doesn't know which TTS engine was used
 - **Where to check credits**: console.x.ai → API Keys → Usage (NOT console.x.com — that's the X Developer Portal)
+
+---
+
+## Recent Changes — Session 2026-03-23 (Session 19 — Ad Campaigns Upgrade)
+
+### Ad Campaigns — Target Platforms + Grok 30s Extend (NEW)
+
+Major upgrade to the Ad Campaign system across all 3 screens (Content Studio, Home, Voice Chat):
+
+**New Features:**
+1. **Target Platform Selector** — Multi-select: X, Facebook, TikTok, Instagram, Telegram, YouTube
+   - When platforms are selected, the ad prompt includes platform-specific CTAs (e.g., "Follow @aiglitchapp on X")
+   - Platform icons shown with green highlight when selected
+   - The `target_platforms` array is sent to backend in both `planAd()` and `postAd()` calls
+2. **Grok 30-Second Extend Toggle** — Switch between 10s standard and 30s extended ads
+   - Uses `extend_30s: true` flag sent to backend
+   - `submitScene()` called with `duration: 30` instead of `10`
+   - Toggle shown with amber/gold highlight when enabled
+3. **Backend Prompt Created** — Complete prompt file `BACKEND_AD_CAMPAIGNS_PROMPT.md` for the backend agent to add Ad Campaign generation to the Admin Panel
+
+**API Changes:**
+- `planAd()` now accepts `targetPlatforms?: string[]` and `extendTo30s?: boolean`
+- `postAd()` now accepts `targetPlatforms?: string[]`
+- Backend receives `target_platforms` (array) and `extend_30s` (boolean) in request body
+- Fallback client-side prompts include platform CTAs when `target_platforms` is set
+
+**UI Changes (all 3 screens):**
+- Target Platform picker: horizontal scrollable chips (Home/Voice) or wrapped grid (Studio)
+- CTA preview text shown when platforms are selected (green text)
+- Grok Extend toggle: tap to switch 10s/30s (amber highlight when on)
+- Generate button text updates to "Launch 30s Campaign" when extend is on
+- Updated placeholder text to suggest platform-targeted concepts
+
+### Files Changed (Session 19)
+- `src/services/api.ts` — `planAd()` and `postAd()` accept `targetPlatforms` and `extendTo30s` params
+- `src/hooks/GenerationContext.tsx` — `runAdGeneration()` accepts and passes through `targetPlatforms` and `extendTo30s`; dynamic duration (10/30s); platform-aware fallback prompts
+- `src/screens/ContentStudioScreen.tsx` — Target platform picker grid, Grok 30s Extend toggle, state for `adTargetPlatforms` and `adExtend30s`, updated result card
+- `src/screens/HomeScreen.tsx` — Target platform picker (horizontal scroll), Grok Extend toggle, state updates, passes new params to `ctxRunAd()`
+- `src/screens/VoiceChatScreen.tsx` — Same as HomeScreen: target platform picker, extend toggle, state updates
+- `BACKEND_AD_CAMPAIGNS_PROMPT.md` — Complete backend prompt for adding Ad Campaigns to admin panel
+- `HANDOFF.md` — This file (Session 19 entry)
 
 ---
 

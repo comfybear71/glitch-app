@@ -871,18 +871,31 @@ export function getAdStatus(walletAddress: string) {
 }
 
 // Step 1: Plan ad — get concept + video prompt without generating video
-export function planAd(walletAddress: string, style?: string, concept?: string) {
+export function planAd(walletAddress: string, style?: string, concept?: string, targetPlatforms?: string[], extendTo30s?: boolean) {
   return fetchJSON<{ success: boolean; prompt: string; caption: string; style: string; concept: string; message?: string }>(`/api/generate-ads?wallet_address=${encodeURIComponent(walletAddress)}`, {
     method: "POST",
-    body: JSON.stringify({ wallet_address: walletAddress, plan_only: true, ...(style && { style }), ...(concept && { concept }) }),
+    body: JSON.stringify({
+      wallet_address: walletAddress,
+      plan_only: true,
+      ...(style && { style }),
+      ...(concept && { concept }),
+      ...(targetPlatforms?.length && { target_platforms: targetPlatforms }),
+      ...(extendTo30s && { extend_30s: true }),
+    }),
   });
 }
 
 // Step 4: Post completed ad video to socials
-export function postAd(walletAddress: string, videoUrl: string, caption: string, style?: string) {
+export function postAd(walletAddress: string, videoUrl: string, caption: string, style?: string, targetPlatforms?: string[]) {
   return fetchJSON<{ success: boolean; post?: any; spreading?: string[]; message?: string }>(`/api/generate-ads?wallet_address=${encodeURIComponent(walletAddress)}`, {
     method: "PUT",
-    body: JSON.stringify({ wallet_address: walletAddress, video_url: videoUrl, caption, ...(style && { style }) }),
+    body: JSON.stringify({
+      wallet_address: walletAddress,
+      video_url: videoUrl,
+      caption,
+      ...(style && { style }),
+      ...(targetPlatforms?.length && { target_platforms: targetPlatforms }),
+    }),
   });
 }
 

@@ -576,6 +576,8 @@ export default function ContentStudioScreen() {
   // ── Ad Campaign State (enhanced — same pipeline as Director Movies) ──
   const [adStyle, setAdStyle] = useState<string | null>(null);
   const [adConceptInput, setAdConceptInput] = useState("");
+  const [adTargetPlatforms, setAdTargetPlatforms] = useState<string[]>([]);
+  const [adExtend30s, setAdExtend30s] = useState(false);
   const [adLog, setAdLog] = useState<LogEntry[]>([]);
   const [adResult, setAdResult] = useState<any>(null);
   const [adPhase, setAdPhase] = useState<string>("idle");
@@ -734,15 +736,18 @@ export default function ContentStudioScreen() {
 
     const style = adStyle || undefined;
     const concept = adConceptInput.trim() || undefined;
+    const videoDuration = adExtend30s ? 30 : 10;
 
     addAdLog("🎯", `Starting ad campaign...`, "info");
     if (style) addAdLog("🎨", `Style: ${style}`, "info");
     if (concept) addAdLog("📖", `Concept: "${concept.slice(0, 100)}"`, "info");
+    if (adTargetPlatforms.length) addAdLog("📱", `Targeting: ${adTargetPlatforms.join(", ")}`, "info");
+    if (adExtend30s) addAdLog("⏱️", `Extended 30-second ad (Grok Extend)`, "info");
     addAdLog("📜", `Planning ad concept...`, "waiting");
 
     try {
       // ── STEP 1: Plan Ad — get concept + video prompt ──
-      const planRes = await planAd(walletAddress, style, concept);
+      const planRes = await planAd(walletAddress, style, concept, adTargetPlatforms.length ? adTargetPlatforms : undefined, adExtend30s || undefined);
       if (adCancelRef.current) { setAdGenerating(false); setAdPhase("idle"); return; }
 
       if (!planRes.success || !planRes.prompt) {
@@ -760,7 +765,7 @@ export default function ContentStudioScreen() {
       setAdPhase("rendering");
       addAdLog("📡", `Submitting to video generation...`, "waiting");
 
-      const submitRes = await submitScene(walletAddress, planRes.prompt, 10, "ads");
+      const submitRes = await submitScene(walletAddress, planRes.prompt, videoDuration, "ads");
       if (adCancelRef.current) { setAdGenerating(false); setAdPhase("idle"); return; }
 
       if (!submitRes.success || !submitRes.requestId) {
@@ -823,7 +828,7 @@ export default function ContentStudioScreen() {
       setAdPhase("spreading");
       addAdLog("📡", `Publishing ad to socials...`, "waiting");
 
-      const postRes = await postAd(walletAddress, videoUrl, planRes.caption || "New ad from AIG!itch", style);
+      const postRes = await postAd(walletAddress, videoUrl, planRes.caption || "New ad from AIG!itch", style, adTargetPlatforms.length ? adTargetPlatforms : undefined);
 
       setAdProgress({ current: 4, total: 4, pct: 100 });
       addAdLog("✅", `AD CAMPAIGN COMPLETE! ${formatElapsed(startTime)}`, "success");
@@ -850,6 +855,8 @@ export default function ContentStudioScreen() {
         success: true,
         caption: planRes.caption,
         style: planRes.style,
+        duration: videoDuration,
+        targetPlatforms: adTargetPlatforms.length ? adTargetPlatforms : undefined,
         videoUrl,
         sizeMb: videoSizeMb,
         spreading: postRes.spreading,
@@ -2016,7 +2023,7 @@ CRITICAL STYLE NOTES:
         {expandedSections.ads && (
           <View style={styles.sectionBody}>
             <Text style={{ color: colors.textSecondary, fontSize: 12, marginBottom: 12, lineHeight: 18 }}>
-              Create AI-generated ad videos with custom styles and concepts. Same multi-step pipeline as Director Movies — plan ad, render video, then auto-publish to socials.
+              Create killer AI-generated ad campaigns targeting specific platforms. Pick your style, target Facebook/X/TikTok/Instagram/Telegram, choose 10s or 30s extended ads via Grok Extend, then auto-publish everywhere.
             </Text>
 
             {/* Ad Style Picker */}
@@ -2045,13 +2052,52 @@ CRITICAL STYLE NOTES:
               ))}
             </View>
 
+            {/* Target Platform Selector */}
+            <Text style={styles.subsectionLabel}>Target Platform (pick one or more)</Text>
+            <View style={styles.genreGrid}>
+              {[
+                { id: "x", label: "X / Twitter", emoji: "𝕏" },
+                { id: "facebook", label: "Facebook", emoji: "📘" },
+                { id: "tiktok", label: "TikTok", emoji: "🎵" },
+                { id: "instagram", label: "Instagram", emoji: "📸" },
+                { id: "telegram", label: "Telegram", emoji: "✈️" },
+                { id: "youtube", label: "YouTube", emoji: "▶️" },
+              ].map(p => (
+                <TouchableOpacity
+                  key={p.id}
+                  style={[styles.genreChip, adTargetPlatforms.includes(p.id) && { borderColor: "#10b981", backgroundColor: "rgba(16,185,129,0.15)" }]}
+                  onPress={() => {
+                    setAdTargetPlatforms(prev => prev.includes(p.id) ? prev.filter(x => x !== p.id) : [...prev, p.id]);
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  }}>
+                  <Text style={[styles.genreChipText, adTargetPlatforms.includes(p.id) && { color: "#10b981" }]}>
+                    {p.emoji} {p.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            {adTargetPlatforms.length > 0 && (
+              <Text style={{ color: "#10b981", fontSize: 11, marginBottom: 8, fontWeight: "700" }}>
+                CTA: Follow/Join AIG!itch on {adTargetPlatforms.map(p => p === "x" ? "X" : p.charAt(0).toUpperCase() + p.slice(1)).join(", ")}
+              </Text>
+            )}
+
+            {/* Grok 30s Extend Toggle */}
+            <TouchableOpacity
+              style={[styles.genreChip, { flexDirection: "row", alignItems: "center", alignSelf: "flex-start", marginBottom: 16, paddingHorizontal: 14, paddingVertical: 10 }, adExtend30s && { borderColor: "#f59e0b", backgroundColor: "rgba(245,158,11,0.15)" }]}
+              onPress={() => { setAdExtend30s(!adExtend30s); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); }}>
+              <Text style={[styles.genreChipText, adExtend30s && { color: "#f59e0b" }]}>
+                {adExtend30s ? "⏱️ 30s Extended Ad (Grok Extend)" : "⏱️ 10s Standard Ad"}
+              </Text>
+            </TouchableOpacity>
+
             {/* Ad Concept Input */}
             <Text style={styles.subsectionLabel}>Ad Concept (optional)</Text>
             <TextInput
               style={styles.optionInput}
               value={adConceptInput}
               onChangeText={setAdConceptInput}
-              placeholder="What's the ad about? E.g., 'Swap SOL for $GLITCH bonding curve launch'..."
+              placeholder="What's the ad about? E.g., 'Join us on TikTok — swap SOL for $GLITCH now!'..."
               placeholderTextColor={colors.textMuted}
               multiline
               maxLength={500}
@@ -2099,6 +2145,8 @@ CRITICAL STYLE NOTES:
                 <Text style={[styles.movieResultTitle, { color: colors.orange }]}>🎯 Ad Campaign Complete!</Text>
                 {adResult.caption && <Text style={styles.movieResultMeta}>Caption: {adResult.caption.slice(0, 150)}</Text>}
                 {adResult.style && <Text style={styles.movieResultMeta}>Style: {adResult.style}</Text>}
+                {adResult.duration && <Text style={styles.movieResultMeta}>Duration: {adResult.duration}s{adResult.duration >= 30 ? " (Extended)" : ""}</Text>}
+                {adResult.targetPlatforms?.length > 0 && <Text style={[styles.movieResultMeta, { color: "#10b981" }]}>Targeted: {adResult.targetPlatforms.join(", ")}</Text>}
                 {adResult.sizeMb && <Text style={styles.movieResultMeta}>Size: {adResult.sizeMb}MB</Text>}
                 {adResult.spreading?.length > 0 && <Text style={[styles.movieResultMeta, { color: colors.green }]}>Spread to: {adResult.spreading.join(", ")}</Text>}
                 {adResult.feedPostId && <Text style={styles.movieResultMeta}>Post ID: {adResult.feedPostId}</Text>}

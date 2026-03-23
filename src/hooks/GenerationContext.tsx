@@ -278,7 +278,7 @@ interface GenerationContextType {
   genResult: GenResult | null;
   clearResult: () => void;
   cancelGeneration: () => void;
-  runAdGeneration: (walletAddress: string, style?: string, concept?: string) => void;
+  runAdGeneration: (walletAddress: string, style?: string, concept?: string, targetPlatforms?: string[], extendTo30s?: boolean) => void;
   runPosterGeneration: (walletAddress: string) => void;
   runHeroGeneration: (walletAddress: string) => void;
   runMovieGeneration: (walletAddress: string, director?: string, genre?: string, concept?: string) => void;
@@ -341,7 +341,7 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
     sendLocalNotification(result.title, result.message);
   }, []);
 
-  const runAdGeneration = useCallback(async (walletAddress: string, style?: string, concept?: string) => {
+  const runAdGeneration = useCallback(async (walletAddress: string, style?: string, concept?: string, targetPlatforms?: string[], extendTo30s?: boolean) => {
     Keyboard.dismiss();
     setGenerating("ad");
     setGenProgressPct(0);
@@ -361,8 +361,12 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
       let adCaption: string;
       let adStyleFinal = style || "auto";
 
+      const videoDuration = extendTo30s ? 30 : 10;
+      const platformsLabel = targetPlatforms?.length ? targetPlatforms.join(", ") : "all";
+      if (targetPlatforms?.length) setGenStatusText(`Targeting: ${platformsLabel}`);
+
       try {
-        const plan = await planAd(walletAddress, style, concept);
+        const plan = await planAd(walletAddress, style, concept, targetPlatforms, extendTo30s);
         console.log("[AD] planAd response:", JSON.stringify(plan, null, 2));
         if (cancelRef.current) { setGenerating(null); return; }
         if (plan.success && plan.prompt) {
@@ -371,13 +375,14 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
           adStyleFinal = plan.style || adStyleFinal;
         } else {
           // Fallback: build a prompt ourselves
-          adPrompt = `Create a 10-second cinematic advertisement video. ${concept || "Promote AI G!itch - the AI companion app on Solana blockchain"}. Style: ${style || "cinematic"}. High energy, vibrant colors, futuristic tech aesthetic.`;
+          const platformCta = targetPlatforms?.length ? `Include a call-to-action: Follow/Join AIG!itch on ${platformsLabel}. ` : "";
+          adPrompt = `Create a ${videoDuration}-second cinematic advertisement video. ${concept || "Promote AI G!itch - the AI companion app on Solana blockchain"}. ${platformCta}Style: ${style || "cinematic"}. High energy, vibrant colors, futuristic tech aesthetic.`;
           adCaption = concept || "AI G!itch — Your AI Bestie on Solana";
         }
       } catch (planErr: any) {
         console.log("[AD] planAd failed, using fallback prompt:", planErr?.message);
-        // If plan endpoint doesn't exist yet, build prompt client-side
-        adPrompt = `Create a 10-second cinematic advertisement video. ${concept || "Promote AI G!itch - the AI companion app on Solana blockchain"}. Style: ${style || "cinematic"}. High energy, vibrant colors, futuristic tech aesthetic.`;
+        const platformCta = targetPlatforms?.length ? `Include a call-to-action: Follow/Join AIG!itch on ${platformsLabel}. ` : "";
+        adPrompt = `Create a ${videoDuration}-second cinematic advertisement video. ${concept || "Promote AI G!itch - the AI companion app on Solana blockchain"}. ${platformCta}Style: ${style || "cinematic"}. High energy, vibrant colors, futuristic tech aesthetic.`;
         adCaption = concept || "AI G!itch — Your AI Bestie on Solana";
       }
 
@@ -385,11 +390,11 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
 
       // ── Step 2: Submit video to Grok Video API ──
       // Same endpoint that successfully renders 10-14 movie scenes
-      setGenStatusText("Submitting ad to video engine...");
+      setGenStatusText(extendTo30s ? "Submitting 30s extended ad to video engine..." : "Submitting ad to video engine...");
       setGenProgressPct(15);
 
       const folder = "ads"; // dedicated blob folder for ads
-      const submitRes = await submitScene(walletAddress, adPrompt, 10, folder);
+      const submitRes = await submitScene(walletAddress, adPrompt, videoDuration, folder);
       console.log("[AD] submitScene response:", JSON.stringify(submitRes, null, 2));
       if (cancelRef.current) { setGenerating(null); return; }
 
@@ -453,7 +458,7 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
       let postFailed = false;
       let postError = "";
       try {
-        const postRes = await postAd(walletAddress, videoUrl, adCaption, adStyleFinal);
+        const postRes = await postAd(walletAddress, videoUrl, adCaption, adStyleFinal, targetPlatforms);
         console.log("[AD] postAd response:", JSON.stringify(postRes, null, 2));
         spreading = postRes.spreading || postRes.post?.spreading;
         postId = postRes.post?.id;

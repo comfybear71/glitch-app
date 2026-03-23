@@ -178,31 +178,91 @@ When `target_platforms` is provided in the PUT (post) request:
 
 **IMPORTANT:** Grok Video API has a **maximum duration of 15 seconds per clip**. You CANNOT pass `duration: 30` — it will return HTTP 400.
 
-**How it works — frontend generates clips, backend stitches:**
+#### How the Extension API Actually Works
 
-1. **Frontend** generates 3 x 10s clips via `POST /api/test-grok-video` (duration: 10 each):
-   - Clip 1 (HOOK): Attention grab, pattern interrupt
-   - Clip 2 (BUILD): "Continuing seamlessly...", product value, social proof
-   - Clip 3 (CTA): "Continuing seamlessly...", platform CTAs, urgency, logo
-2. **Frontend** sends all 3 clip URLs in the PUT request as `clip_urls: [url1, url2, url3]`
-3. **Backend** receives `clip_urls`, stitches them using `concatMP4Clips()`, uploads the final 30s MP4, then posts
+This is how Grok's consumer "Extend from Frame" feature works internally:
 
-**CRITICAL: Backend PUT handler must check for `clip_urls`:**
+1. **Generate base clip** (text-to-video, 10s)
+2. **Extract last frame** from the base clip as PNG/JPG (ffmpeg or `generateImageWithAurora()`)
+3. **Generate continuation clip** via **image-to-video** — pass the last frame as `image_url`/`init_image`
+4. **Repeat** steps 2-3 for each extension
+5. **Concatenate** all MP4s into final video via `concatMP4Clips()`
+
+**Using `image_url` with the extracted last frame is what gives near-zero drift and seamless transitions.** Without it, text-only prompts cause visible seams, style drift, and character inconsistency.
+
+#### Continuation Prompt Template (Zero-Drift)
+
+```
+Seamless continuation directly from the very last frame of the previous video.
+Exact same [character/environment/style descriptors — keep brief].
+[Describe ONLY the NEW action, motion, camera move].
+Maintain perfect character consistency, identical facial expression/pose at
+start matching end of prior clip, same lighting/shadows/volumetrics,
+zero style drift, frame-accurate match, cinematic quality.
+```
+
+**Drift prevention locks** (add as needed):
+- "exact facial features and expression continuity"
+- "same exact light sources, shadow angles"
+- "treat previous clip as canonical reference — match 1:1"
+
+#### Current Frontend → Backend Flow
+
+**Frontend generates 3 clips (currently text-to-video only) and sends them to backend:**
+
+1. Clip 1 (HOOK): `submitScene(prompt, 10, "ads")` — text-to-video
+2. Clip 2 (BUILD): `submitScene(continuationPrompt, 10, "ads")` — text-to-video
+3. Clip 3 (CTA): `submitScene(ctaPrompt, 10, "ads")` — text-to-video
+4. Frontend sends all 3 URLs as `clip_urls` in the PUT request
+
+**Backend should upgrade clips 2 & 3 to image-to-video** for better quality:
+- Extract last frame of clip 1 → use as `image_url` for clip 2
+- Extract last frame of clip 2 → use as `image_url` for clip 3
+- Use `extendVideoFromFrame()` from `src/lib/xai.ts` (already exists!)
+
+#### Backend Implementation — Two Approaches
+
+**Approach A: Simple Stitch (MVP — just concat frontend clips)**
 ```javascript
 // In /api/generate-ads PUT handler:
 if (clip_urls && clip_urls.length > 1) {
   // Download all clips as buffers
-  const buffers = await Promise.all(clip_urls.map(url => fetch(url).then(r => r.arrayBuffer()).then(Buffer.from)));
+  const buffers = await Promise.all(
+    clip_urls.map(url => fetch(url).then(r => r.arrayBuffer()).then(Buffer.from))
+  );
   // Stitch into one MP4
   const stitched = concatMP4Clips(buffers);
   // Upload to blob storage
   const { url: stitchedUrl } = await put(`ads/ad-${uuid}-30s.mp4`, stitched, { access: 'public' });
-  // Use stitchedUrl as the video to post to socials
   videoUrlToPost = stitchedUrl;
 } else {
   videoUrlToPost = video_url;
 }
 ```
+
+**Approach B: Full Quality (backend generates clips 2 & 3 with last-frame)**
+```javascript
+// When extend_30s: true in the POST (non-plan) handler:
+// 1. Generate clip 1 (text-to-video)
+const clip1 = await generateVideoWithGrok(adPrompt, 10);
+
+// 2. Extract last frame from clip 1
+const lastFrame1 = await generateImageWithAurora(clip1.url); // or ffmpeg
+
+// 3. Generate clip 2 (image-to-video with last frame)
+const clip2 = await extendVideoFromFrame(lastFrame1.url, buildPrompt, 10);
+
+// 4. Extract last frame from clip 2
+const lastFrame2 = await generateImageWithAurora(clip2.url);
+
+// 5. Generate clip 3 (image-to-video with last frame)
+const clip3 = await extendVideoFromFrame(lastFrame2.url, ctaPrompt, 10);
+
+// 6. Stitch all 3
+const stitched = concatMP4Clips([clip1Buffer, clip2Buffer, clip3Buffer]);
+```
+
+**Approach A is the MVP.** The frontend already generates 3 clips and sends them. Backend just needs to stitch and post. Approach B produces higher quality with seamless transitions but requires more backend work.
 
 **Existing code to reuse:**
 - `concatMP4Clips()` in `src/lib/media/mp4-concat.ts` — stitches N MP4 buffers into one

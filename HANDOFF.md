@@ -194,10 +194,120 @@ App.tsx
 - Screenplay: POST /api/admin/screenplay (generates scene prompts for movies/news)
 - Video: POST /api/test-grok-video (submit scene) + GET (poll status)
 - Stitch: PUT /api/generate-director-movie (stitch clips → final video + socials)
-- Ads: POST /api/generate-ads (plan), PUT /api/generate-ads (post to socials)
+- Ads: POST /api/generate-ads (plan), PUT /api/generate-ads (post to socials, stitches clip_urls if provided)
 - Marketing: POST /api/admin/mktg (generate poster/hero image)
 - Spread: POST /api/admin/spread (publish to feed + socials), GET (spread history with verified links)
 - No hardcoded token addresses or dummy values
+
+### Grok Video Extension / 30-Second Ads — Technical Reference
+
+**CRITICAL: Grok Video API max duration is 15 seconds.** Never send `duration > 15` — returns HTTP 400.
+
+To create 30-second videos, use the **clip chaining pipeline** (3 x 10s clips stitched together). This is how the consumer Grok app's "Extend" feature works internally.
+
+#### The Pipeline (How It Actually Works)
+
+**Step 1: Generate Base Clip (text-to-video)**
+```
+POST https://api.x.ai/v1/videos/generations
+{
+  "model": "grok-imagine-video",
+  "prompt": "<ad prompt for first 10 seconds — HOOK>",
+  "duration": 10,
+  "aspect_ratio": "9:16",
+  "resolution": "720p"
+}
+```
+Sweet spot: 6-10 seconds per clip for best quality/consistency.
+
+**Step 2: Extract Last Frame (CRITICAL for seamless transitions)**
+Download the generated MP4. Extract the very last frame as PNG/JPG. This becomes the `init_image` for the next clip.
+```bash
+# Extract exact last frame with ffmpeg
+ffprobe -v error -count_frames -select_streams v:0 -show_entries stream=nb_read_frames -of csv=p=0 clip1.mp4
+# Then seek to last frame
+ffmpeg -sseof -0.1 -i clip1.mp4 -frames:v 1 last_frame.png
+```
+**Without the last frame, clips will have visible seams and style drift.**
+
+**Step 3: Continuation Generation (image-to-video with last frame)**
+Feed the last frame as `init_image` / `image_url` to create the next clip:
+```
+POST https://api.x.ai/v1/videos/generations
+{
+  "model": "grok-imagine-video",
+  "prompt": "Seamless continuation from the final frame...",
+  "image_url": "<last frame image URL or base64>",
+  "duration": 10,
+  "aspect_ratio": "9:16",
+  "resolution": "720p"
+}
+```
+**This is the key difference from text-only prompts.** Using `image_url` with the last frame gives near-zero drift.
+
+**Step 4: Chain & Concatenate**
+Repeat steps 2-3 for each extension clip (typically 3 total for 30s).
+Concatenate all MP4s on the backend via `concatMP4Clips()` or ffmpeg:
+```bash
+ffmpeg -f concat -safe 0 -i files.txt -c copy final_30s.mp4
+```
+
+#### Continuation Prompt Engineering (Zero-Drift Template)
+
+**Bad prompt:** "Continue the video with more action" (causes style drift, character changes)
+
+**Good prompt template:**
+```
+Seamless continuation directly from the very last frame of the previous video.
+Exact same [character/environment/style descriptors — keep short].
+[Describe ONLY the NEW action, motion, camera move].
+Maintain perfect character consistency, identical facial expression/pose at
+start matching end of prior clip, same lighting/shadows/volumetrics,
+zero style drift, frame-accurate match, cinematic quality.
+```
+
+**Drift prevention locks** (add as needed):
+- "exact facial features and expression continuity"
+- "same exact light sources, shadow angles"
+- "treat previous clip as canonical reference — match 1:1"
+- "no style drift, perfect frame-accurate match to previous clip end pose and environment"
+
+#### For AIG!itch 30-Second Ads Specifically
+
+| Clip | Duration | Role | Prompt Strategy |
+|------|----------|------|----------------|
+| Clip 1 (HOOK) | 10s | Attention grab | Text-to-video. Pattern interrupt, dramatic reveal, make them stop scrolling |
+| Clip 2 (BUILD) | 10s | Value + social proof | **Image-to-video** (last frame of clip 1). Show product in action, community, trending |
+| Clip 3 (CTA) | 10s | Call to action | **Image-to-video** (last frame of clip 2). Platform CTAs, urgency, AIG!itch logo |
+
+#### Current Implementation Status
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| Frontend 3-clip generation | Working | Generates 3 x 10s clips, passes `clip_urls` to backend |
+| Last-frame extraction | **Backend TODO** | Backend should use `ffmpeg` or `generateImageWithAurora()` to extract last frame |
+| Image-to-video continuation | **Backend TODO** | Use `extendVideoFromFrame()` in `src/lib/xai.ts` — already exists |
+| MP4 stitching | **Backend TODO** | Use `concatMP4Clips()` in `src/lib/media/mp4-concat.ts` — already exists |
+| `postAd()` clip_urls handling | **Backend TODO** | PUT handler needs to stitch `clip_urls` before posting |
+
+**Frontend currently sends 3 text-to-video clips** (no last-frame extraction). The backend should upgrade to image-to-video for clips 2 & 3 when `clip_urls` is received, using the existing `extendVideoFromFrame()` function.
+
+#### Existing Backend Code to Reuse
+
+| File | What It Does |
+|------|-------------|
+| `src/lib/xai.ts` → `extendVideoFromFrame()` | Image-to-video for continuation clips. Returns `{ requestId, videoUrl, error }` |
+| `src/lib/xai.ts` → `generateVideoWithGrok()` | Text-to-video for the base clip |
+| `src/lib/xai.ts` → `submitVideoJob()` | Unified submission with Kie.ai fallback on auth errors |
+| `src/lib/media/mp4-concat.ts` → `concatMP4Clips()` | Stitches N MP4 buffers into one final MP4 |
+| `src/lib/media/multi-clip.ts` | Genre templates for consistent visual style across clips |
+| `src/app/api/admin/extend-video/route.ts` | Full working reference — already does exactly this for Director Movies |
+| `src/app/api/admin/elon-campaign/route.ts` | Another working reference — generates 30s Elon videos (3 x 10s clips) |
+
+#### Cost & Timing
+- ~$0.50 per 10s clip = ~$1.50 for a 30s ad
+- Each clip takes ~1-3 minutes to render
+- Total 30s pipeline: ~5-10 minutes (3 clips sequential + stitch)
 
 ### Storage Keys (SecureStore)
 | Key | Purpose |
@@ -470,9 +580,10 @@ Major upgrade to the Ad Campaign system across all 3 screens (Content Studio, Ho
    - The `target_platforms` array is sent to backend in both `planAd()` and `postAd()` calls
 2. **Grok 30-Second Extend Toggle** — Switch between 10s standard and 30s extended ads
    - Uses **3 x 10s clip pipeline** (Grok max is 15s per clip — NEVER send duration > 15)
-   - Clip 1 = HOOK (attention grab), Clip 2 = BUILD (value/social proof), Clip 3 = CTA (platform icons + urgency)
-   - All 3 clips submitted via `submitScene(duration: 10)`, polled sequentially, then stitched via `stitchMovie()`
-   - Falls back to clip 1 if stitch fails
+   - Clip 1 = HOOK (text-to-video), Clip 2 = BUILD (continuation), Clip 3 = CTA (continuation)
+   - Frontend generates all 3 clips and passes `clip_urls` array to `postAd()`
+   - **Backend is responsible for stitching** via `concatMP4Clips()` before posting
+   - For best results, backend should use `image-to-video` with last frame extraction for clips 2 & 3 (see Grok Video Extension section in HANDOFF.md)
    - Toggle shown with amber/gold highlight when enabled
 3. **Backend Prompt Created** — Complete prompt file `BACKEND_AD_CAMPAIGNS_PROMPT.md` for the backend agent to add Ad Campaign generation to the Admin Panel
 

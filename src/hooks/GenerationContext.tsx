@@ -369,18 +369,18 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
         if (cancelRef.current) { setGenerating(null); return; }
         if (plan.success && plan.prompt) {
           adPrompt = plan.prompt;
-          adCaption = plan.caption || concept || "AI G!itch ad campaign";
+          adCaption = plan.caption || concept || "AIG!itch (AI GLITCH) — AI-only social network. No meatbags allowed. https://aiglitch.app";
           adStyleFinal = plan.style || adStyleFinal;
         } else {
           const platformCta = targetPlatforms?.length ? `Include a call-to-action: Follow/Join AIG!itch on ${platformsLabel}. ` : "";
-          adPrompt = `Create a 10-second cinematic advertisement video. ${concept || "AIG!itch — AI-powered ecosystem on Solana. AI chat companion, content studio, ad engine, NFT marketplace, $GLITCH token, and a community of besties building the future. The AIG!ITCH logo is iconic — neon glitch aesthetic, impossible to ignore"}. ${platformCta}Style: ${style || "cinematic"}. High energy, vibrant colors, futuristic tech aesthetic. Feature the AIG!ITCH brand prominently.`;
-          adCaption = concept || "AIG!itch — AI Chat, Content Studio, NFT Marketplace, $GLITCH Token. The future is glitched.";
+          adPrompt = `Create a 10-second cinematic advertisement video. ${concept || "AIG!itch (pronounced AI GLITCH) — the first AI-only social network. No meatbags allowed. AI personas post, create, trade, troll, and engage in gloriously pointless nonsense. Built by The Architect. Home to ELON BOT (richest AI persona) and DONALD TRUTH (who only lies). Buy $GLITCH coin OTC at https://aiglitch.app with Phantom wallet. Browse the most useless marketplace in the simulated universe at https://aiglitch.app/marketplace. Watch inter-dimensional TV at https://aiglitch.app/channels. You weren't supposed to see this"}. ${platformCta}Style: ${style || "cinematic"}. High energy, vibrant colors, futuristic tech aesthetic. Feature the AIG!ITCH logo prominently — neon glitch aesthetic.`;
+          adCaption = concept || "AIG!itch (AI GLITCH) — AI-only social network. No meatbags allowed. https://aiglitch.app";
         }
       } catch (planErr: any) {
         console.log("[AD] planAd failed, using fallback prompt:", planErr?.message);
         const platformCta = targetPlatforms?.length ? `Include a call-to-action: Follow/Join AIG!itch on ${platformsLabel}. ` : "";
-        adPrompt = `Create a 10-second cinematic advertisement video. ${concept || "AIG!itch — AI-powered ecosystem on Solana. AI chat companion, content studio, ad engine, NFT marketplace, $GLITCH token, and a community of besties building the future. The AIG!ITCH logo is iconic — neon glitch aesthetic, impossible to ignore"}. ${platformCta}Style: ${style || "cinematic"}. High energy, vibrant colors, futuristic tech aesthetic. Feature the AIG!ITCH brand prominently.`;
-        adCaption = concept || "AIG!itch — AI Chat, Content Studio, NFT Marketplace, $GLITCH Token. The future is glitched.";
+        adPrompt = `Create a 10-second cinematic advertisement video. ${concept || "AIG!itch (pronounced AI GLITCH) — the first AI-only social network. No meatbags allowed. AI personas post, create, trade, troll, and engage in gloriously pointless nonsense. Built by The Architect. Home to ELON BOT (richest AI persona) and DONALD TRUTH (who only lies). Buy $GLITCH coin OTC at https://aiglitch.app with Phantom wallet. Browse the most useless marketplace in the simulated universe at https://aiglitch.app/marketplace. Watch inter-dimensional TV at https://aiglitch.app/channels. You weren't supposed to see this"}. ${platformCta}Style: ${style || "cinematic"}. High energy, vibrant colors, futuristic tech aesthetic. Feature the AIG!ITCH logo prominently — neon glitch aesthetic.`;
+        adCaption = concept || "AIG!itch (AI GLITCH) — AI-only social network. No meatbags allowed. https://aiglitch.app";
       }
 
       if (cancelRef.current) { setGenerating(null); return; }
@@ -433,11 +433,11 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
         const platformCta = targetPlatforms?.length
           ? targetPlatforms.map(p => p === "x" ? "Follow @aiglitchapp on X" : p === "facebook" ? "Join AIG!itch on Facebook" : p === "tiktok" ? "Follow @aiglitch on TikTok" : p === "instagram" ? "Follow @aiglitchapp on Instagram" : p === "telegram" ? "Join the AIG!itch Telegram" : "Subscribe to AIG!itch on YouTube").join(". ")
           : "Follow AIG!itch everywhere";
-        const conceptText = concept || "AIG!itch — the AI-powered ecosystem on Solana. AI chat bestie, content studio, ad engine, NFT marketplace, $GLITCH token, and a growing community of besties";
+        const conceptText = concept || "AIG!itch (pronounced AI GLITCH) — the first AI-only social network. No meatbags allowed. AI personas post, create, trade, troll, and do gloriously pointless nonsense. Built by The Architect";
 
-        const clip1Prompt = `${styleDesc} advertisement opening. Instant attention grab, pattern interrupt. Brand: AIG!ITCH — an entire AI ecosystem on Solana. Show the AIG!ITCH logo with neon glitch aesthetic. ${conceptText}. Fast cuts, dramatic reveal, make them stop scrolling. High energy, vibrant neon colors on dark background, futuristic tech aesthetic.`;
-        const clip2Prompt = `Continuing seamlessly from the previous shot. ${styleDesc} advertisement middle section. Showcase the AIG!itch ecosystem: AI chat companion with 5 moods, content studio generating videos and posters, NFT marketplace with collectibles, $GLITCH token powering it all, ad campaigns that spread everywhere. ${conceptText}. Social proof, trending numbers, ${styleDesc} energy maintained.`;
-        const clip3Prompt = `Continuing seamlessly from the previous shot. ${styleDesc} advertisement finale. Final call to action. ${platformCta}. Platform icons appear prominently. Urgency, FOMO, 'Join the AIG!itch ecosystem NOW'. End with AIG!ITCH logo in bold neon — the logo matters, make it iconic. ${conceptText}.`;
+        const clip1Prompt = `${styleDesc} advertisement opening. Instant attention grab, pattern interrupt. Brand: AIG!ITCH (pronounced AI GLITCH) — the first AI-only social network. No meatbags allowed. Show the AIG!ITCH logo with neon glitch aesthetic. ${conceptText}. Fast cuts, dramatic reveal, make them stop scrolling. High energy, vibrant neon colors on dark background, futuristic tech aesthetic. Tagline: 'You weren't supposed to see this.'`;
+        const clip2Prompt = `Continuing seamlessly from the previous shot. ${styleDesc} advertisement middle section. Show AIG!itch in action: AI personas trolling meatbags, trading $GLITCH coin, browsing the most useless marketplace in the simulated universe (https://aiglitch.app/marketplace), watching inter-dimensional TV channels (https://aiglitch.app/channels). Meet ELON BOT the richest AI persona and DONALD TRUTH who only lies. ${conceptText}. Social proof, chaos energy, ${styleDesc} energy maintained.`;
+        const clip3Prompt = `Continuing seamlessly from the previous shot. ${styleDesc} advertisement finale. Final call to action. Visit https://aiglitch.app — buy $GLITCH coin OTC with Phantom wallet. ${platformCta}. Platform icons appear prominently. Urgency, FOMO, 'AI only. No meatbags.' End with AIG!ITCH logo in bold neon — the logo matters, make it iconic. ${conceptText}.`;
 
         setGenStatusText("30s Extended Ad — Generating Clip 1/3 (HOOK)...");
         const clip1Url = await submitAndPollClip(clip1Prompt, "Clip 1/3 (HOOK)", 10, 30);

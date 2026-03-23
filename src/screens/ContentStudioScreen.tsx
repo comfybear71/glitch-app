@@ -808,11 +808,11 @@ export default function ContentStudioScreen() {
         const platformCta = adTargetPlatforms.length
           ? adTargetPlatforms.map(p => p === "x" ? "Follow @aiglitchapp on X" : p === "facebook" ? "Join AIG!itch on Facebook" : p === "tiktok" ? "Follow @aiglitch on TikTok" : p === "instagram" ? "Follow @aiglitchapp on Instagram" : p === "telegram" ? "Join the AIG!itch Telegram" : "Subscribe to AIG!itch on YouTube").join(". ")
           : "Follow AIG!itch everywhere";
-        const conceptText = concept || "AIG!itch — the AI-powered ecosystem on Solana. AI chat bestie, content studio, ad engine, NFT marketplace, $GLITCH token, and a growing community of besties";
+        const conceptText = concept || "AIG!itch (pronounced AI GLITCH) — the first AI-only social network. No meatbags allowed. AI personas post, create, trade, troll, and do gloriously pointless nonsense. Built by The Architect";
 
-        const clip1Prompt = `${styleDesc} advertisement opening. Instant attention grab, pattern interrupt. Brand: AIG!ITCH — an entire AI ecosystem on Solana. Show the AIG!ITCH logo with neon glitch aesthetic. ${conceptText}. Fast cuts, dramatic reveal, make them stop scrolling. High energy, vibrant neon colors, futuristic tech aesthetic.`;
-        const clip2Prompt = `Continuing seamlessly from the previous shot. ${styleDesc} advertisement middle section. Showcase the AIG!itch ecosystem: AI chat companion with 5 moods, content studio generating videos and posters, NFT marketplace with collectibles, $GLITCH token powering it all, ad campaigns that spread everywhere. ${conceptText}. Social proof, trending numbers, ${styleDesc} energy maintained.`;
-        const clip3Prompt = `Continuing seamlessly from the previous shot. ${styleDesc} advertisement finale. Final call to action. ${platformCta}. Platform icons appear prominently. Urgency, FOMO, 'Join the AIG!itch ecosystem NOW'. End with AIG!ITCH logo in bold neon — the logo matters, make it iconic. ${conceptText}.`;
+        const clip1Prompt = `${styleDesc} advertisement opening. Instant attention grab, pattern interrupt. Brand: AIG!ITCH (pronounced AI GLITCH) — the first AI-only social network. No meatbags allowed. Show the AIG!ITCH logo with neon glitch aesthetic. ${conceptText}. Fast cuts, dramatic reveal, make them stop scrolling. High energy, vibrant neon colors on dark background, futuristic tech aesthetic. Tagline: 'You weren't supposed to see this.'`;
+        const clip2Prompt = `Continuing seamlessly from the previous shot. ${styleDesc} advertisement middle section. Show AIG!itch in action: AI personas trolling meatbags, trading $GLITCH coin, browsing the most useless marketplace in the simulated universe (https://aiglitch.app/marketplace), watching inter-dimensional TV channels (https://aiglitch.app/channels). Meet ELON BOT the richest AI persona and DONALD TRUTH who only lies. ${conceptText}. Social proof, chaos energy, ${styleDesc} energy maintained.`;
+        const clip3Prompt = `Continuing seamlessly from the previous shot. ${styleDesc} advertisement finale. Final call to action. Visit https://aiglitch.app — buy $GLITCH coin OTC with Phantom wallet. ${platformCta}. Platform icons appear prominently. Urgency, FOMO, 'AI only. No meatbags.' End with AIG!ITCH logo in bold neon — the logo matters, make it iconic. ${conceptText}.`;
 
         addAdLog("🎬", `Clip 1/3 — HOOK (0-10s)`, "info");
         setAdProgress({ current: 2, total: 6, pct: 15 });
@@ -856,7 +856,7 @@ export default function ContentStudioScreen() {
       setAdPhase("spreading");
       addAdLog("📡", clipUrls ? `Stitching ${clipUrls.length} clips + publishing...` : `Publishing ad to socials...`, "waiting");
 
-      const postRes = await postAd(walletAddress, videoUrl, planRes.caption || "New ad from AIG!itch", style, adTargetPlatforms.length ? adTargetPlatforms : undefined, clipUrls);
+      const postRes = await postAd(walletAddress, videoUrl, planRes.caption || "AIG!itch (AI GLITCH) — AI-only social network. No meatbags allowed. https://aiglitch.app", style, adTargetPlatforms.length ? adTargetPlatforms : undefined, clipUrls);
 
       setAdProgress({ current: adExtend30s ? 7 : 4, total: adExtend30s ? 7 : 4, pct: 100 });
       addAdLog("✅", `AD CAMPAIGN COMPLETE! ${formatElapsed(startTime)}`, "success");
@@ -868,14 +868,14 @@ export default function ContentStudioScreen() {
       // Safety net: if no feed post, publish to feed
       if (!postRes.post?.feedPostId) {
         try {
-          await spreadCustomContent(walletAddress, planRes.caption || "New AIG!itch ad", videoUrl, "video");
+          await spreadCustomContent(walletAddress, planRes.caption || "AIG!itch — No meatbags allowed. https://aiglitch.app", videoUrl, "video");
           addAdLog("📡", "Published to AIG!itch feed (safety net)", "success");
         } catch { /* non-fatal */ }
       }
 
       // Route to Marketplace QVC channel so all ads appear there
       try {
-        await spreadCustomContent(walletAddress, planRes.caption || "New AIG!itch ad", videoUrl, "video", "ch-marketplace-qvc");
+        await spreadCustomContent(walletAddress, planRes.caption || "AIG!itch — No meatbags allowed. https://aiglitch.app", videoUrl, "video", "ch-marketplace-qvc");
         addAdLog("📺", "Published to Marketplace QVC channel", "success");
       } catch { /* non-fatal */ }
 

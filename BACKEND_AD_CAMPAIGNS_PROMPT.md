@@ -36,6 +36,8 @@ The frontend hits `/api/generate-ads` with these methods:
 ```
 
 #### PUT (Post Ad to Socials)
+
+**Standard 10s ad:**
 ```json
 {
   "wallet_address": "AEWvE2xXaHSGdGCaCArb2PWdKS7K9RwoCRV7CT2CJTWq",
@@ -46,21 +48,39 @@ The frontend hits `/api/generate-ads` with these methods:
 }
 ```
 
-**Expected response:**
+**30s extended ad (3 clips to stitch):**
+```json
+{
+  "wallet_address": "AEWvE2xXaHSGdGCaCArb2PWdKS7K9RwoCRV7CT2CJTWq",
+  "video_url": "https://blob.vercel-storage.com/ads/clip-1.mp4",
+  "caption": "Join the $GLITCH revolution on TikTok!",
+  "style": "hype",
+  "target_platforms": ["tiktok", "x", "facebook"],
+  "clip_urls": [
+    "https://blob.vercel-storage.com/ads/clip-1.mp4",
+    "https://blob.vercel-storage.com/ads/clip-2.mp4",
+    "https://blob.vercel-storage.com/ads/clip-3.mp4"
+  ]
+}
+```
+
+**Expected response (backend stitches clip_urls if provided, then posts):**
 ```json
 {
   "success": true,
   "post": { "id": "...", "feedPostId": "...", "caption": "..." },
-  "spreading": ["x", "tiktok", "facebook"]
+  "spreading": ["x", "tiktok", "facebook"],
+  "stitched_url": "https://blob.vercel-storage.com/ads/ad-xxx-30s.mp4"
 }
 ```
 
 ### New Fields to Handle
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `target_platforms` | `string[]` | Optional. Array of platform IDs: `"x"`, `"facebook"`, `"tiktok"`, `"instagram"`, `"telegram"`, `"youtube"`. When provided, the ad prompt should include a call-to-action for those platforms (e.g., "Follow AIG!itch on TikTok!"). The POST (spread) step should prioritize posting to these platforms. |
-| `extend_30s` | `boolean` | Optional. When `true`, generate a 30-second ad instead of the default 10-second ad. The video prompt sent to Grok Video should request 30 seconds. Use Grok's video extend API to achieve this if native 30s isn't supported. |
+| Field | Type | Where | Description |
+|-------|------|-------|-------------|
+| `target_platforms` | `string[]` | POST + PUT | Optional. Array of platform IDs: `"x"`, `"facebook"`, `"tiktok"`, `"instagram"`, `"telegram"`, `"youtube"`. When provided, the ad prompt should include a call-to-action for those platforms (e.g., "Follow AIG!itch on TikTok!"). The PUT (spread) step should prioritize posting to these platforms. |
+| `extend_30s` | `boolean` | POST | Optional. When `true`, the `planAd()` prompt should be written for a 30-second ad (3 acts). The frontend generates 3 x 10s clips and sends them as `clip_urls` in the PUT. |
+| `clip_urls` | `string[]` | PUT | Optional. Array of 3 clip URLs for 30s ads. **When provided, the backend MUST stitch them into one 30s MP4 using `concatMP4Clips()` before posting.** The `video_url` field is the fallback (clip 1) if stitching fails. |
 
 ### Ad Styles (9 total)
 
@@ -156,29 +176,38 @@ When `target_platforms` is provided in the PUT (post) request:
 
 ### Grok 30-Second Extend (3 x 10s Clip Pipeline)
 
-**IMPORTANT:** Grok Video API has a **maximum duration of 15 seconds per clip**. You CANNOT pass `duration: 30` — it will return HTTP 400 "duration must be between 1 and 15 seconds".
+**IMPORTANT:** Grok Video API has a **maximum duration of 15 seconds per clip**. You CANNOT pass `duration: 30` — it will return HTTP 400.
 
-When `extend_30s: true`, use the **3-clip pipeline** (same as Director Movies and Elon Campaign):
+**How it works — frontend generates clips, backend stitches:**
 
-1. **Clip 1 (HOOK, 0-10s):** Generate via `POST /api/test-grok-video` with `duration: 10`. Prompt focuses on attention grab, pattern interrupt.
-2. **Clip 2 (BUILD, 10-20s):** Generate via same endpoint with `duration: 10`. Prompt starts with "Continuing seamlessly from the previous shot". Shows product value, social proof.
-3. **Clip 3 (CTA, 20-30s):** Generate via same endpoint with `duration: 10`. Prompt starts with "Continuing seamlessly from the previous shot". Shows platform CTAs, urgency, logo.
-4. **Stitch:** Combine all 3 clips via `PUT /api/generate-director-movie` (stitchMovie) with `sceneUrls: { "1": url, "2": url, "3": url }` and `folder: "ads"`.
+1. **Frontend** generates 3 x 10s clips via `POST /api/test-grok-video` (duration: 10 each):
+   - Clip 1 (HOOK): Attention grab, pattern interrupt
+   - Clip 2 (BUILD): "Continuing seamlessly...", product value, social proof
+   - Clip 3 (CTA): "Continuing seamlessly...", platform CTAs, urgency, logo
+2. **Frontend** sends all 3 clip URLs in the PUT request as `clip_urls: [url1, url2, url3]`
+3. **Backend** receives `clip_urls`, stitches them using `concatMP4Clips()`, uploads the final 30s MP4, then posts
 
-**Existing code you can reuse:**
-- `extendVideoFromFrame()` in `src/lib/xai.ts` — image-to-video for continuation clips
+**CRITICAL: Backend PUT handler must check for `clip_urls`:**
+```javascript
+// In /api/generate-ads PUT handler:
+if (clip_urls && clip_urls.length > 1) {
+  // Download all clips as buffers
+  const buffers = await Promise.all(clip_urls.map(url => fetch(url).then(r => r.arrayBuffer()).then(Buffer.from)));
+  // Stitch into one MP4
+  const stitched = concatMP4Clips(buffers);
+  // Upload to blob storage
+  const { url: stitchedUrl } = await put(`ads/ad-${uuid}-30s.mp4`, stitched, { access: 'public' });
+  // Use stitchedUrl as the video to post to socials
+  videoUrlToPost = stitchedUrl;
+} else {
+  videoUrlToPost = video_url;
+}
+```
+
+**Existing code to reuse:**
 - `concatMP4Clips()` in `src/lib/media/mp4-concat.ts` — stitches N MP4 buffers into one
-- `generateImageWithAurora()` — last-frame generation for seamless transitions
-- `/api/admin/extend-video/route.ts` — full working reference for Director Movies
-- `/api/admin/elon-campaign/route.ts` — another working reference for 30s videos
-
-**Frontend behavior:** The frontend already handles the 3-clip pipeline client-side:
-- Submits 3 separate 10s clips with HOOK/BUILD/CTA prompts
-- Polls each clip sequentially
-- Calls stitchMovie to combine them
-- Falls back to clip 1 only if stitch fails
-
-**For the backend `/api/generate-ads` handler:** When `extend_30s: true` is received in a POST (non-plan_only) request, the backend should also use this 3-clip pipeline internally. The `planAd()` endpoint (plan_only=true) just needs to return the prompt — the frontend handles the clip orchestration.
+- `/api/admin/extend-video/route.ts` — working reference for stitch logic
+- `/api/admin/elon-campaign/route.ts` — another working 30s video reference
 
 **Storage:**
 - Individual clips: `ads/clip-{uuid}-1.mp4`, `ads/clip-{uuid}-2.mp4`, `ads/clip-{uuid}-3.mp4`
@@ -186,6 +215,8 @@ When `extend_30s: true`, use the **3-clip pipeline** (same as Director Movies an
 - All via `@vercel/blob put()`
 
 **Cost:** ~$0.50 per 10s clip = ~$1.50 for a 30s ad video
+
+**Timeout:** The PUT handler needs `maxDuration = 300` (5 minutes) since stitching 3 clips takes time. The frontend sends `timeoutMs: 180000` (3 min).
 
 ### Database / Storage
 

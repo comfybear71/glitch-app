@@ -798,9 +798,11 @@ export default function ContentStudioScreen() {
 
       let videoUrl: string | null = null;
       let videoSizeMb: number | null = null;
+      let clipUrls: string[] | undefined;
 
       if (adExtend30s) {
-        // ── 30s EXTENDED AD: 3 x 10s clips → stitch ──
+        // ── 30s EXTENDED AD: 3 x 10s clips ──
+        // Backend stitches via concatMP4Clips when we pass clip_urls in postAd
         setAdPhase("rendering");
         const styleDesc = style || "cinematic";
         const platformCta = adTargetPlatforms.length
@@ -813,40 +815,25 @@ export default function ContentStudioScreen() {
         const clip3Prompt = `Continuing seamlessly from the previous shot. ${styleDesc} advertisement finale. Final call to action. ${platformCta}. Platform icons appear prominently. Urgency, FOMO, 'Join NOW'. End with AIG!ITCH logo in bold neon. ${conceptText}.`;
 
         addAdLog("🎬", `Clip 1/3 — HOOK (0-10s)`, "info");
-        setAdProgress({ current: 2, total: 7, pct: 15 });
+        setAdProgress({ current: 2, total: 6, pct: 15 });
         const clip1 = await submitAndPollClip(clip1Prompt, "Clip 1/3 (HOOK)");
         if (!clip1 || adCancelRef.current) { setAdPhase(adCancelRef.current ? "idle" : "failed"); setAdGenerating(false); return; }
 
         addAdLog("🎬", `Clip 2/3 — BUILD (10-20s)`, "info");
-        setAdProgress({ current: 3, total: 7, pct: 35 });
+        setAdProgress({ current: 3, total: 6, pct: 35 });
         const clip2 = await submitAndPollClip(clip2Prompt, "Clip 2/3 (BUILD)");
         if (!clip2 || adCancelRef.current) { setAdPhase(adCancelRef.current ? "idle" : "failed"); setAdGenerating(false); return; }
 
         addAdLog("🎬", `Clip 3/3 — CTA (20-30s)`, "info");
-        setAdProgress({ current: 4, total: 7, pct: 55 });
+        setAdProgress({ current: 4, total: 6, pct: 55 });
         const clip3 = await submitAndPollClip(clip3Prompt, "Clip 3/3 (CTA)");
         if (!clip3 || adCancelRef.current) { setAdPhase(adCancelRef.current ? "idle" : "failed"); setAdGenerating(false); return; }
 
-        // ── Stitch all 3 clips ──
-        setAdPhase("stitching");
-        setAdProgress({ current: 5, total: 7, pct: 70 });
-        addAdLog("🔗", `Stitching 3 clips into 30s video...`, "waiting");
-        try {
-          const stitchRes = await stitchMovie(walletAddress, {
-            sceneUrls: { "1": clip1.url, "2": clip2.url, "3": clip3.url },
-            title: planRes.caption?.slice(0, 100) || "AIG!itch 30s Ad",
-            folder: "ads",
-          });
-          console.log("[AD] stitch response:", JSON.stringify(stitchRes, null, 2));
-          videoUrl = stitchRes.finalVideoUrl || null;
-          addAdLog("🎉", `30s video stitched! ${formatElapsed(startTime)}`, "success");
-        } catch (stitchErr: any) {
-          addAdLog("⚠️", `Stitch failed: ${stitchErr?.message}. Using clip 1 as fallback.`, "error");
-          videoUrl = clip1.url;
-          videoSizeMb = clip1.sizeMb;
-        }
-
-        setAdProgress({ current: 6, total: 7, pct: 80 });
+        // All 3 clips ready — backend will stitch via concatMP4Clips when we pass clip_urls
+        videoUrl = clip1.url; // primary URL (fallback if backend can't stitch)
+        clipUrls = [clip1.url, clip2.url, clip3.url];
+        addAdLog("✅", `All 3 clips ready! Sending to backend for stitch + post...`, "success");
+        setAdProgress({ current: 5, total: 6, pct: 70 });
       } else {
         // ── Standard 10s Ad: single clip ──
         setAdPhase("rendering");
@@ -865,11 +852,11 @@ export default function ContentStudioScreen() {
         return;
       }
 
-      // ── Post & Spread to Socials ──
+      // ── Post & Spread to Socials (backend stitches clip_urls if provided) ──
       setAdPhase("spreading");
-      addAdLog("📡", `Publishing ad to socials...`, "waiting");
+      addAdLog("📡", clipUrls ? `Stitching ${clipUrls.length} clips + publishing...` : `Publishing ad to socials...`, "waiting");
 
-      const postRes = await postAd(walletAddress, videoUrl, planRes.caption || "New ad from AIG!itch", style, adTargetPlatforms.length ? adTargetPlatforms : undefined);
+      const postRes = await postAd(walletAddress, videoUrl, planRes.caption || "New ad from AIG!itch", style, adTargetPlatforms.length ? adTargetPlatforms : undefined, clipUrls);
 
       setAdProgress({ current: adExtend30s ? 7 : 4, total: adExtend30s ? 7 : 4, pct: 100 });
       addAdLog("✅", `AD CAMPAIGN COMPLETE! ${formatElapsed(startTime)}`, "success");

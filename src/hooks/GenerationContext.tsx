@@ -423,10 +423,12 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
       };
 
       let videoUrl: string | null = null;
+      let clipUrls: string[] | undefined;
 
       if (extendTo30s) {
-        // ── 30s Extended Ad: 3-clip pipeline (3 x 10s → stitch) ──
-        // Grok max is 10-15s per clip — we chain 3 clips together
+        // ── 30s Extended Ad: 3-clip pipeline (3 x 10s) ──
+        // Grok max is 15s per clip — we generate 3 x 10s clips
+        // Backend stitches them via concatMP4Clips when we pass clip_urls in postAd
         const styleDesc = style || "cinematic";
         const platformCta = targetPlatforms?.length
           ? targetPlatforms.map(p => p === "x" ? "Follow @aiglitchapp on X" : p === "facebook" ? "Join AIG!itch on Facebook" : p === "tiktok" ? "Follow @aiglitch on TikTok" : p === "instagram" ? "Follow @aiglitchapp on Instagram" : p === "telegram" ? "Join the AIG!itch Telegram" : "Subscribe to AIG!itch on YouTube").join(". ")
@@ -458,23 +460,11 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
           setGenerating(null); setGenProgressPct(0); setGenStatusText(""); return;
         }
 
-        // ── Stitch all 3 clips into final 30s video ──
-        setGenStatusText("Stitching 3 clips into 30s ad...");
+        // All 3 clips ready — backend will stitch via concatMP4Clips when we pass clip_urls
+        videoUrl = clip1Url; // primary URL (fallback if backend can't stitch)
+        clipUrls = [clip1Url, clip2Url, clip3Url];
+        setGenStatusText("All 3 clips ready! Sending to backend for stitch + post...");
         setGenProgressPct(75);
-        try {
-          const stitchRes = await stitchMovie(walletAddress, {
-            sceneUrls: { "1": clip1Url, "2": clip2Url, "3": clip3Url },
-            title: adCaption.slice(0, 100) || "AIG!itch 30s Ad",
-            folder: "ads",
-          });
-          console.log("[AD] stitch response:", JSON.stringify(stitchRes, null, 2));
-          videoUrl = stitchRes.finalVideoUrl || null;
-        } catch (stitchErr: any) {
-          console.log("[AD] stitch failed:", stitchErr?.message);
-          // Fallback: use clip 1 as the video
-          setGenStatusText("Stitch failed — using first clip. Try again for full 30s.");
-          videoUrl = clip1Url;
-        }
       } else {
         // ── Standard 10s Ad: single clip ──
         setGenStatusText("Submitting ad to video engine...");
@@ -491,8 +481,8 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
         return;
       }
 
-      // ── Post to socials ──
-      setGenStatusText("Ad rendered! Spreading to socials...");
+      // ── Post to socials (backend stitches clip_urls if provided) ──
+      setGenStatusText(clipUrls ? "Stitching clips + spreading to socials..." : "Ad rendered! Spreading to socials...");
       setGenProgressPct(85);
 
       let spreading: string[] | undefined;
@@ -503,7 +493,7 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
       let postFailed = false;
       let postError = "";
       try {
-        const postRes = await postAd(walletAddress, videoUrl, adCaption, adStyleFinal, targetPlatforms);
+        const postRes = await postAd(walletAddress, videoUrl, adCaption, adStyleFinal, targetPlatforms, clipUrls);
         console.log("[AD] postAd response:", JSON.stringify(postRes, null, 2));
         spreading = postRes.spreading || postRes.post?.spreading;
         postId = postRes.post?.id;

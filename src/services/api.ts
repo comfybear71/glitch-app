@@ -886,8 +886,9 @@ export function planAd(walletAddress: string, style?: string, concept?: string, 
 }
 
 // Step 4: Post completed ad video to socials
-export function postAd(walletAddress: string, videoUrl: string, caption: string, style?: string, targetPlatforms?: string[]) {
-  return fetchJSON<{ success: boolean; post?: any; spreading?: string[]; message?: string }>(`/api/generate-ads?wallet_address=${encodeURIComponent(walletAddress)}`, {
+// For 30s ads, pass clipUrls (array of 3 clip URLs) — backend stitches via concatMP4Clips then posts
+export function postAd(walletAddress: string, videoUrl: string, caption: string, style?: string, targetPlatforms?: string[], clipUrls?: string[]) {
+  return fetchJSON<{ success: boolean; post?: any; spreading?: string[]; message?: string; stitched_url?: string }>(`/api/generate-ads?wallet_address=${encodeURIComponent(walletAddress)}`, {
     method: "PUT",
     body: JSON.stringify({
       wallet_address: walletAddress,
@@ -895,7 +896,9 @@ export function postAd(walletAddress: string, videoUrl: string, caption: string,
       caption,
       ...(style && { style }),
       ...(targetPlatforms?.length && { target_platforms: targetPlatforms }),
+      ...(clipUrls?.length && { clip_urls: clipUrls }),
     }),
+    timeoutMs: 180000, // 3 min — backend may need time to stitch + post
   });
 }
 

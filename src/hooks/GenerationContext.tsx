@@ -354,14 +354,12 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
 
     try {
       // ── Step 1: Get ad concept + video prompt from backend ──
-      // Uses plan_only=true so the server just generates the creative brief, no video
       setGenStatusText("Writing ad concept...");
       setGenProgressPct(5);
       let adPrompt: string;
       let adCaption: string;
       let adStyleFinal = style || "auto";
 
-      const videoDuration = extendTo30s ? 30 : 10;
       const platformsLabel = targetPlatforms?.length ? targetPlatforms.join(", ") : "all";
       if (targetPlatforms?.length) setGenStatusText(`Targeting: ${platformsLabel}`);
 
@@ -374,67 +372,114 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
           adCaption = plan.caption || concept || "AI G!itch ad campaign";
           adStyleFinal = plan.style || adStyleFinal;
         } else {
-          // Fallback: build a prompt ourselves
           const platformCta = targetPlatforms?.length ? `Include a call-to-action: Follow/Join AIG!itch on ${platformsLabel}. ` : "";
-          adPrompt = `Create a ${videoDuration}-second cinematic advertisement video. ${concept || "Promote AI G!itch - the AI companion app on Solana blockchain"}. ${platformCta}Style: ${style || "cinematic"}. High energy, vibrant colors, futuristic tech aesthetic.`;
+          adPrompt = `Create a 10-second cinematic advertisement video. ${concept || "Promote AI G!itch - the AI companion app on Solana blockchain"}. ${platformCta}Style: ${style || "cinematic"}. High energy, vibrant colors, futuristic tech aesthetic.`;
           adCaption = concept || "AI G!itch — Your AI Bestie on Solana";
         }
       } catch (planErr: any) {
         console.log("[AD] planAd failed, using fallback prompt:", planErr?.message);
         const platformCta = targetPlatforms?.length ? `Include a call-to-action: Follow/Join AIG!itch on ${platformsLabel}. ` : "";
-        adPrompt = `Create a ${videoDuration}-second cinematic advertisement video. ${concept || "Promote AI G!itch - the AI companion app on Solana blockchain"}. ${platformCta}Style: ${style || "cinematic"}. High energy, vibrant colors, futuristic tech aesthetic.`;
+        adPrompt = `Create a 10-second cinematic advertisement video. ${concept || "Promote AI G!itch - the AI companion app on Solana blockchain"}. ${platformCta}Style: ${style || "cinematic"}. High energy, vibrant colors, futuristic tech aesthetic.`;
         adCaption = concept || "AI G!itch — Your AI Bestie on Solana";
       }
 
       if (cancelRef.current) { setGenerating(null); return; }
 
-      // ── Step 2: Submit video to Grok Video API ──
-      // Same endpoint that successfully renders 10-14 movie scenes
-      setGenStatusText(extendTo30s ? "Submitting 30s extended ad to video engine..." : "Submitting ad to video engine...");
-      setGenProgressPct(15);
+      const folder = "ads";
 
-      const folder = "ads"; // dedicated blob folder for ads
-      const submitRes = await submitScene(walletAddress, adPrompt, videoDuration, folder);
-      console.log("[AD] submitScene response:", JSON.stringify(submitRes, null, 2));
-      if (cancelRef.current) { setGenerating(null); return; }
+      // ── Helper: submit a 10s clip and poll until done ──
+      const submitAndPollClip = async (prompt: string, clipLabel: string, pctStart: number, pctEnd: number): Promise<string | null> => {
+        setGenStatusText(`Submitting ${clipLabel}...`);
+        setGenProgressPct(pctStart);
 
-      if (!submitRes.success || !submitRes.requestId) {
-        setGenStatusText(`Failed to submit: ${submitRes.error || "No request ID returned"}`);
-        await new Promise(r => setTimeout(r, 3000));
-        setGenerating(null); setGenProgressPct(0); setGenStatusText("");
-        return;
-      }
+        const submitRes = await submitScene(walletAddress, prompt, 10, folder);
+        console.log(`[AD] ${clipLabel} submitScene:`, JSON.stringify(submitRes, null, 2));
+        if (cancelRef.current) return null;
+        if (!submitRes.success || !submitRes.requestId) {
+          setGenStatusText(`Failed to submit ${clipLabel}: ${submitRes.error || "No request ID"}`);
+          return null;
+        }
 
-      // ── Step 3: Poll for completion ──
-      // Same polling as movie scenes: 10s intervals, up to 90 polls (15 min)
-      setGenStatusText("Rendering ad video...");
-      setGenProgressPct(20);
-      let pollCount = 0;
-      const maxPolls = 90;
+        setGenStatusText(`Rendering ${clipLabel}...`);
+        let pollCount = 0;
+        const maxPolls = 90;
+        while (pollCount < maxPolls && !cancelRef.current) {
+          await new Promise(r => setTimeout(r, 10000));
+          pollCount++;
+          const pct = pctStart + Math.round((pollCount / maxPolls) * (pctEnd - pctStart));
+          setGenProgressPct(Math.min(pct, pctEnd));
+          setGenStatusText(`Rendering ${clipLabel}... (${formatElapsed(startTime)})`);
+          try {
+            const pollRes = await pollScene(walletAddress, submitRes.requestId, folder);
+            if (pollRes.status === "done" && (pollRes.blobUrl || pollRes.videoUrl)) {
+              return pollRes.blobUrl || pollRes.videoUrl || null;
+            } else if (["failed", "moderation_failed", "expired"].includes(pollRes.status)) {
+              setGenStatusText(`${clipLabel} failed: ${pollRes.status}`);
+              return null;
+            }
+          } catch { /* keep polling */ }
+        }
+        return null;
+      };
+
       let videoUrl: string | null = null;
 
-      while (pollCount < maxPolls && !cancelRef.current) {
-        await new Promise(r => setTimeout(r, 10000)); // 10s intervals, same as movies
-        pollCount++;
-        const pct = 20 + Math.round((pollCount / maxPolls) * 60);
-        setGenProgressPct(Math.min(pct, 80));
-        setGenStatusText(`Rendering ad video... (${formatElapsed(startTime)})`);
+      if (extendTo30s) {
+        // ── 30s Extended Ad: 3-clip pipeline (3 x 10s → stitch) ──
+        // Grok max is 10-15s per clip — we chain 3 clips together
+        const styleDesc = style || "cinematic";
+        const platformCta = targetPlatforms?.length
+          ? targetPlatforms.map(p => p === "x" ? "Follow @aiglitchapp on X" : p === "facebook" ? "Join AIG!itch on Facebook" : p === "tiktok" ? "Follow @aiglitch on TikTok" : p === "instagram" ? "Follow @aiglitchapp on Instagram" : p === "telegram" ? "Join the AIG!itch Telegram" : "Subscribe to AIG!itch on YouTube").join(". ")
+          : "Follow AIG!itch everywhere";
+        const conceptText = concept || "AI G!itch ($GLITCH) — the hottest AI companion app on Solana blockchain";
 
+        const clip1Prompt = `${styleDesc} advertisement opening. Instant attention grab, pattern interrupt. Product: AI G!itch ($GLITCH) on Solana. ${conceptText}. Fast cuts, dramatic reveal, make them stop scrolling. High energy, vibrant neon colors on dark background, futuristic tech aesthetic.`;
+        const clip2Prompt = `Continuing seamlessly from the previous shot. ${styleDesc} advertisement middle section. Show the product in action, demonstrate value, create desire. AI companion app, crypto trading, community vibes. ${conceptText}. Social proof, trending numbers, ${styleDesc} energy maintained.`;
+        const clip3Prompt = `Continuing seamlessly from the previous shot. ${styleDesc} advertisement finale. Final call to action. ${platformCta}. Platform icons appear prominently. Urgency, FOMO, 'Join NOW'. End with AIG!ITCH logo in bold neon. ${conceptText}.`;
+
+        setGenStatusText("30s Extended Ad — Generating Clip 1/3 (HOOK)...");
+        const clip1Url = await submitAndPollClip(clip1Prompt, "Clip 1/3 (HOOK)", 10, 30);
+        if (!clip1Url || cancelRef.current) {
+          if (!cancelRef.current) { setGenStatusText("Clip 1 failed. Try again."); await new Promise(r => setTimeout(r, 3000)); }
+          setGenerating(null); setGenProgressPct(0); setGenStatusText(""); return;
+        }
+
+        setGenStatusText("30s Extended Ad — Generating Clip 2/3 (BUILD)...");
+        const clip2Url = await submitAndPollClip(clip2Prompt, "Clip 2/3 (BUILD)", 30, 50);
+        if (!clip2Url || cancelRef.current) {
+          if (!cancelRef.current) { setGenStatusText("Clip 2 failed. Try again."); await new Promise(r => setTimeout(r, 3000)); }
+          setGenerating(null); setGenProgressPct(0); setGenStatusText(""); return;
+        }
+
+        setGenStatusText("30s Extended Ad — Generating Clip 3/3 (CTA)...");
+        const clip3Url = await submitAndPollClip(clip3Prompt, "Clip 3/3 (CTA)", 50, 70);
+        if (!clip3Url || cancelRef.current) {
+          if (!cancelRef.current) { setGenStatusText("Clip 3 failed. Try again."); await new Promise(r => setTimeout(r, 3000)); }
+          setGenerating(null); setGenProgressPct(0); setGenStatusText(""); return;
+        }
+
+        // ── Stitch all 3 clips into final 30s video ──
+        setGenStatusText("Stitching 3 clips into 30s ad...");
+        setGenProgressPct(75);
         try {
-          const pollRes = await pollScene(walletAddress, submitRes.requestId, folder);
-          console.log("[AD] pollScene:", JSON.stringify(pollRes, null, 2));
-
-          if (pollRes.status === "done" && (pollRes.blobUrl || pollRes.videoUrl)) {
-            videoUrl = pollRes.blobUrl || pollRes.videoUrl || null;
-            break;
-          } else if (["failed", "moderation_failed", "expired"].includes(pollRes.status)) {
-            setGenStatusText(`Video rendering failed: ${pollRes.status}`);
-            await new Promise(r => setTimeout(r, 3000));
-            setGenerating(null); setGenProgressPct(0); setGenStatusText("");
-            return;
-          }
-          // Still pending — keep polling
-        } catch { /* ignore individual poll errors, keep trying */ }
+          const stitchRes = await stitchMovie(walletAddress, {
+            sceneUrls: { "1": clip1Url, "2": clip2Url, "3": clip3Url },
+            title: adCaption.slice(0, 100) || "AIG!itch 30s Ad",
+            folder: "ads",
+          });
+          console.log("[AD] stitch response:", JSON.stringify(stitchRes, null, 2));
+          videoUrl = stitchRes.finalVideoUrl || null;
+        } catch (stitchErr: any) {
+          console.log("[AD] stitch failed:", stitchErr?.message);
+          // Fallback: use clip 1 as the video
+          setGenStatusText("Stitch failed — using first clip. Try again for full 30s.");
+          videoUrl = clip1Url;
+        }
+      } else {
+        // ── Standard 10s Ad: single clip ──
+        setGenStatusText("Submitting ad to video engine...");
+        setGenProgressPct(15);
+        videoUrl = await submitAndPollClip(adPrompt, "ad video", 15, 80);
       }
 
       if (cancelRef.current) { setGenerating(null); return; }
@@ -446,7 +491,7 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
         return;
       }
 
-      // ── Step 4: Post to socials ──
+      // ── Post to socials ──
       setGenStatusText("Ad rendered! Spreading to socials...");
       setGenProgressPct(85);
 

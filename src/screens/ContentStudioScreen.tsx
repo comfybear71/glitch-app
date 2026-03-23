@@ -714,6 +714,7 @@ export default function ContentStudioScreen() {
   useEffect(() => { if (expandedSections.monitor) loadMonitor(); }, [expandedSections.monitor]);
 
   // ── Generate Ad — Full Multi-Step Pipeline (like Director Movies) ──
+  // For 30s ads: 3 x 10s clips → stitch (Grok max is 15s per clip)
   const handleGenerateAdFull = async () => {
     if (adGenerating || !walletAddress) return;
     if (walletAddress !== ADMIN_WALLET) {
@@ -724,7 +725,7 @@ export default function ContentStudioScreen() {
     setAdResult(null);
     setAdLog([]);
     setAdPhase("planning");
-    setAdProgress({ current: 0, total: 4, pct: 0 });
+    setAdProgress({ current: 0, total: adExtend30s ? 7 : 4, pct: 0 });
     adCancelRef.current = false;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
 
@@ -736,14 +737,48 @@ export default function ContentStudioScreen() {
 
     const style = adStyle || undefined;
     const concept = adConceptInput.trim() || undefined;
-    const videoDuration = adExtend30s ? 30 : 10;
 
     addAdLog("🎯", `Starting ad campaign...`, "info");
     if (style) addAdLog("🎨", `Style: ${style}`, "info");
     if (concept) addAdLog("📖", `Concept: "${concept.slice(0, 100)}"`, "info");
     if (adTargetPlatforms.length) addAdLog("📱", `Targeting: ${adTargetPlatforms.join(", ")}`, "info");
-    if (adExtend30s) addAdLog("⏱️", `Extended 30-second ad (Grok Extend)`, "info");
+    if (adExtend30s) addAdLog("⏱️", `Extended 30-second ad — 3 x 10s clips (Grok Extend)`, "info");
     addAdLog("📜", `Planning ad concept...`, "waiting");
+
+    // ── Helper: submit a 10s clip and poll until done ──
+    const submitAndPollClip = async (prompt: string, clipLabel: string): Promise<{ url: string; sizeMb: number | null } | null> => {
+      addAdLog("📡", `Submitting ${clipLabel}...`, "waiting");
+      const submitRes = await submitScene(walletAddress, prompt, 10, "ads");
+      if (adCancelRef.current) return null;
+      if (!submitRes.success || !submitRes.requestId) {
+        addAdLog("❌", `${clipLabel} submission failed: ${submitRes.error || "Unknown"}`, "error");
+        return null;
+      }
+      addAdLog("✅", `${clipLabel} submitted: ${submitRes.requestId.slice(0, 20)}...`, "success");
+      addAdLog("⏳", `Polling ${clipLabel} every 10s...`, "waiting");
+
+      let pollCount = 0;
+      while (pollCount < 90 && !adCancelRef.current) {
+        await new Promise(r => setTimeout(r, 10000));
+        pollCount++;
+        try {
+          const pollRes = await pollScene(walletAddress, submitRes.requestId, "ads");
+          if (pollRes.status === "done" && pollRes.blobUrl) {
+            addAdLog("🎉", `${clipLabel} ready! (${formatElapsed(startTime)}) — ${pollRes.sizeMb || "?"}MB`, "success");
+            return { url: pollRes.blobUrl, sizeMb: pollRes.sizeMb || null };
+          } else if (["failed", "moderation_failed", "expired"].includes(pollRes.status)) {
+            addAdLog("❌", `${clipLabel} FAILED: ${pollRes.status}`, "error");
+            return null;
+          } else if (pollCount % 3 === 0) {
+            addAdLog("🔄", `${formatElapsed(startTime)}: ${clipLabel} still rendering...`, "info");
+          }
+        } catch (err: any) {
+          console.warn(`${clipLabel} poll error:`, err?.message);
+        }
+      }
+      addAdLog("❌", `${clipLabel} timed out after ${formatElapsed(startTime)}`, "error");
+      return null;
+    };
 
     try {
       // ── STEP 1: Plan Ad — get concept + video prompt ──
@@ -759,78 +794,84 @@ export default function ContentStudioScreen() {
 
       addAdLog("✅", `Ad concept ready: "${planRes.caption?.slice(0, 100) || "Ad"}"`, "success");
       addAdLog("🎨", `Style: ${planRes.style || "auto"}`, "info");
-      setAdProgress({ current: 1, total: 4, pct: 25 });
+      setAdProgress({ current: 1, total: adExtend30s ? 7 : 4, pct: adExtend30s ? 10 : 25 });
 
-      // ── STEP 2: Submit to Grok Video ──
-      setAdPhase("rendering");
-      addAdLog("📡", `Submitting to video generation...`, "waiting");
-
-      const submitRes = await submitScene(walletAddress, planRes.prompt, videoDuration, "ads");
-      if (adCancelRef.current) { setAdGenerating(false); setAdPhase("idle"); return; }
-
-      if (!submitRes.success || !submitRes.requestId) {
-        addAdLog("❌", `Video submission failed: ${submitRes.error || "Unknown"}`, "error");
-        setAdPhase("failed");
-        setAdGenerating(false);
-        return;
-      }
-
-      addAdLog("✅", `Submitted: ${submitRes.requestId.slice(0, 20)}...`, "success");
-      setAdProgress({ current: 2, total: 4, pct: 50 });
-
-      // ── STEP 3: Poll for Completion ──
-      setAdPhase("polling");
-      addAdLog("⏳", `Polling video status every 10s (max 15 min)...`, "waiting");
-
-      let pollCount = 0;
       let videoUrl: string | null = null;
       let videoSizeMb: number | null = null;
 
-      while (pollCount < 90 && !adCancelRef.current) {
-        await new Promise(r => setTimeout(r, 10000));
-        pollCount++;
+      if (adExtend30s) {
+        // ── 30s EXTENDED AD: 3 x 10s clips → stitch ──
+        setAdPhase("rendering");
+        const styleDesc = style || "cinematic";
+        const platformCta = adTargetPlatforms.length
+          ? adTargetPlatforms.map(p => p === "x" ? "Follow @aiglitchapp on X" : p === "facebook" ? "Join AIG!itch on Facebook" : p === "tiktok" ? "Follow @aiglitch on TikTok" : p === "instagram" ? "Follow @aiglitchapp on Instagram" : p === "telegram" ? "Join the AIG!itch Telegram" : "Subscribe to AIG!itch on YouTube").join(". ")
+          : "Follow AIG!itch everywhere";
+        const conceptText = concept || "AI G!itch ($GLITCH) — the hottest AI companion app on Solana";
 
+        const clip1Prompt = `${styleDesc} advertisement opening. Instant attention grab, pattern interrupt. Product: AI G!itch ($GLITCH) on Solana. ${conceptText}. Fast cuts, dramatic reveal, make them stop scrolling. High energy, vibrant neon colors, futuristic tech aesthetic.`;
+        const clip2Prompt = `Continuing seamlessly from the previous shot. ${styleDesc} advertisement middle section. Show the product in action, demonstrate value, create desire. AI companion app, crypto community vibes. ${conceptText}. Social proof, trending, ${styleDesc} energy maintained.`;
+        const clip3Prompt = `Continuing seamlessly from the previous shot. ${styleDesc} advertisement finale. Final call to action. ${platformCta}. Platform icons appear prominently. Urgency, FOMO, 'Join NOW'. End with AIG!ITCH logo in bold neon. ${conceptText}.`;
+
+        addAdLog("🎬", `Clip 1/3 — HOOK (0-10s)`, "info");
+        setAdProgress({ current: 2, total: 7, pct: 15 });
+        const clip1 = await submitAndPollClip(clip1Prompt, "Clip 1/3 (HOOK)");
+        if (!clip1 || adCancelRef.current) { setAdPhase(adCancelRef.current ? "idle" : "failed"); setAdGenerating(false); return; }
+
+        addAdLog("🎬", `Clip 2/3 — BUILD (10-20s)`, "info");
+        setAdProgress({ current: 3, total: 7, pct: 35 });
+        const clip2 = await submitAndPollClip(clip2Prompt, "Clip 2/3 (BUILD)");
+        if (!clip2 || adCancelRef.current) { setAdPhase(adCancelRef.current ? "idle" : "failed"); setAdGenerating(false); return; }
+
+        addAdLog("🎬", `Clip 3/3 — CTA (20-30s)`, "info");
+        setAdProgress({ current: 4, total: 7, pct: 55 });
+        const clip3 = await submitAndPollClip(clip3Prompt, "Clip 3/3 (CTA)");
+        if (!clip3 || adCancelRef.current) { setAdPhase(adCancelRef.current ? "idle" : "failed"); setAdGenerating(false); return; }
+
+        // ── Stitch all 3 clips ──
+        setAdPhase("stitching");
+        setAdProgress({ current: 5, total: 7, pct: 70 });
+        addAdLog("🔗", `Stitching 3 clips into 30s video...`, "waiting");
         try {
-          const pollRes = await pollScene(walletAddress, submitRes.requestId, "ads");
-
-          if (pollRes.status === "done" && pollRes.blobUrl) {
-            videoUrl = pollRes.blobUrl;
-            videoSizeMb = pollRes.sizeMb || null;
-            addAdLog("🎉", `Video ready! (${formatElapsed(startTime)}) — ${videoSizeMb || "?"}MB`, "success");
-            break;
-          } else if (["failed", "moderation_failed", "expired"].includes(pollRes.status)) {
-            addAdLog("❌", `Video generation FAILED: ${pollRes.status}`, "error");
-            setAdPhase("failed");
-            setAdGenerating(false);
-            return;
-          } else {
-            if (pollCount % 3 === 0) {
-              addAdLog("🔄", `${formatElapsed(startTime)}: Still rendering...`, "info");
-            }
-          }
-        } catch (err: any) {
-          console.warn("Ad poll error:", err?.message);
+          const stitchRes = await stitchMovie(walletAddress, {
+            sceneUrls: { "1": clip1.url, "2": clip2.url, "3": clip3.url },
+            title: planRes.caption?.slice(0, 100) || "AIG!itch 30s Ad",
+            folder: "ads",
+          });
+          console.log("[AD] stitch response:", JSON.stringify(stitchRes, null, 2));
+          videoUrl = stitchRes.finalVideoUrl || null;
+          addAdLog("🎉", `30s video stitched! ${formatElapsed(startTime)}`, "success");
+        } catch (stitchErr: any) {
+          addAdLog("⚠️", `Stitch failed: ${stitchErr?.message}. Using clip 1 as fallback.`, "error");
+          videoUrl = clip1.url;
+          videoSizeMb = clip1.sizeMb;
         }
+
+        setAdProgress({ current: 6, total: 7, pct: 80 });
+      } else {
+        // ── Standard 10s Ad: single clip ──
+        setAdPhase("rendering");
+        setAdProgress({ current: 2, total: 4, pct: 50 });
+        const clip = await submitAndPollClip(planRes.prompt, "ad video");
+        if (!clip || adCancelRef.current) { setAdPhase(adCancelRef.current ? "idle" : "failed"); setAdGenerating(false); return; }
+        videoUrl = clip.url;
+        videoSizeMb = clip.sizeMb;
+        setAdProgress({ current: 3, total: 4, pct: 75 });
       }
 
-      if (adCancelRef.current) { setAdGenerating(false); setAdPhase("idle"); return; }
-
       if (!videoUrl) {
-        addAdLog("❌", `Video timed out after ${formatElapsed(startTime)}`, "error");
+        addAdLog("❌", `Video generation failed`, "error");
         setAdPhase("failed");
         setAdGenerating(false);
         return;
       }
 
-      setAdProgress({ current: 3, total: 4, pct: 75 });
-
-      // ── STEP 4: Post & Spread to Socials ──
+      // ── Post & Spread to Socials ──
       setAdPhase("spreading");
       addAdLog("📡", `Publishing ad to socials...`, "waiting");
 
       const postRes = await postAd(walletAddress, videoUrl, planRes.caption || "New ad from AIG!itch", style, adTargetPlatforms.length ? adTargetPlatforms : undefined);
 
-      setAdProgress({ current: 4, total: 4, pct: 100 });
+      setAdProgress({ current: adExtend30s ? 7 : 4, total: adExtend30s ? 7 : 4, pct: 100 });
       addAdLog("✅", `AD CAMPAIGN COMPLETE! ${formatElapsed(startTime)}`, "success");
 
       if (postRes.spreading?.length) {
@@ -855,7 +896,7 @@ export default function ContentStudioScreen() {
         success: true,
         caption: planRes.caption,
         style: planRes.style,
-        duration: videoDuration,
+        duration: adExtend30s ? 30 : 10,
         targetPlatforms: adTargetPlatforms.length ? adTargetPlatforms : undefined,
         videoUrl,
         sizeMb: videoSizeMb,
@@ -2111,7 +2152,7 @@ CRITICAL STYLE NOTES:
                 disabled={adGenerating}>
                 <Text style={[styles.movieGenBtnText, { color: colors.orange }]}>
                   {adGenerating
-                    ? `🎯 ${adPhase === "planning" ? "Planning ad..." : adPhase === "rendering" ? "Rendering video..." : adPhase === "polling" ? "Waiting for video..." : adPhase === "spreading" ? "Publishing to socials..." : "Generating..."}`
+                    ? `🎯 ${adPhase === "planning" ? "Planning ad..." : adPhase === "rendering" ? "Rendering video..." : adPhase === "polling" ? "Waiting for video..." : adPhase === "stitching" ? "Stitching clips..." : adPhase === "spreading" ? "Publishing to socials..." : "Generating..."}`
                     : "🎯 Launch Ad Campaign"}
                 </Text>
               </TouchableOpacity>
@@ -2129,7 +2170,7 @@ CRITICAL STYLE NOTES:
               <View style={{ marginTop: 12, marginBottom: 8 }}>
                 <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
                   <Text style={{ color: colors.text, fontFamily: "monospace", fontSize: 12 }}>
-                    {adPhase === "planning" ? "📜 Planning ad concept..." : adPhase === "rendering" ? "📡 Submitting to video gen..." : adPhase === "polling" ? `🎬 Rendering video... (${adProgress.pct}%)` : adPhase === "spreading" ? "📡 Publishing to socials..." : adPhase === "complete" ? "✅ Ad campaign complete!" : ""}
+                    {adPhase === "planning" ? "📜 Planning ad concept..." : adPhase === "rendering" ? "📡 Rendering video clips..." : adPhase === "stitching" ? `🔗 Stitching 3 clips into 30s...` : adPhase === "spreading" ? "📡 Publishing to socials..." : adPhase === "complete" ? "✅ Ad campaign complete!" : `🎬 (${adProgress.pct}%)`}
                   </Text>
                 </View>
                 <ProgressBar progress={adProgress.pct} color={adPhase === "complete" ? colors.green : colors.orange} />

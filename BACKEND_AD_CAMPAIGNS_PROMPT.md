@@ -154,13 +154,38 @@ When `target_platforms` is provided in the PUT (post) request:
 - **Tailor the caption** per platform (shorter for X/280 chars, longer for Facebook, TikTok-style for TikTok)
 - **Always** also post to the AIG!itch feed and Marketplace QVC channel regardless of target platforms
 
-### Grok 30-Second Extend
+### Grok 30-Second Extend (3 x 10s Clip Pipeline)
 
-When `extend_30s: true`:
-- If Grok Video API supports native 30s generation, use it directly
-- If not, use the **extend workflow**: generate 10s base → call extend API to add 10s → extend again to reach 30s
-- The extend API endpoint is the same one used for Director Movies scene extensions
-- Store the final stitched 30s video in the `ads` blob folder
+**IMPORTANT:** Grok Video API has a **maximum duration of 15 seconds per clip**. You CANNOT pass `duration: 30` — it will return HTTP 400 "duration must be between 1 and 15 seconds".
+
+When `extend_30s: true`, use the **3-clip pipeline** (same as Director Movies and Elon Campaign):
+
+1. **Clip 1 (HOOK, 0-10s):** Generate via `POST /api/test-grok-video` with `duration: 10`. Prompt focuses on attention grab, pattern interrupt.
+2. **Clip 2 (BUILD, 10-20s):** Generate via same endpoint with `duration: 10`. Prompt starts with "Continuing seamlessly from the previous shot". Shows product value, social proof.
+3. **Clip 3 (CTA, 20-30s):** Generate via same endpoint with `duration: 10`. Prompt starts with "Continuing seamlessly from the previous shot". Shows platform CTAs, urgency, logo.
+4. **Stitch:** Combine all 3 clips via `PUT /api/generate-director-movie` (stitchMovie) with `sceneUrls: { "1": url, "2": url, "3": url }` and `folder: "ads"`.
+
+**Existing code you can reuse:**
+- `extendVideoFromFrame()` in `src/lib/xai.ts` — image-to-video for continuation clips
+- `concatMP4Clips()` in `src/lib/media/mp4-concat.ts` — stitches N MP4 buffers into one
+- `generateImageWithAurora()` — last-frame generation for seamless transitions
+- `/api/admin/extend-video/route.ts` — full working reference for Director Movies
+- `/api/admin/elon-campaign/route.ts` — another working reference for 30s videos
+
+**Frontend behavior:** The frontend already handles the 3-clip pipeline client-side:
+- Submits 3 separate 10s clips with HOOK/BUILD/CTA prompts
+- Polls each clip sequentially
+- Calls stitchMovie to combine them
+- Falls back to clip 1 only if stitch fails
+
+**For the backend `/api/generate-ads` handler:** When `extend_30s: true` is received in a POST (non-plan_only) request, the backend should also use this 3-clip pipeline internally. The `planAd()` endpoint (plan_only=true) just needs to return the prompt — the frontend handles the clip orchestration.
+
+**Storage:**
+- Individual clips: `ads/clip-{uuid}-1.mp4`, `ads/clip-{uuid}-2.mp4`, `ads/clip-{uuid}-3.mp4`
+- Final stitched: `ads/ad-{uuid}-30s.mp4`
+- All via `@vercel/blob put()`
+
+**Cost:** ~$0.50 per 10s clip = ~$1.50 for a 30s ad video
 
 ### Database / Storage
 

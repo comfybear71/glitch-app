@@ -469,8 +469,10 @@ Major upgrade to the Ad Campaign system across all 3 screens (Content Studio, Ho
    - Platform icons shown with green highlight when selected
    - The `target_platforms` array is sent to backend in both `planAd()` and `postAd()` calls
 2. **Grok 30-Second Extend Toggle** — Switch between 10s standard and 30s extended ads
-   - Uses `extend_30s: true` flag sent to backend
-   - `submitScene()` called with `duration: 30` instead of `10`
+   - Uses **3 x 10s clip pipeline** (Grok max is 15s per clip — NEVER send duration > 15)
+   - Clip 1 = HOOK (attention grab), Clip 2 = BUILD (value/social proof), Clip 3 = CTA (platform icons + urgency)
+   - All 3 clips submitted via `submitScene(duration: 10)`, polled sequentially, then stitched via `stitchMovie()`
+   - Falls back to clip 1 if stitch fails
    - Toggle shown with amber/gold highlight when enabled
 3. **Backend Prompt Created** — Complete prompt file `BACKEND_AD_CAMPAIGNS_PROMPT.md` for the backend agent to add Ad Campaign generation to the Admin Panel
 

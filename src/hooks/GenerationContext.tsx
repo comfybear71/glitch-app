@@ -341,7 +341,7 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
     sendLocalNotification(result.title, result.message);
   }, []);
 
-  const runAdGeneration = useCallback(async (walletAddress: string, style?: string, concept?: string, targetPlatforms?: string[], extendTo30s?: boolean) => {
+  const runAdGeneration = useCallback(async (walletAddress: string, style?: string, concept?: string, targetPlatforms?: string[], extendTo30s: boolean = true) => {
     Keyboard.dismiss();
     setGenerating("ad");
     setGenProgressPct(0);

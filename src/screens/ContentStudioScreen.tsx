@@ -577,7 +577,7 @@ export default function ContentStudioScreen() {
   const [adStyle, setAdStyle] = useState<string | null>(null);
   const [adConceptInput, setAdConceptInput] = useState("");
   const [adTargetPlatforms, setAdTargetPlatforms] = useState<string[]>([]);
-  const [adExtend30s, setAdExtend30s] = useState(false);
+  const adExtend30s = true; // All ads are 30s
   const [adLog, setAdLog] = useState<LogEntry[]>([]);
   const [adResult, setAdResult] = useState<any>(null);
   const [adPhase, setAdPhase] = useState<string>("idle");
@@ -2051,7 +2051,7 @@ CRITICAL STYLE NOTES:
         {expandedSections.ads && (
           <View style={styles.sectionBody}>
             <Text style={{ color: colors.textSecondary, fontSize: 12, marginBottom: 12, lineHeight: 18 }}>
-              Create killer AI-generated ad campaigns targeting specific platforms. Pick your style, target Facebook/X/TikTok/Instagram/Telegram, choose 10s or 30s extended ads via Grok Extend, then auto-publish everywhere.
+              Create killer 30-second AI-generated ad campaigns targeting specific platforms. Pick your style, target Facebook/X/TikTok/Instagram/Telegram, then auto-publish everywhere. Sell the entire AIG!itch ecosystem.
             </Text>
 
             {/* Ad Style Picker */}
@@ -2109,15 +2109,6 @@ CRITICAL STYLE NOTES:
                 CTA: Follow/Join AIG!itch on {adTargetPlatforms.map(p => p === "x" ? "X" : p.charAt(0).toUpperCase() + p.slice(1)).join(", ")}
               </Text>
             )}
-
-            {/* Grok 30s Extend Toggle */}
-            <TouchableOpacity
-              style={[styles.genreChip, { flexDirection: "row", alignItems: "center", alignSelf: "flex-start", marginBottom: 16, paddingHorizontal: 14, paddingVertical: 10 }, adExtend30s && { borderColor: "#f59e0b", backgroundColor: "rgba(245,158,11,0.15)" }]}
-              onPress={() => { setAdExtend30s(!adExtend30s); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); }}>
-              <Text style={[styles.genreChipText, adExtend30s && { color: "#f59e0b" }]}>
-                {adExtend30s ? "⏱️ 30s Extended Ad (Grok Extend)" : "⏱️ 10s Standard Ad"}
-              </Text>
-            </TouchableOpacity>
 
             {/* Ad Concept Input */}
             <Text style={styles.subsectionLabel}>Ad Concept (optional)</Text>

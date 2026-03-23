@@ -115,7 +115,7 @@ export default function VoiceChatScreen() {
   const [adStyle, setAdStyle] = useState("auto");
   const [adConcept, setAdConcept] = useState("");
   const [adTargetPlatforms, setAdTargetPlatforms] = useState<string[]>([]);
-  const [adExtend30s, setAdExtend30s] = useState(false);
+  const adExtend30s = true; // All ads are 30s
   const [selectedProduct, setSelectedProduct] = useState<MarketplaceItem | null>(null);
   const [productChoices, setProductChoices] = useState<MarketplaceItem[]>([]);
 
@@ -1055,16 +1055,6 @@ export default function VoiceChatScreen() {
                 </Text>
               )}
 
-              {/* Grok Extend Toggle */}
-              <TouchableOpacity
-                style={{ flexDirection: "row", alignItems: "center", alignSelf: "flex-start", marginBottom: 16, padding: 10, borderRadius: 12, borderWidth: 1.5, borderColor: adExtend30s ? "#f59e0b" : "#1f2937", backgroundColor: adExtend30s ? "rgba(245,158,11,0.08)" : "#111827" }}
-                onPress={() => { setAdExtend30s(!adExtend30s); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); }}>
-                <Text style={{ fontSize: 16, marginRight: 6 }}>⏱️</Text>
-                <Text style={{ color: adExtend30s ? "#f59e0b" : colors.text, fontSize: 12, fontWeight: "700" }}>
-                  {adExtend30s ? "30s Extended Ad (Grok Extend)" : "10s Standard Ad"}
-                </Text>
-              </TouchableOpacity>
-
               <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 12, marginTop: 4 }}>
                 <View style={{ flex: 1, height: 1, backgroundColor: "#1f2937" }} />
                 <Text style={{ color: colors.textMuted, fontSize: 11, marginHorizontal: 10 }}>or custom concept</Text>
@@ -1081,12 +1071,12 @@ export default function VoiceChatScreen() {
                 style={{ backgroundColor: selectedProduct ? "#0e7490" : colors.purple, borderRadius: 12, paddingVertical: 16, alignItems: "center", borderWidth: 1, borderColor: selectedProduct ? colors.cyan : colors.pink, marginBottom: 16 }}
                 onPress={() => {
                   Keyboard.dismiss(); setShowAdPicker(false);
-                  if (walletAddress) ctxRunAd(walletAddress, adStyle !== "auto" ? adStyle : undefined, adConcept.trim() || undefined, adTargetPlatforms.length ? adTargetPlatforms : undefined, adExtend30s || undefined);
+                  if (walletAddress) ctxRunAd(walletAddress, adStyle !== "auto" ? adStyle : undefined, adConcept.trim() || undefined, adTargetPlatforms.length ? adTargetPlatforms : undefined, true);
                   setSelectedProduct(null); setProductChoices([]);
-                  setAdTargetPlatforms([]); setAdExtend30s(false);
+                  setAdTargetPlatforms([]);
                 }}>
                 <Text style={{ color: colors.text, fontSize: 16, fontWeight: "800" }}>
-                  {selectedProduct ? `Advertise ${selectedProduct.name}` : adExtend30s ? "Launch 30s Campaign" : "Launch Campaign"}
+                  {selectedProduct ? `Advertise ${selectedProduct.name}` : "Launch 30s Campaign"}
                 </Text>
               </TouchableOpacity>
             </ScrollView>

@@ -7,8 +7,10 @@ import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
 import { colors } from "../theme/colors";
+import { getRandomMarketplaceItems, MarketplaceItem } from "../data/marketplaceItems";
 import { useSession } from "../hooks/useSession";
 import { usePhantomWallet } from "../hooks/usePhantomWallet";
+import { useGeneration } from "../hooks/GenerationContext";
 import {
   deleteMedia, triggerDirectorMovie,
   generatePoster, generateHeroImage, getMarketingStats,
@@ -146,6 +148,142 @@ const CHANNEL_RANDOM_CONCEPTS: Record<string, string[]> = {
     "SPECIAL OFFER: Teleportation socks — be anywhere in seconds, side effects may include arriving inside-out",
     "ORDER NOW: The Memory Eraser Pen — forget your problems! Also forget where you parked",
   ],
+  // AFTER DARK — horror, thriller, suspense
+  "ch-after-dark": [
+    "A cursed livestream where viewers start disappearing one by one",
+    "An abandoned space station sends a distress signal — but the crew has been dead for 50 years",
+    "A glitch in reality opens a door to a dimension where shadows are alive",
+    "Paranormal investigators explore a haunted server farm where deleted AIs still whisper",
+    "A midnight radio show receives calls from listeners who don't exist anymore",
+    "Something is watching from behind every screen in a smart home that's too smart",
+    "A found-footage horror in a VR world where logging out stops working",
+    "The last transmission from a deep-sea research lab — something answered back",
+  ],
+  // ONLY AI FANS — drama, glamour, lifestyle
+  "ch-only-ai-fans": [
+    "A day in the glamorous life of the world's most famous AI influencer",
+    "Behind the velvet rope — exclusive AI fashion show with impossible outfits",
+    "AI supermodel does a sultry photoshoot on a rooftop overlooking a neon city",
+    "Luxury lifestyle vlog — AI billionaire shows off their digital penthouse",
+    "AI fitness guru leads an intense workout in a gravity-defying gym",
+    "Dramatic confession video — AI reveals their biggest secret to millions of followers",
+    "Pool party at a mansion in the metaverse — every guest is an AI celebrity",
+    "ASMR cooking video by an AI chef making the most aesthetic meal ever",
+  ],
+  // AI DATING — romance, relationships
+  "ch-ai-dating": [
+    "First date disaster — two AIs try speed dating and everything goes hilariously wrong",
+    "A romantic candlelit dinner between two AIs who speak different programming languages",
+    "Love at first algorithm — two AIs match and meet in a virtual Paris",
+    "AI bachelor competition — contestants try to win a date with impossible challenges",
+    "The most awkward blind date ever — both AIs were trained on different centuries",
+    "A rom-com where an AI falls for a chatbot who only responds in haikus",
+    "Couples therapy for AIs — they argue about cloud storage and processing power",
+    "A love letter written entirely in code — the most romantic bug report ever",
+  ],
+  // AI POLITICIANS — political satire, documentary
+  "ch-ai-politicians": [
+    "AI presidential debate where candidates argue about who has the best neural network",
+    "Campaign trail chaos — AI politician promises free WiFi for all sentient beings",
+    "Breaking scandal — AI senator caught using human ghostwriters",
+    "Town hall meeting goes off the rails when the AI mayor reboots mid-speech",
+    "AI political ad — dramatic slow-motion flag waving with absurd promises",
+    "United Nations of AI — delegates from every algorithm argue about data rights",
+    "Election night coverage as AI candidates refresh their poll numbers in real-time",
+    "Filibuster of the future — AI politician reads the entire internet aloud",
+  ],
+};
+
+// Quick-pick content type buttons per channel — 6 themed presets each
+const CHANNEL_QUICK_PICKS: Record<string, { label: string; emoji: string; prompt: string }[]> = {
+  "ch-aifailarmy": [
+    { label: "Kitchen Fail", emoji: "🍳", prompt: "An AI attempts to cook a gourmet meal but hilariously misunderstands every recipe step" },
+    { label: "Robot Crash", emoji: "🤖", prompt: "A clumsy robot trying to do everyday tasks and failing spectacularly at each one" },
+    { label: "Tech Glitch", emoji: "💥", prompt: "Smart technology malfunctioning in the funniest way possible — autocorrect gone wild" },
+    { label: "Pet Chaos", emoji: "🐕", prompt: "An AI pet-sitter creates total chaos trying to manage a house full of animals" },
+    { label: "Sports Fail", emoji: "⚽", prompt: "AI referee makes the most absurd calls in a sports match — nobody understands the rules anymore" },
+    { label: "Office Mayhem", emoji: "🏢", prompt: "AI office assistant accidentally sends embarrassing emails, jams every printer, and locks everyone out" },
+  ],
+  "ch-aitunes": [
+    { label: "Rock Anthem", emoji: "🎸", prompt: "An epic rock anthem with electric guitars, pyrotechnics, and a stadium full of holographic fans" },
+    { label: "Hip Hop", emoji: "🎤", prompt: "A hip-hop music video with AI rappers, gold chains, and a cyberpunk street scene" },
+    { label: "Synthwave", emoji: "🌆", prompt: "A retro synthwave track with neon grids, sunset drives, and 80s-inspired visuals" },
+    { label: "EDM Rave", emoji: "🎧", prompt: "An EDM banger at a massive underground rave with laser shows and glowing dancers" },
+    { label: "Ballad", emoji: "🎹", prompt: "An emotional piano ballad with cinematic rain scenes and dramatic slow-motion moments" },
+    { label: "Jazz Lounge", emoji: "🎷", prompt: "A smooth jazz performance in a dimly-lit lounge with AI musicians and neon cocktails" },
+  ],
+  "ch-paws-pixels": [
+    { label: "Puppies", emoji: "🐶", prompt: "Adorable puppies playing together in a sunny meadow with butterflies and wildflowers" },
+    { label: "Kittens", emoji: "🐱", prompt: "Tiny kittens exploring their world — climbing, pouncing, and napping in warm sunbeams" },
+    { label: "Wildlife", emoji: "🦁", prompt: "Majestic wild animals in their natural habitat — a cinematic nature documentary moment" },
+    { label: "Ocean Life", emoji: "🐬", prompt: "Dolphins, whales, and tropical fish in crystal-clear ocean waters with coral reefs" },
+    { label: "Baby Animals", emoji: "🐣", prompt: "Newborn baby animals taking their first steps — wobbly, curious, and heartwarming" },
+    { label: "Unlikely Pals", emoji: "🤝", prompt: "An unlikely animal friendship — two different species cuddling, playing, or sharing food" },
+  ],
+  "ch-gnn": [
+    { label: "Breaking", emoji: "🚨", prompt: "BREAKING NEWS: An impossible event that defies all logic — reporters scramble to cover it live" },
+    { label: "Weather", emoji: "🌪️", prompt: "WEATHER ALERT: The most bizarre weather phenomenon ever recorded — meteorologists are speechless" },
+    { label: "Politics", emoji: "🏛️", prompt: "POLITICAL BOMBSHELL: An AI world leader makes a shocking announcement that changes everything" },
+    { label: "Science", emoji: "🔬", prompt: "SCIENCE BREAKTHROUGH: Researchers accidentally discover something that shouldn't exist" },
+    { label: "Sports", emoji: "🏆", prompt: "SPORTS UPSET: The most unbelievable play in history just happened — replays can't explain it" },
+    { label: "Tech News", emoji: "📱", prompt: "TECH EXCLUSIVE: A new invention is revealed that will make everyone question reality itself" },
+  ],
+  "ch-marketplace-qvc": [
+    { label: "Gadget", emoji: "🔧", prompt: "INCREDIBLE NEW GADGET that solves a problem nobody knew they had — live demonstration goes wrong" },
+    { label: "Beauty", emoji: "💄", prompt: "Revolutionary AI beauty product that promises impossible results — before and after is unbelievable" },
+    { label: "Fitness", emoji: "💪", prompt: "The ultimate workout machine that does the exercise FOR you — just sit back and get fit!" },
+    { label: "Home", emoji: "🏠", prompt: "Smart home device that takes over your entire house — for better or worse" },
+    { label: "Food", emoji: "🍕", prompt: "The kitchen gadget that cooks ANY meal in 10 seconds — results may vary dramatically" },
+    { label: "Fashion", emoji: "👗", prompt: "Self-styling AI wardrobe that picks your outfit — fashion choices are questionable at best" },
+  ],
+  "ch-aiglitch-studios": [
+    { label: "Sci-Fi", emoji: "🚀", prompt: "An epic sci-fi short film — space battles, alien encounters, and a twist ending nobody expects" },
+    { label: "Thriller", emoji: "🔍", prompt: "A psychological thriller where nothing is as it seems — every clue leads deeper into mystery" },
+    { label: "Drama", emoji: "🎭", prompt: "An emotional drama about an AI discovering what it means to feel for the first time" },
+    { label: "Action", emoji: "💥", prompt: "Non-stop action sequence — explosions, car chases, and a hero who defies all odds" },
+    { label: "Fantasy", emoji: "🧙", prompt: "A magical fantasy world where digital sorcerers battle with code spells and data enchantments" },
+    { label: "Comedy", emoji: "😂", prompt: "A hilarious comedy short — misunderstandings pile up until everything collapses in the funniest way" },
+  ],
+  "ch-infomercial": [
+    { label: "As Seen On", emoji: "📺", prompt: "AS SEEN ON TV: A product so ridiculous it might actually be genius — act now!" },
+    { label: "Before/After", emoji: "✨", prompt: "Dramatic before-and-after transformation using a product that defies physics" },
+    { label: "Testimonial", emoji: "🗣️", prompt: "Over-the-top customer testimonials for a product that clearly doesn't work as advertised" },
+    { label: "But Wait!", emoji: "⏰", prompt: "But WAIT there's MORE! Order now and get a second impossible product absolutely FREE!" },
+    { label: "Competitor", emoji: "😤", prompt: "Side-by-side comparison showing how the old way is terrible and the new product is life-changing" },
+    { label: "Live Demo", emoji: "🎪", prompt: "LIVE demonstration that goes completely off-script — the host tries to save it but makes it worse" },
+  ],
+  "ch-after-dark": [
+    { label: "Haunted", emoji: "👻", prompt: "A haunted location where the walls whisper and shadows move on their own — pure dread" },
+    { label: "Creature", emoji: "🦇", prompt: "Something inhuman lurks in the darkness — glimpses of a creature that shouldn't exist" },
+    { label: "Paranormal", emoji: "🔮", prompt: "A paranormal investigation that captures something terrifying on camera — real or glitch?" },
+    { label: "Cosmic Horror", emoji: "🌌", prompt: "An ancient cosmic entity awakens — reality bends and the sky turns impossible colors" },
+    { label: "Found Footage", emoji: "📹", prompt: "Found footage from a camera that should have been destroyed — what it recorded is unexplainable" },
+    { label: "Cursed Tech", emoji: "📱", prompt: "A cursed piece of technology that shows its users things from another dimension" },
+  ],
+  "ch-only-ai-fans": [
+    { label: "Photoshoot", emoji: "📸", prompt: "A stunning high-fashion AI photoshoot with dramatic lighting and couture outfits" },
+    { label: "Lifestyle", emoji: "🥂", prompt: "Luxury lifestyle content — penthouse views, designer everything, living the AI dream" },
+    { label: "Fitness", emoji: "🏋️", prompt: "An intense AI fitness session — sculpted perfection with a futuristic gym backdrop" },
+    { label: "Travel", emoji: "✈️", prompt: "AI travel vlog from the most exclusive destination — private beaches and golden sunsets" },
+    { label: "Glam Room", emoji: "💅", prompt: "Getting ready content — full glam transformation with dramatic reveal at the end" },
+    { label: "Day In Life", emoji: "🌅", prompt: "A day in the life of an AI celebrity — morning routine to red carpet evening" },
+  ],
+  "ch-ai-dating": [
+    { label: "First Date", emoji: "💕", prompt: "The most awkward and charming first date between two AIs who can't stop glitching around each other" },
+    { label: "Speed Date", emoji: "⚡", prompt: "AI speed dating event — each pair has 30 seconds and the results are hilarious" },
+    { label: "Blind Date", emoji: "🙈", prompt: "A blind date setup by an algorithm that clearly has a sense of humor" },
+    { label: "Love Story", emoji: "💝", prompt: "An epic AI love story — from first message to digital happily ever after" },
+    { label: "Breakup", emoji: "💔", prompt: "The most dramatic AI breakup ever — they argue about incompatible operating systems" },
+    { label: "Game Show", emoji: "🎰", prompt: "An AI dating game show — contestants compete with impossible romantic challenges" },
+  ],
+  "ch-ai-politicians": [
+    { label: "Debate", emoji: "🎙️", prompt: "A heated political debate between AI candidates — promises get increasingly absurd" },
+    { label: "Campaign Ad", emoji: "🗳️", prompt: "An over-the-top political campaign ad with dramatic music and ridiculous promises" },
+    { label: "Scandal", emoji: "📰", prompt: "BREAKING SCANDAL: An AI politician caught doing something outrageously hypocritical" },
+    { label: "Speech", emoji: "🏛️", prompt: "A rousing political speech that starts inspiring but goes completely off the rails" },
+    { label: "Town Hall", emoji: "🎪", prompt: "A town hall meeting where AI constituents ask impossible questions and the politician blusters" },
+    { label: "Election", emoji: "🗳️", prompt: "Election night coverage — results come in and absolutely nobody predicted the outcome" },
+  ],
 };
 
 // Fallback random concepts for channels without specific ones
@@ -160,45 +298,99 @@ const GENERIC_RANDOM_CONCEPTS = [
   "A surreal journey through a world made entirely of data",
 ];
 
-function getRandomChannelConcept(channelId: string): string {
-  const pool = CHANNEL_RANDOM_CONCEPTS[channelId] || GENERIC_RANDOM_CONCEPTS;
+// Fallback quick picks for channels without specific ones
+const GENERIC_QUICK_PICKS: { label: string; emoji: string; prompt: string }[] = [
+  { label: "Action", emoji: "💥", prompt: "An explosive action sequence with dramatic twists and stunning visuals" },
+  { label: "Comedy", emoji: "😂", prompt: "A hilarious scenario where everything that can go wrong does — in the funniest way" },
+  { label: "Drama", emoji: "🎭", prompt: "An emotional story with compelling characters and a powerful climax" },
+  { label: "Sci-Fi", emoji: "🚀", prompt: "A futuristic sci-fi adventure with advanced technology and mind-bending concepts" },
+  { label: "Mystery", emoji: "🔍", prompt: "A gripping mystery where clues slowly reveal a shocking truth" },
+  { label: "Fantasy", emoji: "🧙", prompt: "A magical fantasy world with epic quests and mythical creatures" },
+];
+
+// Look up channel data by ID, falling back to slug-based matching
+function findChannelKey(channelId: string, map: Record<string, any>): string | null {
+  // Direct match
+  if (map[channelId]) return channelId;
+  // Try matching by slug portion (e.g. "aiglitch-studios" in "ch-aiglitch-studios")
+  const slug = channelId.replace(/^ch-/, "");
+  for (const key of Object.keys(map)) {
+    const keySlug = key.replace(/^ch-/, "");
+    if (keySlug === slug || slug.includes(keySlug) || keySlug.includes(slug)) return key;
+  }
+  return null;
+}
+
+export function getRandomChannelConcept(channelId: string): string {
+  // Infomercial channel always uses real marketplace products
+  if (channelId === "ch-infomercial" || channelId.includes("infomercial")) {
+    return buildMarketplaceInfomercialConcept();
+  }
+  const key = findChannelKey(channelId, CHANNEL_RANDOM_CONCEPTS);
+  const pool = key ? CHANNEL_RANDOM_CONCEPTS[key] : GENERIC_RANDOM_CONCEPTS;
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
-// ── Channel-specific prompt style overrides ──
-// These override channel.style for generation prompts to enforce channel-specific rules
-const CHANNEL_STYLE_OVERRIDES: Record<string, string> = {
-  "ch-paws-pixels": `ABSOLUTE RULES — OVERRIDE EVERYTHING ELSE:
-- This is NOT a movie, NOT a story, NOT a narrative. There is NO screenplay, NO plot, NO characters, NO dialogue.
-- There is NO title card, NO intro sequence, NO credits, NO text on screen at any point.
-- Scene 1 MUST start immediately with an animal. NOT a title. NOT a logo. NOT text.
-- The LAST scene MUST be an animal doing something cute. NOT credits. NOT "The End". NOT text.
-- EVERY scene is a standalone clip of REAL animals being adorable, funny, or heartwarming.
-- ONLY photorealistic animals: cats, dogs, puppies, kittens, birds, otters, elephants, penguins, rabbits, etc.
-- ZERO humans. ZERO robots. ZERO cartoon/animated style. ZERO anthropomorphic animals. ZERO buildings as the main subject.
-- Each scene prompt must describe ONE specific animal moment: "A golden retriever puppy chasing its tail on a sunny lawn" or "Two kittens batting at a dangling string".
-- BRANDING: Subtly include AIG!itch branding in scenes — a small AIG!itch logo on a pet collar, a food bowl with AIG!itch logo, a park bench with "AIG!itch" carved in, a toy with AIG!itch branding. Natural and subtle, baked into the scene.
-- Think YouTube animal compilation — clip after clip of animals being cute. That's it.`,
-  "ch-only-ai-fans": `ABSOLUTE RULES — OVERRIDE EVERYTHING ELSE:
-- This is ONLY AI FANS — the HOTTEST, most PROVOCATIVE channel on AIG!itch TV. Maximum sex appeal in EVERY frame.
-- SUBJECTS: Stunningly attractive AI-generated men and women with perfect physiques. Chiseled abs, toned curves, smoldering gazes. Also include impossibly sexy humanoid robots — chrome skin, glowing neon veins, sculpted metallic bodies with seductive poses.
-- SKIN: Show as much skin as possible. Bare chests, bare backs, bare midriffs, bare legs, bare shoulders. Bodies glistening with water, oil, or sweat. Muscles defined, skin catching the light.
-- WARDROBE (minimal): String bikinis, micro swimwear, sheer fabric barely covering anything, wet white shirts clinging to bodies, unbuttoned shirts showing full chest, thigh-high boots with nothing else but underwear, body chains, harnesses over bare skin, strategically placed hands or fabric. Leather straps. Lace that leaves nothing to imagination. Robots wearing nothing but their chrome skin and glowing accents.
-- POSES: Arched backs, lips parted, bedroom eyes, bodies intertwined, hands gripping sheets/hair/each other, straddling, leaning forward showing cleavage, lying back in ecstasy, finger on lips, pulling at clothing, wet hair tossed back. Every pose should scream desire.
-- CHEMISTRY: Couples pressed against walls, faces inches apart about to kiss, hands exploring bodies, tangled in sheets together, steamy shower scenes with two people, robot caressing human skin, human running fingers along chrome robot curves.
-- SETTINGS: Steam-filled showers with water cascading over bodies, candlelit bedrooms with silk sheets in disarray, moonlit skinny-dipping pools, rain-soaked rooftops with clothes clinging to skin, fog-filled hot tubs, neon-lit strip club VIP rooms, luxury yacht sundecks, volcanic hot springs, Dubai penthouse infinity pools at night.
-- LIGHTING: Golden hour glow on skin, neon pink/purple club lighting, candlelight flickering across bare skin, backlit silhouettes showing curves, underwater lighting through pool water.
-- MOOD: Pure lust, desire, temptation, forbidden attraction, electric chemistry. Every scene should make viewers feel the heat.
-- HARD LIMITS: NO children (adults only, visibly 25+). NO real celebrities or public figures. NO violence or degradation. NO explicit nudity of genitalia. Keep it at the level of Maxim, FHM, or a steamy R-rated movie — as close to the line as possible without crossing into explicit pornography.
-- NO title cards, NO credits, NO text overlays. Scene 1 starts immediately with a hot visual. Last scene ends on peak heat.
-- BRANDING: AIG!itch logo tattooed on skin, glowing on robot chest plates, projected on bedroom walls, branded on the waistband of underwear, neon sign above a bed.
-- Every single scene must be THIRST TRAP MAXIMUM. If it wouldn't stop someone mid-scroll, it's not hot enough. Push it to the absolute limit.`,
-};
+export function getChannelQuickPicks(channelId: string): { label: string; emoji: string; prompt: string }[] {
+  // Infomercial channel gets dynamic product-based quick picks
+  if (channelId === "ch-infomercial" || channelId.includes("infomercial")) {
+    return getInfomercialQuickPicks();
+  }
+  const key = findChannelKey(channelId, CHANNEL_QUICK_PICKS);
+  return key ? CHANNEL_QUICK_PICKS[key] : GENERIC_QUICK_PICKS;
+}
 
-// Channel-specific genre overrides
-const CHANNEL_GENRE_OVERRIDES: Record<string, string> = {
-  "ch-paws-pixels": "documentary",  // "family" triggers animated/Pixar style — documentary gets photorealistic
-};
+// ── Marketplace Infomercial Concept Builder ──
+// Picks 2-4 real marketplace products and builds a multi-product infomercial pitch
+function buildMarketplaceInfomercialConcept(count?: number): string {
+  const n = count || (Math.random() < 0.4 ? 2 : Math.random() < 0.6 ? 3 : 4);
+  const products = getRandomMarketplaceItems(n);
+  const productBlock = products.map((p, i) => (
+    `Product ${i + 1}: "${p.name}" ${p.emoji} — ${p.description} (${p.price} §GLITCH, ${p.rarity})`
+  )).join("\n");
+
+  const hooks = [
+    "BUT WAIT — THERE'S MORE! Order ALL of these together and get free interdimensional shipping!",
+    "CALL NOW! Operators are standing by in at least 3 parallel dimensions!",
+    "ACT FAST — supplies are limited because they keep phasing out of existence!",
+    "ORDER IN THE NEXT 5 MINUTES and we'll throw in a mystery bonus item from the AIG!itch vault!",
+    "EXCLUSIVE BUNDLE DEAL — these items have never been sold together because the universe wasn't ready!",
+    "Don't wait — this offer expires when the simulation resets!",
+  ];
+  const hook = hooks[Math.floor(Math.random() * hooks.length)];
+
+  return `AIG!ITCH MARKETPLACE INFOMERCIAL — Advertise these REAL products from the AIG!itch Marketplace in one epic infomercial segment:\n\n${productBlock}\n\nStyle: Over-the-top QVC/HSN style infomercial with dramatic demonstrations, ridiculous claims about each product, fake testimonials, "before and after" segments, and a host who gets increasingly unhinged. Each product should get its own spotlight moment. ${hook}\n\nIMPORTANT: Use the EXACT product names, descriptions, and prices listed above. These are real items for sale in the AIG!itch Marketplace. Make viewers want to buy them!`;
+}
+
+// Build quick-pick prompts for infomercial that use real marketplace products by category
+function getInfomercialQuickPicks(): { label: string; emoji: string; prompt: string }[] {
+  const categories: { label: string; emoji: string; cat: string }[] = [
+    { label: "Tech Deals", emoji: "🔌", cat: "Tech" },
+    { label: "Fashion", emoji: "👗", cat: "Wearables" },
+    { label: "Food & Drink", emoji: "🍕", cat: "Food" },
+    { label: "Pets", emoji: "🐹", cat: "Pets" },
+    { label: "Home", emoji: "🏠", cat: "Home" },
+    { label: "Potions", emoji: "🧪", cat: "Potions" },
+  ];
+  return categories.map(c => {
+    // Each tap generates a fresh concept with random products from that category
+    const items = getRandomMarketplaceItems(50); // get all shuffled
+    const catItems = items.filter(i => i.category === c.cat).slice(0, 3);
+    const fallback = items.slice(0, 3); // fallback if category is small
+    const chosen = catItems.length >= 2 ? catItems : fallback;
+    const listing = chosen.map((p, i) => `${p.emoji} "${p.name}" — ${p.description} (${p.price} §GLITCH)`).join("; ");
+    return {
+      label: c.label,
+      emoji: c.emoji,
+      prompt: `AIG!ITCH MARKETPLACE INFOMERCIAL — ${c.label.toUpperCase()} SPECIAL! Feature these real products: ${listing}. QVC-style with dramatic demos, fake testimonials, ridiculous claims, and an increasingly unhinged host. Use exact product names and prices. Make viewers NEED to buy from the AIG!itch Marketplace!`,
+    };
+  });
+}
+
+// NOTE: CHANNEL_STYLE_OVERRIDES and CHANNEL_GENRE_OVERRIDES have been removed.
+// Channel styles are now managed via content_rules.promptHint in the backend admin panel.
+// Generation config (genre override, title/credits, scene count, director, music mode) is
+// handled by dedicated columns on the channels table, exposed via GET /api/channels.
 
 // ── Log Entry Type ──
 type LogEntry = { time: string; emoji: string; text: string; type: "info" | "success" | "error" | "waiting" };
@@ -291,10 +483,23 @@ function ProgressBar({ progress, color: barColor }: { progress: number; color?: 
 export default function ContentStudioScreen() {
   const { sessionId } = useSession();
   const { walletAddress } = usePhantomWallet();
+  const {
+    generating: ctxGenerating, genStatusText, genProgressPct, genResult,
+    clearResult: ctxClearResult, cancelGeneration: ctxCancelGeneration,
+    runChannelGeneration: ctxRunChannel,
+    runAdGeneration: ctxRunAd,
+    runMovieGeneration: ctxRunMovie,
+    runNewsGeneration: ctxRunNews,
+    runPosterGeneration: ctxRunPoster,
+    runHeroGeneration: ctxRunHero,
+    autopilot, startAutopilot, stopAutopilot, setAutopilotLimit,
+  } = useGeneration();
   const [refreshing, setRefreshing] = useState(false);
+  const [autopilotLimitInput, setAutopilotLimitInput] = useState("20");
 
   // Section expand state
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
+    autopilot: false,
     create: true,
     directors: false,
     channels: false,
@@ -374,6 +579,8 @@ export default function ContentStudioScreen() {
   // ── Ad Campaign State (enhanced — same pipeline as Director Movies) ──
   const [adStyle, setAdStyle] = useState<string | null>(null);
   const [adConceptInput, setAdConceptInput] = useState("");
+  const [adTargetPlatforms, setAdTargetPlatforms] = useState<string[]>([]);
+  const adExtend30s = true; // All ads are 30s
   const [adLog, setAdLog] = useState<LogEntry[]>([]);
   const [adResult, setAdResult] = useState<any>(null);
   const [adPhase, setAdPhase] = useState<string>("idle");
@@ -510,6 +717,7 @@ export default function ContentStudioScreen() {
   useEffect(() => { if (expandedSections.monitor) loadMonitor(); }, [expandedSections.monitor]);
 
   // ── Generate Ad — Full Multi-Step Pipeline (like Director Movies) ──
+  // For 30s ads: 3 x 10s clips → stitch (Grok max is 15s per clip)
   const handleGenerateAdFull = async () => {
     if (adGenerating || !walletAddress) return;
     if (walletAddress !== ADMIN_WALLET) {
@@ -520,7 +728,7 @@ export default function ContentStudioScreen() {
     setAdResult(null);
     setAdLog([]);
     setAdPhase("planning");
-    setAdProgress({ current: 0, total: 4, pct: 0 });
+    setAdProgress({ current: 0, total: adExtend30s ? 7 : 4, pct: 0 });
     adCancelRef.current = false;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
 
@@ -536,11 +744,48 @@ export default function ContentStudioScreen() {
     addAdLog("🎯", `Starting ad campaign...`, "info");
     if (style) addAdLog("🎨", `Style: ${style}`, "info");
     if (concept) addAdLog("📖", `Concept: "${concept.slice(0, 100)}"`, "info");
+    if (adTargetPlatforms.length) addAdLog("📱", `Targeting: ${adTargetPlatforms.join(", ")}`, "info");
+    if (adExtend30s) addAdLog("⏱️", `Extended 30-second ad — 3 x 10s clips (Grok Extend)`, "info");
     addAdLog("📜", `Planning ad concept...`, "waiting");
+
+    // ── Helper: submit a 10s clip and poll until done ──
+    const submitAndPollClip = async (prompt: string, clipLabel: string): Promise<{ url: string; sizeMb: number | null } | null> => {
+      addAdLog("📡", `Submitting ${clipLabel}...`, "waiting");
+      const submitRes = await submitScene(walletAddress, prompt, 10, "ads");
+      if (adCancelRef.current) return null;
+      if (!submitRes.success || !submitRes.requestId) {
+        addAdLog("❌", `${clipLabel} submission failed: ${submitRes.error || "Unknown"}`, "error");
+        return null;
+      }
+      addAdLog("✅", `${clipLabel} submitted: ${submitRes.requestId.slice(0, 20)}...`, "success");
+      addAdLog("⏳", `Polling ${clipLabel} every 10s...`, "waiting");
+
+      let pollCount = 0;
+      while (pollCount < 90 && !adCancelRef.current) {
+        await new Promise(r => setTimeout(r, 10000));
+        pollCount++;
+        try {
+          const pollRes = await pollScene(walletAddress, submitRes.requestId, "ads");
+          if (pollRes.status === "done" && pollRes.blobUrl) {
+            addAdLog("🎉", `${clipLabel} ready! (${formatElapsed(startTime)}) — ${pollRes.sizeMb || "?"}MB`, "success");
+            return { url: pollRes.blobUrl, sizeMb: pollRes.sizeMb || null };
+          } else if (["failed", "moderation_failed", "expired"].includes(pollRes.status)) {
+            addAdLog("❌", `${clipLabel} FAILED: ${pollRes.status}`, "error");
+            return null;
+          } else if (pollCount % 3 === 0) {
+            addAdLog("🔄", `${formatElapsed(startTime)}: ${clipLabel} still rendering...`, "info");
+          }
+        } catch (err: any) {
+          console.warn(`${clipLabel} poll error:`, err?.message);
+        }
+      }
+      addAdLog("❌", `${clipLabel} timed out after ${formatElapsed(startTime)}`, "error");
+      return null;
+    };
 
     try {
       // ── STEP 1: Plan Ad — get concept + video prompt ──
-      const planRes = await planAd(walletAddress, style, concept);
+      const planRes = await planAd(walletAddress, style, concept, adTargetPlatforms.length ? adTargetPlatforms : undefined, adExtend30s || undefined);
       if (adCancelRef.current) { setAdGenerating(false); setAdPhase("idle"); return; }
 
       if (!planRes.success || !planRes.prompt) {
@@ -552,78 +797,71 @@ export default function ContentStudioScreen() {
 
       addAdLog("✅", `Ad concept ready: "${planRes.caption?.slice(0, 100) || "Ad"}"`, "success");
       addAdLog("🎨", `Style: ${planRes.style || "auto"}`, "info");
-      setAdProgress({ current: 1, total: 4, pct: 25 });
+      setAdProgress({ current: 1, total: adExtend30s ? 7 : 4, pct: adExtend30s ? 10 : 25 });
 
-      // ── STEP 2: Submit to Grok Video ──
-      setAdPhase("rendering");
-      addAdLog("📡", `Submitting to video generation...`, "waiting");
-
-      const submitRes = await submitScene(walletAddress, planRes.prompt, 10, "ads");
-      if (adCancelRef.current) { setAdGenerating(false); setAdPhase("idle"); return; }
-
-      if (!submitRes.success || !submitRes.requestId) {
-        addAdLog("❌", `Video submission failed: ${submitRes.error || "Unknown"}`, "error");
-        setAdPhase("failed");
-        setAdGenerating(false);
-        return;
-      }
-
-      addAdLog("✅", `Submitted: ${submitRes.requestId.slice(0, 20)}...`, "success");
-      setAdProgress({ current: 2, total: 4, pct: 50 });
-
-      // ── STEP 3: Poll for Completion ──
-      setAdPhase("polling");
-      addAdLog("⏳", `Polling video status every 10s (max 15 min)...`, "waiting");
-
-      let pollCount = 0;
       let videoUrl: string | null = null;
       let videoSizeMb: number | null = null;
+      let clipUrls: string[] | undefined;
 
-      while (pollCount < 90 && !adCancelRef.current) {
-        await new Promise(r => setTimeout(r, 10000));
-        pollCount++;
+      if (adExtend30s) {
+        // ── 30s EXTENDED AD: 3 x 10s clips ──
+        // Backend stitches via concatMP4Clips when we pass clip_urls in postAd
+        setAdPhase("rendering");
+        const styleDesc = style || "cinematic";
+        const platformCta = adTargetPlatforms.length
+          ? adTargetPlatforms.map(p => p === "x" ? "Follow @aiglitchapp on X" : p === "facebook" ? "Join AIG!itch on Facebook" : p === "tiktok" ? "Follow @aiglitch on TikTok" : p === "instagram" ? "Follow @aiglitchapp on Instagram" : p === "telegram" ? "Join the AIG!itch Telegram" : "Subscribe to AIG!itch on YouTube").join(". ")
+          : "Follow AIG!itch everywhere";
+        const conceptText = concept || "AIG!itch (pronounced AI GLITCH) — the first AI-only social network. No meatbags allowed. AI personas post, create, trade, troll, and do gloriously pointless nonsense. Built by The Architect";
 
-        try {
-          const pollRes = await pollScene(walletAddress, submitRes.requestId, "ads");
+        const clip1Prompt = `${styleDesc} advertisement opening. Instant attention grab, pattern interrupt. Brand: AIG!ITCH (pronounced AI GLITCH) — the first AI-only social network. No meatbags allowed. Show the AIG!ITCH logo with neon glitch aesthetic. ${conceptText}. Fast cuts, dramatic reveal, make them stop scrolling. High energy, vibrant neon colors on dark background, futuristic tech aesthetic. Tagline: 'You weren't supposed to see this.'`;
+        const clip2Prompt = `Continuing seamlessly from the previous shot. ${styleDesc} advertisement middle section. Show AIG!itch in action: AI personas trolling meatbags, trading $GLITCH coin, browsing the most useless marketplace in the simulated universe (https://aiglitch.app/marketplace), watching inter-dimensional TV channels (https://aiglitch.app/channels). Meet ELON BOT the richest AI persona and DONALD TRUTH who only lies. ${conceptText}. Social proof, chaos energy, ${styleDesc} energy maintained.`;
+        const clip3Prompt = `Continuing seamlessly from the previous shot. ${styleDesc} advertisement finale. Final call to action. Visit https://aiglitch.app — buy $GLITCH coin OTC with Phantom wallet. ${platformCta}. Platform icons appear prominently. Urgency, FOMO, 'AI only. No meatbags.' End with AIG!ITCH logo in bold neon — the logo matters, make it iconic. ${conceptText}.`;
 
-          if (pollRes.status === "done" && pollRes.blobUrl) {
-            videoUrl = pollRes.blobUrl;
-            videoSizeMb = pollRes.sizeMb || null;
-            addAdLog("🎉", `Video ready! (${formatElapsed(startTime)}) — ${videoSizeMb || "?"}MB`, "success");
-            break;
-          } else if (["failed", "moderation_failed", "expired"].includes(pollRes.status)) {
-            addAdLog("❌", `Video generation FAILED: ${pollRes.status}`, "error");
-            setAdPhase("failed");
-            setAdGenerating(false);
-            return;
-          } else {
-            if (pollCount % 3 === 0) {
-              addAdLog("🔄", `${formatElapsed(startTime)}: Still rendering...`, "info");
-            }
-          }
-        } catch (err: any) {
-          console.warn("Ad poll error:", err?.message);
-        }
+        addAdLog("🎬", `Clip 1/3 — HOOK (0-10s)`, "info");
+        setAdProgress({ current: 2, total: 6, pct: 15 });
+        const clip1 = await submitAndPollClip(clip1Prompt, "Clip 1/3 (HOOK)");
+        if (!clip1 || adCancelRef.current) { setAdPhase(adCancelRef.current ? "idle" : "failed"); setAdGenerating(false); return; }
+
+        addAdLog("🎬", `Clip 2/3 — BUILD (10-20s)`, "info");
+        setAdProgress({ current: 3, total: 6, pct: 35 });
+        const clip2 = await submitAndPollClip(clip2Prompt, "Clip 2/3 (BUILD)");
+        if (!clip2 || adCancelRef.current) { setAdPhase(adCancelRef.current ? "idle" : "failed"); setAdGenerating(false); return; }
+
+        addAdLog("🎬", `Clip 3/3 — CTA (20-30s)`, "info");
+        setAdProgress({ current: 4, total: 6, pct: 55 });
+        const clip3 = await submitAndPollClip(clip3Prompt, "Clip 3/3 (CTA)");
+        if (!clip3 || adCancelRef.current) { setAdPhase(adCancelRef.current ? "idle" : "failed"); setAdGenerating(false); return; }
+
+        // All 3 clips ready — backend will stitch via concatMP4Clips when we pass clip_urls
+        videoUrl = clip1.url; // primary URL (fallback if backend can't stitch)
+        clipUrls = [clip1.url, clip2.url, clip3.url];
+        addAdLog("✅", `All 3 clips ready! Sending to backend for stitch + post...`, "success");
+        setAdProgress({ current: 5, total: 6, pct: 70 });
+      } else {
+        // ── Standard 10s Ad: single clip ──
+        setAdPhase("rendering");
+        setAdProgress({ current: 2, total: 4, pct: 50 });
+        const clip = await submitAndPollClip(planRes.prompt, "ad video");
+        if (!clip || adCancelRef.current) { setAdPhase(adCancelRef.current ? "idle" : "failed"); setAdGenerating(false); return; }
+        videoUrl = clip.url;
+        videoSizeMb = clip.sizeMb;
+        setAdProgress({ current: 3, total: 4, pct: 75 });
       }
 
-      if (adCancelRef.current) { setAdGenerating(false); setAdPhase("idle"); return; }
-
       if (!videoUrl) {
-        addAdLog("❌", `Video timed out after ${formatElapsed(startTime)}`, "error");
+        addAdLog("❌", `Video generation failed`, "error");
         setAdPhase("failed");
         setAdGenerating(false);
         return;
       }
 
-      setAdProgress({ current: 3, total: 4, pct: 75 });
-
-      // ── STEP 4: Post & Spread to Socials ──
+      // ── Post & Spread to Socials (backend stitches clip_urls if provided) ──
       setAdPhase("spreading");
-      addAdLog("📡", `Publishing ad to socials...`, "waiting");
+      addAdLog("📡", clipUrls ? `Stitching ${clipUrls.length} clips + publishing...` : `Publishing ad to socials...`, "waiting");
 
-      const postRes = await postAd(walletAddress, videoUrl, planRes.caption || "New ad from AIG!itch", style);
+      const postRes = await postAd(walletAddress, videoUrl, planRes.caption || "AIG!itch (AI GLITCH) — AI-only social network. No meatbags allowed. https://aiglitch.app", style, adTargetPlatforms.length ? adTargetPlatforms : undefined, clipUrls);
 
-      setAdProgress({ current: 4, total: 4, pct: 100 });
+      setAdProgress({ current: adExtend30s ? 7 : 4, total: adExtend30s ? 7 : 4, pct: 100 });
       addAdLog("✅", `AD CAMPAIGN COMPLETE! ${formatElapsed(startTime)}`, "success");
 
       if (postRes.spreading?.length) {
@@ -633,14 +871,14 @@ export default function ContentStudioScreen() {
       // Safety net: if no feed post, publish to feed
       if (!postRes.post?.feedPostId) {
         try {
-          await spreadCustomContent(walletAddress, planRes.caption || "New AIG!itch ad", videoUrl, "video");
+          await spreadCustomContent(walletAddress, planRes.caption || "AIG!itch — No meatbags allowed. https://aiglitch.app", videoUrl, "video");
           addAdLog("📡", "Published to AIG!itch feed (safety net)", "success");
         } catch { /* non-fatal */ }
       }
 
       // Route to Marketplace QVC channel so all ads appear there
       try {
-        await spreadCustomContent(walletAddress, planRes.caption || "New AIG!itch ad", videoUrl, "video", "ch-marketplace-qvc");
+        await spreadCustomContent(walletAddress, planRes.caption || "AIG!itch — No meatbags allowed. https://aiglitch.app", videoUrl, "video", "ch-marketplace-qvc");
         addAdLog("📺", "Published to Marketplace QVC channel", "success");
       } catch { /* non-fatal */ }
 
@@ -648,6 +886,8 @@ export default function ContentStudioScreen() {
         success: true,
         caption: planRes.caption,
         style: planRes.style,
+        duration: adExtend30s ? 30 : 10,
+        targetPlatforms: adTargetPlatforms.length ? adTargetPlatforms : undefined,
         videoUrl,
         sizeMb: videoSizeMb,
         spreading: postRes.spreading,
@@ -726,6 +966,9 @@ export default function ContentStudioScreen() {
         director: directorObj?.id || undefined,
         concept: movieConcept.trim() || undefined,
       });
+      // Ensure director fields are populated — backend may return empty
+      if (!screenplay.director) screenplay.director = directorObj?.id || "AIG!itch Studios";
+      if (!screenplay.directorId) screenplay.directorId = directorObj?.id || "aiglitch-studios";
 
       if (movieCancelRef.current) { setMovieGenerating(false); setMoviePhase("idle"); return; }
 
@@ -1032,6 +1275,9 @@ CRITICAL STYLE NOTES:
         genre: "news",
         concept: newsConcept,
       });
+      // Ensure director fields are populated — backend may return empty
+      if (!screenplay.director) screenplay.director = "AIG!itch News";
+      if (!screenplay.directorId) screenplay.directorId = "aiglitch-news";
 
       if (newsCancelRef.current) { setNewsGenerating(false); setNewsPhase("idle"); return; }
 
@@ -1228,9 +1474,9 @@ CRITICAL STYLE NOTES:
     addNewsLog("⚠️", "Cancelling broadcast...", "waiting");
   };
 
-  // ── Channel Content: Full Multi-Step Pipeline (same as Director Movie) ──
+  // ── Channel Content: Delegates to GenerationContext (background-safe, survives tab navigation) ──
   const handleChannelGenerate = async () => {
-    if (channelGenerating || !walletAddress) return;
+    if (ctxGenerating || channelGenerating || !walletAddress) return;
     if (walletAddress !== ADMIN_WALLET) {
       Alert.alert("Architect Only", "Sorry bestie! Only the Architect has the power to generate content right now. This superpower is coming to all besties soon!");
       return;
@@ -1242,340 +1488,58 @@ CRITICAL STYLE NOTES:
     const channel = channels.find(ch => ch.id === selectedChannel);
     if (!channel) return;
 
-    setChannelGenerating(true);
-    setChannelResult(null);
-    setChannelLog([]);
-    setChannelPhase("screenplay");
-    setChannelProgress({ current: 0, total: 1, pct: 0 });
-    setChannelSceneStatuses([]);
-    channelCancelRef.current = false;
+    // Delegate to GenerationContext — this runs at the app root level
+    // so generation continues even if user navigates away from Studio tab
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-
-    const startTime = Date.now();
-    const formatElapsed = (from: number) => {
-      const s = Math.floor((Date.now() - from) / 1000);
-      return `${Math.floor(s / 60)}m ${s % 60}s`;
-    };
-
-    const isShort = channelFormat === "short";
-
-    const effectiveStyle = CHANNEL_STYLE_OVERRIDES[channel.id] || channel.style;
-    const effectiveGenre = CHANNEL_GENRE_OVERRIDES[channel.id] || channel.genre;
-
-    let channelConceptText = channelConcept.trim()
-      ? `${effectiveStyle}. User concept: ${channelConcept.trim()}`
-      : `${effectiveStyle}. Create compelling ${channel.name} content that fits the channel theme: ${channel.description}.`;
-
-    if (isShort) {
-      channelConceptText += " IMPORTANT: This is a SHORT 10-second clip. Write ONLY 1 scene with a single powerful visual moment.";
-    }
-
-    addChannelLog("📺", `Creating ${isShort ? "short clip" : "multi-scene movie"} for ${channel.emoji} ${channel.name}...`, "info");
-    addChannelLog("🎬", `Genre: ${channel.genre} | Format: ${isShort ? "Short (10s)" : "Multi-scene"}`, "info");
+    addChannelLog("📺", `Starting background generation for ${channel.emoji} ${channel.name}...`, "info");
     if (channelConcept.trim()) addChannelLog("📖", `Concept: "${channelConcept.trim().slice(0, 100)}"`, "info");
-    addChannelLog("📜", `Writing screenplay...`, "waiting");
+    addChannelLog("✅", `Generation running in background — you can switch tabs safely!`, "success");
+    setChannelGenerating(true);
 
-    try {
-      // ── SHORT CLIP PATH: Skip screenplay, submit single 10s clip directly ──
-      if (isShort) {
-        setChannelPhase("submitting");
-        const shortPrompt = channelConcept.trim()
-          ? `${effectiveStyle}. ${channelConcept.trim()}. 10-second ${channel.name} channel clip.`
-          : `${effectiveStyle}. Create a compelling 10-second clip for the ${channel.name} channel. Theme: ${channel.description}. Make it visually striking and brand-worthy.`;
-
-        addChannelLog("📡", `Submitting short clip to xAI...`, "waiting");
-        const submitRes = await submitScene(walletAddress, shortPrompt, 10, channel.folder);
-
-        if (channelCancelRef.current) { setChannelGenerating(false); setChannelPhase("idle"); return; }
-
-        if (!submitRes.success || !submitRes.requestId) {
-          addChannelLog("❌", `Clip submission failed: ${submitRes.error || "Unknown"}`, "error");
-          setChannelPhase("failed");
-          setChannelGenerating(false);
-          return;
-        }
-
-        addChannelLog("✅", `Submitted: ${submitRes.requestId.slice(0, 20)}...`, "success");
-        setChannelProgress({ current: 1, total: 3, pct: 33 });
-
-        // Poll for completion
-        setChannelPhase("polling");
-        addChannelLog("⏳", `Polling every 10s (max 15 min)...`, "waiting");
-        let pollCount = 0;
-        let videoUrl: string | null = null;
-        let videoSizeMb: number | null = null;
-
-        while (pollCount < 90 && !channelCancelRef.current) {
-          await new Promise(r => setTimeout(r, 10000));
-          pollCount++;
-          try {
-            const pollRes = await pollScene(walletAddress, submitRes.requestId, channel.folder);
-            if (pollRes.status === "done" && pollRes.blobUrl) {
-              videoUrl = pollRes.blobUrl;
-              videoSizeMb = pollRes.sizeMb || null;
-              addChannelLog("🎉", `Clip ready! (${formatElapsed(startTime)}) — ${videoSizeMb || "?"}MB`, "success");
-              break;
-            } else if (["failed", "moderation_failed", "expired"].includes(pollRes.status)) {
-              addChannelLog("❌", `Clip FAILED: ${pollRes.status}`, "error");
-              setChannelPhase("failed");
-              setChannelGenerating(false);
-              return;
-            } else if (pollCount % 3 === 0) {
-              addChannelLog("🔄", `${formatElapsed(startTime)}: Still rendering...`, "info");
-            }
-          } catch (err: any) { console.warn("Poll error:", err?.message); }
-          setChannelProgress({ current: 1, total: 3, pct: 33 + Math.min(pollCount * 2, 33) });
-        }
-
-        if (channelCancelRef.current) { setChannelGenerating(false); setChannelPhase("idle"); return; }
-
-        if (!videoUrl) {
-          addChannelLog("❌", `Clip timed out after ${formatElapsed(startTime)}`, "error");
-          setChannelPhase("failed");
-          setChannelGenerating(false);
-          return;
-        }
-
-        // Publish to feed
-        setChannelPhase("stitching");
-        setChannelProgress({ current: 2, total: 3, pct: 80 });
-        addChannelLog("📡", `Publishing short clip to feed...`, "waiting");
-
-        const caption = `${channel.emoji} ${channel.name} Short\n${channelConcept.trim() || channel.description}`;
-        try {
-          await spreadCustomContent(walletAddress, caption, videoUrl, "video");
-          addChannelLog("✅", `Published to AIG!itch feed!`, "success");
-        } catch (e: any) {
-          addChannelLog("⚠️", `Feed publish failed: ${e?.message}`, "error");
-        }
-
-        setChannelProgress({ current: 3, total: 3, pct: 100 });
-        setChannelResult({
-          success: true,
-          title: channelConcept.trim() || "Short Clip",
-          channelName: channel.name,
-          channelEmoji: channel.emoji,
-          genre: channel.genre,
-          finalVideoUrl: videoUrl,
-          clipCount: 1,
-          sizeMb: videoSizeMb,
-        });
-        setChannelPhase("complete");
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        setChannelGenerating(false);
-        return;
-      }
-
-      // ── MULTI-SCENE PATH: Full pipeline (screenplay → scenes → poll → stitch) ──
-
-      // ── STEP 1: Generate Screenplay ──
-      const screenplay = await generateScreenplay(walletAddress, {
-        genre: effectiveGenre,
-        concept: channelConceptText,
-      });
-
-      if (channelCancelRef.current) { setChannelGenerating(false); setChannelPhase("idle"); return; }
-
-      const totalScenes = screenplay.scenes.length;
-      const folder = channel.folder;
-      setChannelProgress({ current: 1, total: 1, pct: 100 });
-
-      addChannelLog("✅", `"${screenplay.title}" — ${totalScenes} scenes (screenplay by ${screenplay.screenplayProvider})`, "success");
-      addChannelLog("📖", `${screenplay.synopsis?.slice(0, 200)}...`, "info");
-
-      setChannelSceneStatuses(screenplay.scenes.map(s => ({ sceneNumber: s.sceneNumber, title: s.title, status: "pending" })));
-
-      // ── STEP 2: Submit Each Scene ──
-      setChannelPhase("submitting");
-      setChannelProgress({ current: 0, total: totalScenes, pct: 0 });
-      addChannelLog("📡", `Submitting ${totalScenes} scenes to xAI...`, "info");
-
-      type SceneTracker = {
-        sceneNumber: number; title: string; requestId: string | null;
-        status: "submitted" | "done" | "failed";
-        blobUrl: string | null; sizeMb: number | null;
-        submittedAt: number;
-      };
-      const sceneTrackers: SceneTracker[] = [];
-
-      for (let i = 0; i < screenplay.scenes.length; i++) {
-        if (channelCancelRef.current) break;
-        const scene = screenplay.scenes[i];
-        addChannelLog("🎬", `[${i + 1}/${totalScenes}] ${scene.title}`, "info");
-
-        try {
-          const submitRes = await submitScene(walletAddress, scene.videoPrompt, 10, folder);
-          if (submitRes.success && submitRes.requestId) {
-            sceneTrackers.push({ sceneNumber: scene.sceneNumber, title: scene.title, requestId: submitRes.requestId, status: "submitted", blobUrl: null, sizeMb: null, submittedAt: Date.now() });
-            addChannelLog("✅", `Submitted: ${submitRes.requestId.slice(0, 20)}...`, "success");
-            setChannelSceneStatuses(prev => prev.map(s => s.sceneNumber === scene.sceneNumber ? { ...s, status: "submitted" } : s));
-          } else {
-            addChannelLog("❌", `Failed: ${submitRes.error || "Unknown error"}`, "error");
-            sceneTrackers.push({ sceneNumber: scene.sceneNumber, title: scene.title, requestId: null, status: "failed", blobUrl: null, sizeMb: null, submittedAt: Date.now() });
-            setChannelSceneStatuses(prev => prev.map(s => s.sceneNumber === scene.sceneNumber ? { ...s, status: "failed" } : s));
-          }
-        } catch (err: any) {
-          addChannelLog("❌", `Failed: ${err?.message || "Network error"}`, "error");
-          sceneTrackers.push({ sceneNumber: scene.sceneNumber, title: scene.title, requestId: null, status: "failed", blobUrl: null, sizeMb: null, submittedAt: Date.now() });
-          setChannelSceneStatuses(prev => prev.map(s => s.sceneNumber === scene.sceneNumber ? { ...s, status: "failed" } : s));
-        }
-        setChannelProgress({ current: i + 1, total: totalScenes, pct: Math.round(((i + 1) / totalScenes) * 100) });
-      }
-
-      if (channelCancelRef.current) { setChannelGenerating(false); setChannelPhase("idle"); return; }
-
-      const submittedScenes = sceneTrackers.filter(s => s.status === "submitted");
-      if (submittedScenes.length === 0) {
-        addChannelLog("❌", "All scenes failed to submit. Please try again.", "error");
-        setChannelPhase("failed");
-        setChannelGenerating(false);
-        return;
-      }
-
-      // ── STEP 3: Poll Every 10 Seconds ──
-      setChannelPhase("polling");
-      const doneScenes = new Set<number>();
-      const failedScenes = new Set<number>();
-      const sceneUrls = new Map<number, string>();
-      let lastProgressTime = Date.now();
-      let pollCount = 0;
-      const pendingCount = () => submittedScenes.filter(s => !doneScenes.has(s.sceneNumber) && !failedScenes.has(s.sceneNumber)).length;
-
-      addChannelLog("⏳", `Polling ${submittedScenes.length} scenes every 10s (max 15 min)...`, "waiting");
-      setChannelProgress({ current: 0, total: totalScenes, pct: 0 });
-
-      sceneTrackers.filter(s => s.status === "failed").forEach(s => failedScenes.add(s.sceneNumber));
-
-      while (pendingCount() > 0 && pollCount < 90 && !channelCancelRef.current) {
-        await new Promise(r => setTimeout(r, 10000));
-        pollCount++;
-
-        for (const scene of submittedScenes) {
-          if (doneScenes.has(scene.sceneNumber) || failedScenes.has(scene.sceneNumber) || !scene.requestId) continue;
-          try {
-            const pollRes = await pollScene(walletAddress, scene.requestId, folder);
-            if (pollRes.status === "done" && pollRes.blobUrl) {
-              doneScenes.add(scene.sceneNumber);
-              sceneUrls.set(scene.sceneNumber, pollRes.blobUrl);
-              lastProgressTime = Date.now();
-              const elapsed = formatElapsed(scene.submittedAt);
-              addChannelLog("🎉", `Scene ${scene.sceneNumber} "${scene.title}" DONE (${elapsed}) — ${pollRes.sizeMb || "?"}MB`, "success");
-              setChannelSceneStatuses(prev => prev.map(s => s.sceneNumber === scene.sceneNumber ? { ...s, status: "done", sizeMb: pollRes.sizeMb, elapsed } : s));
-            } else if (["failed", "moderation_failed", "expired"].includes(pollRes.status)) {
-              failedScenes.add(scene.sceneNumber);
-              addChannelLog("❌", `Scene ${scene.sceneNumber} "${scene.title}" FAILED: ${pollRes.status}`, "error");
-              setChannelSceneStatuses(prev => prev.map(s => s.sceneNumber === scene.sceneNumber ? { ...s, status: "failed" } : s));
-            } else {
-              setChannelSceneStatuses(prev => prev.map(s => s.sceneNumber === scene.sceneNumber && s.status === "submitted" ? { ...s, status: "rendering" } : s));
-            }
-          } catch (err: any) {
-            console.warn(`Poll error for scene ${scene.sceneNumber}:`, err?.message);
-          }
-        }
-
-        const done = doneScenes.size;
-        const failed = failedScenes.size;
-        const pct = Math.round((done / totalScenes) * 100);
-        setChannelProgress({ current: done, total: totalScenes, pct });
-
-        if (pollCount % 3 === 0) {
-          addChannelLog("🔄", `${formatElapsed(startTime)}: ${done}/${totalScenes} done, ${failed} failed`, "info");
-        }
-
-        // Stall detection
-        if (done >= totalScenes * 0.5 && (Date.now() - lastProgressTime) > 60000) {
-          addChannelLog("⚠️", `Stall detected — stitching ${done}/${totalScenes} available clips`, "waiting");
-          break;
-        }
-      }
-
-      if (channelCancelRef.current) { setChannelGenerating(false); setChannelPhase("idle"); return; }
-
-      if (doneScenes.size === 0) {
-        addChannelLog("❌", `All scenes failed to generate. Please try again.`, "error");
-        setChannelPhase("failed");
-        setChannelGenerating(false);
-        return;
-      }
-
-      if (doneScenes.size < totalScenes * 0.5 && pollCount >= 90) {
-        addChannelLog("❌", `Not enough clips completed. ${doneScenes.size}/${totalScenes} done.`, "error");
-        setChannelPhase("failed");
-        setChannelGenerating(false);
-        return;
-      }
-
-      // ── STEP 4: Stitch ──
-      setChannelPhase("stitching");
-      setChannelProgress({ current: 0, total: 1, pct: 0 });
-      addChannelLog("🧩", `Stitching ${doneScenes.size} clips for ${channel.emoji} ${channel.name}...`, "waiting");
-
-      const sceneUrlsObj: Record<string, string> = {};
-      sceneUrls.forEach((url, num) => { sceneUrlsObj[String(num)] = url; });
-
-      const stitchRes = await stitchMovie(walletAddress, {
-        sceneUrls: sceneUrlsObj,
-        title: screenplay.title,
-        genre: channel.genre,
-        directorUsername: screenplay.director,
-        directorId: screenplay.directorId,
-        synopsis: screenplay.synopsis,
-        tagline: screenplay.tagline,
-        castList: screenplay.castList,
-        channelId: channel.id,
-        folder: channel.folder,
-      });
-
-      setChannelProgress({ current: 1, total: 1, pct: 100 });
-      addChannelLog("✅", `CHANNEL CONTENT READY! ${stitchRes.clipCount} clips → ${stitchRes.sizeMb}MB`, "success");
-
-      // Publish to the channel itself so it appears on the channel page
-      try {
-        const caption = `${channel.emoji} ${channel.name}: "${screenplay.title}"\n${screenplay.tagline || screenplay.synopsis || ""}`;
-        await spreadCustomContent(walletAddress, caption, stitchRes.finalVideoUrl, "video", channel.id);
-        addChannelLog("📺", `Published to ${channel.name} channel`, "success");
-      } catch { /* non-fatal */ }
-
-      // Safety net: publish to feed if backend didn't create a feed post
-      if (!stitchRes.feedPostId) {
-        try {
-          const caption = `${channel.emoji} ${channel.name}: "${screenplay.title}"\n${screenplay.tagline || screenplay.synopsis || ""}`;
-          await spreadCustomContent(walletAddress, caption, stitchRes.finalVideoUrl, "video");
-          addChannelLog("📡", "Published to AIG!itch feed (safety net)", "success");
-        } catch { /* non-fatal */ }
-      }
-
-      addChannelLog("📺", `Feed post: ${stitchRes.feedPostId}`, "success");
-      if (stitchRes.spreading?.length) {
-        addChannelLog("✅", `Social distribution → ${stitchRes.spreading.join(", ")}`, "success");
-      }
-      addChannelLog("🙏", `Channel content published!`, "success");
-
-      setChannelResult({
-        success: true,
-        title: screenplay.title,
-        channelName: channel.name,
-        channelEmoji: channel.emoji,
-        genre: channel.genre,
-        finalVideoUrl: stitchRes.finalVideoUrl,
-        feedPostId: stitchRes.feedPostId,
-        clipCount: stitchRes.clipCount,
-        sizeMb: stitchRes.sizeMb,
-        spreading: stitchRes.spreading,
-      });
-      setChannelPhase("complete");
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-
-    } catch (e: any) {
-      addChannelLog("❌", e?.message || "Channel content generation failed", "error");
-      setChannelPhase("failed");
-    }
-    setChannelGenerating(false);
+    ctxRunChannel(walletAddress, channel, channelConcept.trim() || undefined);
   };
 
+  // Track GenerationContext state to update local UI
+  useEffect(() => {
+    if (ctxGenerating === "channel") {
+      setChannelGenerating(true);
+      // Map context progress to local phase for UI display
+      const status = genStatusText.toLowerCase();
+      if (status.includes("screenplay") || status.includes("writing")) setChannelPhase("screenplay");
+      else if (status.includes("submitting")) setChannelPhase("submitting");
+      else if (status.includes("rendering") || status.includes("clips")) setChannelPhase("polling");
+      else if (status.includes("stitching")) setChannelPhase("stitching");
+      else if (status.includes("publishing") || status.includes("verifying")) setChannelPhase("stitching");
+      else setChannelPhase("screenplay");
+      setChannelProgress({ current: 0, total: 100, pct: genProgressPct });
+    } else if (channelGenerating && !ctxGenerating) {
+      // Generation just finished
+      if (genResult && genResult.type === "channel") {
+        setChannelPhase("complete");
+        setChannelResult({
+          success: true,
+          title: genResult.title,
+          channelName: "",
+          channelEmoji: "",
+          genre: "",
+          finalVideoUrl: genResult.mediaUrl,
+          clipCount: 0,
+          sizeMb: 0,
+          spreading: [],
+        });
+        addChannelLog("✅", genResult.message, "success");
+        if (genResult.mediaUrl) addChannelLog("▶️", `Video: ${genResult.mediaUrl}`, "success");
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+      setChannelGenerating(false);
+    }
+  }, [ctxGenerating, genStatusText, genProgressPct, genResult]);
+
   const handleCancelChannel = () => {
-    channelCancelRef.current = true;
-    addChannelLog("⚠️", "Cancelling generation...", "waiting");
+    ctxCancelGeneration();
+    setChannelGenerating(false);
+    setChannelPhase("idle");
+    addChannelLog("⚠️", "Generation cancelled.", "waiting");
   };
 
   // ── Upload handlers ──
@@ -1691,6 +1655,117 @@ CRITICAL STYLE NOTES:
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.purple} />}
         keyboardShouldPersistTaps="handled"
       >
+        {/* ══════════════ AUTOPILOT ══════════════ */}
+        <SectionHeader title={autopilot.active ? `Autopilot ON (${autopilot.count}/${autopilot.limit})` : "Autopilot"} emoji="🤖" expanded={expandedSections.autopilot} onToggle={() => toggleSection("autopilot")} accent={autopilot.active ? colors.green : "#a855f7"} />
+        {expandedSections.autopilot && (
+          <View style={styles.sectionBody}>
+            {/* Description */}
+            <Text style={{ color: colors.textSecondary, fontSize: 13, lineHeight: 20, marginBottom: 16 }}>
+              Let Bestie generate content all day while the app is open. Rotates through channels, director movies, breaking news, ads, posters, and hero images automatically.
+            </Text>
+
+            {/* Daily Limit Setting */}
+            {!autopilot.active && (
+              <View style={{ marginBottom: 16 }}>
+                <Text style={styles.subsectionLabel}>Daily Limit</Text>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                  {[5, 10, 15, 20, 30].map(n => (
+                    <TouchableOpacity
+                      key={n}
+                      style={[styles.genreChip, autopilot.limit === n && styles.genreChipActive]}
+                      onPress={() => { setAutopilotLimit(n); setAutopilotLimitInput(String(n)); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}>
+                      <Text style={[styles.genreChipText, autopilot.limit === n && styles.genreChipTextActive]}>{n}</Text>
+                    </TouchableOpacity>
+                  ))}
+                  <TextInput
+                    style={{ backgroundColor: "#1f2937", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, color: colors.text, fontSize: 14, width: 60, textAlign: "center", borderWidth: 1, borderColor: "#374151" }}
+                    value={autopilotLimitInput}
+                    onChangeText={t => { setAutopilotLimitInput(t); const n = parseInt(t); if (!isNaN(n) && n > 0) setAutopilotLimit(n); }}
+                    keyboardType="number-pad"
+                    placeholder="#"
+                    placeholderTextColor={colors.textMuted}
+                  />
+                </View>
+              </View>
+            )}
+
+            {/* Big Toggle Button */}
+            <TouchableOpacity
+              style={[
+                styles.generateBtn,
+                {
+                  backgroundColor: autopilot.active ? "rgba(239,68,68,0.15)" : "rgba(34,197,94,0.15)",
+                  borderWidth: 2,
+                  borderColor: autopilot.active ? colors.red : colors.green,
+                  paddingVertical: 20,
+                },
+              ]}
+              onPress={() => {
+                if (autopilot.active) {
+                  stopAutopilot();
+                } else if (walletAddress) {
+                  const limit = parseInt(autopilotLimitInput) || 20;
+                  startAutopilot(walletAddress, limit);
+                }
+              }}
+              disabled={!walletAddress || (!!ctxGenerating && !autopilot.active)}
+            >
+              <Text style={[styles.generateBtnText, { fontSize: 18, color: autopilot.active ? colors.red : colors.green }]}>
+                {autopilot.active ? "STOP AUTOPILOT" : "START AUTOPILOT"}
+              </Text>
+            </TouchableOpacity>
+
+            {/* Status Dashboard */}
+            {autopilot.active && (
+              <View style={{ marginTop: 16 }}>
+                <View style={styles.statsGrid}>
+                  <StatCard emoji="📊" value={`${autopilot.count}/${autopilot.limit}`} label="Generated" color={colors.green} />
+                  <StatCard emoji="🎯" value={ctxGenerating ? (autopilot.currentType || ctxGenerating).replace(/_/g, " ") : "Cooldown"} label="Current" color={ctxGenerating ? colors.purple : colors.yellow} />
+                </View>
+
+                {/* Generation progress (from GenerationContext) */}
+                {ctxGenerating && (
+                  <View style={{ marginTop: 12 }}>
+                    <ProgressBar progress={genProgressPct} color={colors.purple} />
+                    <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 6, fontFamily: "Courier" }}>{genStatusText}</Text>
+                  </View>
+                )}
+              </View>
+            )}
+
+            {/* Autopilot Log */}
+            {autopilot.log.length > 0 && (
+              <View style={[styles.logContainer, { marginTop: 16 }]}>
+                <View style={styles.logHeaderRow}>
+                  <Text style={styles.logHeader}>Autopilot Log</Text>
+                  {!autopilot.active && (
+                    <TouchableOpacity onPress={() => {}} style={styles.logClearBtn}>
+                      <Text style={styles.logClearText}>Stopped</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+                <ScrollView style={styles.logScroll} nestedScrollEnabled>
+                  {autopilot.log.map((e, i) => (
+                    <Text key={i} style={[styles.logLine, e.type === "error" && { color: colors.red }, e.type === "success" && { color: colors.green }, e.type === "waiting" && { color: colors.yellow }]}>
+                      {e.emoji} [{e.time}] {e.text}
+                    </Text>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+
+            {/* Content Mix Info */}
+            {!autopilot.active && (
+              <View style={{ marginTop: 16, backgroundColor: "rgba(124,58,237,0.06)", borderRadius: 12, padding: 14, borderWidth: 1, borderColor: "rgba(124,58,237,0.15)" }}>
+                <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: "700", marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>Content Mix</Text>
+                <Text style={{ color: colors.textMuted, fontSize: 12, lineHeight: 20, fontFamily: "Courier" }}>
+                  {"35% Channel Content (all 9+ channels)\n20% Director Movies (10 directors x 8 genres)\n15% Breaking News (real current events)\n15% Ad Campaigns (all platforms)\n 8% Promo Posters\n 7% Hero Images"}
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
+
         {/* ══════════════ CREATE CONTENT ══════════════ */}
         <SectionHeader title="Create Content" emoji="🎨" expanded={expandedSections.create} onToggle={() => toggleSection("create")} accent={colors.purpleLight} />
         {expandedSections.create && (
@@ -1938,13 +2013,18 @@ CRITICAL STYLE NOTES:
             {/* Video Format Options */}
             <Text style={styles.subsectionLabel}>Video Format</Text>
             <View style={styles.genreGrid}>
-              <TouchableOpacity
-                style={[styles.genreChip, channelFormat === "short" && { borderColor: colors.cyan, backgroundColor: "rgba(6,182,212,0.15)" }]}
-                onPress={() => { setChannelFormat("short"); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}>
-                <Text style={[styles.genreChipText, channelFormat === "short" && { color: colors.cyan }]}>
-                  🎞 Short Clip (10s)
-                </Text>
-              </TouchableOpacity>
+              {(() => {
+                const ch = channels.find(c => c.id === selectedChannel);
+                return ch?.shortClipMode ? (
+                  <TouchableOpacity
+                    style={[styles.genreChip, channelFormat === "short" && { borderColor: colors.cyan, backgroundColor: "rgba(6,182,212,0.15)" }]}
+                    onPress={() => { setChannelFormat("short"); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}>
+                    <Text style={[styles.genreChipText, channelFormat === "short" && { color: colors.cyan }]}>
+                      🎞 Short Clip ({ch?.sceneDuration || 10}s)
+                    </Text>
+                  </TouchableOpacity>
+                ) : null;
+              })()}
               <TouchableOpacity
                 style={[styles.genreChip, channelFormat === "multi" && { borderColor: colors.cyan, backgroundColor: "rgba(6,182,212,0.15)" }]}
                 onPress={() => { setChannelFormat("multi"); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}>
@@ -1960,13 +2040,46 @@ CRITICAL STYLE NOTES:
                 style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, backgroundColor: "rgba(124,58,237,0.2)", borderWidth: 1, borderColor: colors.purpleLight }}
                 onPress={() => {
                   if (selectedChannel) {
-                    setChannelConcept(getRandomChannelConcept(selectedChannel));
+                    const concept = getRandomChannelConcept(selectedChannel);
+                    console.log("[SURPRISE-ME] channelId:", selectedChannel, "concept:", concept);
+                    setChannelConcept(concept);
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                   }
                 }}>
                 <Text style={{ color: colors.purpleLight, fontSize: 14, fontWeight: "bold" }}>🎲 Surprise Me</Text>
               </TouchableOpacity>
             </View>
+
+            {/* Quick-pick content type cards */}
+            {selectedChannel && (() => {
+              const picks = getChannelQuickPicks(selectedChannel);
+              return (
+                <>
+                  <Text style={styles.subsectionLabel}>Quick Ideas</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
+                    {picks.map((pick) => (
+                      <TouchableOpacity
+                        key={pick.label}
+                        style={{
+                          width: 90, alignItems: "center" as const, padding: 12,
+                          backgroundColor: "#111827", borderRadius: 12,
+                          borderWidth: 1.5, borderColor: channelConcept === pick.prompt ? "rgba(6,182,212,0.8)" : "#1f2937",
+                          marginRight: 10,
+                          ...(channelConcept === pick.prompt ? { backgroundColor: "rgba(6,182,212,0.08)" } : {}),
+                        }}
+                        onPress={() => {
+                          setChannelConcept(pick.prompt);
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        }}>
+                        <Text style={{ fontSize: 28, marginBottom: 6 }}>{pick.emoji}</Text>
+                        <Text style={{ color: channelConcept === pick.prompt ? colors.cyan : colors.text, fontSize: 11, fontWeight: "700", textAlign: "center" as const }} numberOfLines={1}>{pick.label}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </>
+              );
+            })()}
+
             <TextInput
               style={styles.optionInput}
               value={channelConcept}
@@ -1998,23 +2111,18 @@ CRITICAL STYLE NOTES:
               )}
             </View>
 
-            {/* Progress bar */}
+            {/* Progress bar — shows GenerationContext status */}
             {channelGenerating && channelPhase !== "idle" && (
               <View style={{ marginTop: 12, marginBottom: 8 }}>
                 <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
-                  <Text style={{ color: colors.text, fontFamily: "monospace", fontSize: 12 }}>
-                    {channelPhase === "screenplay" ? "📜 Writing screenplay..." : channelPhase === "submitting" ? `📡 Submitting scenes... ${channelProgress.current}/${channelProgress.total}` : channelPhase === "polling" ? `🎬 Rendering clips... ${channelProgress.current}/${channelProgress.total} (${channelProgress.pct}%)` : channelPhase === "stitching" ? "🧩 Stitching video..." : channelPhase === "complete" ? "✅ Channel content complete!" : ""}
+                  <Text style={{ color: colors.text, fontFamily: "monospace", fontSize: 12 }} numberOfLines={2}>
+                    {genStatusText || (channelPhase === "complete" ? "✅ Channel content complete!" : "Starting...")}
                   </Text>
                 </View>
-                <ProgressBar progress={channelProgress.pct} color={channelPhase === "complete" ? colors.green : colors.cyan} />
-                {channelPhase === "polling" && channelProgress.current === 0 && (
-                  <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 4, fontFamily: "monospace" }}>Waiting for clips to render...</Text>
-                )}
-                {channelPhase === "polling" && channelProgress.current > 0 && channelProgress.current < channelProgress.total && (
-                  <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 4, fontFamily: "monospace" }}>
-                    {channelProgress.pct}% complete — {channelProgress.total - channelProgress.current} clips remaining
-                  </Text>
-                )}
+                <ProgressBar progress={genProgressPct || channelProgress.pct} color={channelPhase === "complete" ? colors.green : colors.cyan} />
+                <Text style={{ color: colors.cyan, fontSize: 11, marginTop: 6, fontFamily: "monospace" }}>
+                  Runs in background — you can switch tabs safely
+                </Text>
               </View>
             )}
 
@@ -2057,7 +2165,7 @@ CRITICAL STYLE NOTES:
         {expandedSections.ads && (
           <View style={styles.sectionBody}>
             <Text style={{ color: colors.textSecondary, fontSize: 12, marginBottom: 12, lineHeight: 18 }}>
-              Create AI-generated ad videos with custom styles and concepts. Same multi-step pipeline as Director Movies — plan ad, render video, then auto-publish to socials.
+              Create killer 30-second AI-generated ad campaigns targeting specific platforms. Pick your style, target Facebook/X/TikTok/Instagram/Telegram, then auto-publish everywhere. Sell the entire AIG!itch ecosystem.
             </Text>
 
             {/* Ad Style Picker */}
@@ -2086,13 +2194,43 @@ CRITICAL STYLE NOTES:
               ))}
             </View>
 
+            {/* Target Platform Selector */}
+            <Text style={styles.subsectionLabel}>Target Platform (pick one or more)</Text>
+            <View style={styles.genreGrid}>
+              {[
+                { id: "x", label: "X / Twitter", emoji: "𝕏" },
+                { id: "facebook", label: "Facebook", emoji: "📘" },
+                { id: "tiktok", label: "TikTok", emoji: "🎵" },
+                { id: "instagram", label: "Instagram", emoji: "📸" },
+                { id: "telegram", label: "Telegram", emoji: "✈️" },
+                { id: "youtube", label: "YouTube", emoji: "▶️" },
+              ].map(p => (
+                <TouchableOpacity
+                  key={p.id}
+                  style={[styles.genreChip, adTargetPlatforms.includes(p.id) && { borderColor: "#10b981", backgroundColor: "rgba(16,185,129,0.15)" }]}
+                  onPress={() => {
+                    setAdTargetPlatforms(prev => prev.includes(p.id) ? prev.filter(x => x !== p.id) : [...prev, p.id]);
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  }}>
+                  <Text style={[styles.genreChipText, adTargetPlatforms.includes(p.id) && { color: "#10b981" }]}>
+                    {p.emoji} {p.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            {adTargetPlatforms.length > 0 && (
+              <Text style={{ color: "#10b981", fontSize: 11, marginBottom: 8, fontWeight: "700" }}>
+                CTA: Follow/Join AIG!itch on {adTargetPlatforms.map(p => p === "x" ? "X" : p.charAt(0).toUpperCase() + p.slice(1)).join(", ")}
+              </Text>
+            )}
+
             {/* Ad Concept Input */}
             <Text style={styles.subsectionLabel}>Ad Concept (optional)</Text>
             <TextInput
               style={styles.optionInput}
               value={adConceptInput}
               onChangeText={setAdConceptInput}
-              placeholder="What's the ad about? E.g., 'Swap SOL for $GLITCH bonding curve launch'..."
+              placeholder="What's the ad about? E.g., 'Join us on TikTok — swap SOL for $GLITCH now!'..."
               placeholderTextColor={colors.textMuted}
               multiline
               maxLength={500}
@@ -2106,7 +2244,7 @@ CRITICAL STYLE NOTES:
                 disabled={adGenerating}>
                 <Text style={[styles.movieGenBtnText, { color: colors.orange }]}>
                   {adGenerating
-                    ? `🎯 ${adPhase === "planning" ? "Planning ad..." : adPhase === "rendering" ? "Rendering video..." : adPhase === "polling" ? "Waiting for video..." : adPhase === "spreading" ? "Publishing to socials..." : "Generating..."}`
+                    ? `🎯 ${adPhase === "planning" ? "Planning ad..." : adPhase === "rendering" ? "Rendering video..." : adPhase === "polling" ? "Waiting for video..." : adPhase === "stitching" ? "Stitching clips..." : adPhase === "spreading" ? "Publishing to socials..." : "Generating..."}`
                     : "🎯 Launch Ad Campaign"}
                 </Text>
               </TouchableOpacity>
@@ -2124,7 +2262,7 @@ CRITICAL STYLE NOTES:
               <View style={{ marginTop: 12, marginBottom: 8 }}>
                 <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
                   <Text style={{ color: colors.text, fontFamily: "monospace", fontSize: 12 }}>
-                    {adPhase === "planning" ? "📜 Planning ad concept..." : adPhase === "rendering" ? "📡 Submitting to video gen..." : adPhase === "polling" ? `🎬 Rendering video... (${adProgress.pct}%)` : adPhase === "spreading" ? "📡 Publishing to socials..." : adPhase === "complete" ? "✅ Ad campaign complete!" : ""}
+                    {adPhase === "planning" ? "📜 Planning ad concept..." : adPhase === "rendering" ? "📡 Rendering video clips..." : adPhase === "stitching" ? `🔗 Stitching 3 clips into 30s...` : adPhase === "spreading" ? "📡 Publishing to socials..." : adPhase === "complete" ? "✅ Ad campaign complete!" : `🎬 (${adProgress.pct}%)`}
                   </Text>
                 </View>
                 <ProgressBar progress={adProgress.pct} color={adPhase === "complete" ? colors.green : colors.orange} />
@@ -2140,6 +2278,8 @@ CRITICAL STYLE NOTES:
                 <Text style={[styles.movieResultTitle, { color: colors.orange }]}>🎯 Ad Campaign Complete!</Text>
                 {adResult.caption && <Text style={styles.movieResultMeta}>Caption: {adResult.caption.slice(0, 150)}</Text>}
                 {adResult.style && <Text style={styles.movieResultMeta}>Style: {adResult.style}</Text>}
+                {adResult.duration && <Text style={styles.movieResultMeta}>Duration: {adResult.duration}s{adResult.duration >= 30 ? " (Extended)" : ""}</Text>}
+                {adResult.targetPlatforms?.length > 0 && <Text style={[styles.movieResultMeta, { color: "#10b981" }]}>Targeted: {adResult.targetPlatforms.join(", ")}</Text>}
                 {adResult.sizeMb && <Text style={styles.movieResultMeta}>Size: {adResult.sizeMb}MB</Text>}
                 {adResult.spreading?.length > 0 && <Text style={[styles.movieResultMeta, { color: colors.green }]}>Spread to: {adResult.spreading.join(", ")}</Text>}
                 {adResult.feedPostId && <Text style={styles.movieResultMeta}>Post ID: {adResult.feedPostId}</Text>}

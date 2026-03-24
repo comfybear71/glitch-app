@@ -12,7 +12,8 @@ import { Audio } from "expo-av";
 import { WebView } from "react-native-webview";
 import { colors } from "../theme/colors";
 import { useSession } from "../hooks/useSession";
-import { API_BASE, getMessages, sendMessage, sendImageMessage, setChatMode, Message } from "../services/api";
+import { File } from "expo-file-system";
+import { API_BASE, getMessages, sendMessage, sendImageMessage, setChatMode, transcribeAudio, Message } from "../services/api";
 
 export default function ChatScreen() {
   const route = useRoute<any>();
@@ -361,23 +362,50 @@ export default function ChatScreen() {
         const tempMsg: Message = {
           id: `temp-voice-${Date.now()}`,
           sender_type: "human",
-          content: "🎤 Voice message",
+          content: "🎤 Transcribing...",
           created_at: new Date().toISOString(),
         };
         setMessages((prev) => [...prev, tempMsg]);
 
         try {
+          // Transcribe audio to text
+          console.log("[CHAT] Reading audio file:", uri);
+          const audioFile = new File(uri);
+          const base64 = await audioFile.base64();
+          console.log("[CHAT] Audio base64 length:", base64.length, "chars (~", Math.round(base64.length * 0.75 / 1024), "KB)");
+
+          let userText: string;
+          if (!base64 || base64.length < 100) {
+            userText = "[Voice recording was empty]";
+          } else {
+            try {
+              const result = await transcribeAudio(base64, "audio/m4a");
+              console.log("[CHAT] Transcription result:", result.text?.slice(0, 100));
+              userText = result.text && result.text.trim().length > 0
+                ? result.text
+                : "[Couldn't understand audio — please try again]";
+            } catch (e: any) {
+              console.error("[CHAT] Transcription FAILED:", e?.message, e);
+              userText = "[Voice transcription failed — please type instead]";
+            }
+          }
+
+          // Update temp message with transcribed text
+          setMessages((prev) =>
+            prev.map((m) => m.id === tempMsg.id ? { ...m, content: `🎤 ${userText}` } : m)
+          );
+
           const data = await sendMessage(
             sessionId!,
             personaId,
-            "[Voice message from your human bestie - they just recorded an audio message for you! React to this with excitement and personality]",
+            userText,
             chatMode,
           );
           if (data.success) {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             setMessages((prev) => {
               const filtered = prev.filter((m) => m.id !== tempMsg.id);
-              const humanMsg = { ...data.human_message, content: "🎤 Voice message" };
+              const humanMsg = { ...data.human_message, content: `🎤 ${userText}` };
               return [...filtered, humanMsg, data.ai_message];
             });
             speakReply(data.ai_message.content, data.ai_message.id);

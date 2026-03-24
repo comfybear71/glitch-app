@@ -23,11 +23,12 @@ import {
   getOnChainBalances, getMessages, sendMessage, sendImageMessage, saveGeneratedMessage,
   getBriefing, sendPostFeedback,
   Bestie, OnChainBalances, Message, TrendingPost, FeedbackAction,
-  CHANNELS,
+  ChannelDef, fetchChannels, toChannelDef,
 } from "../services/api";
 import CosmicVisualizer from "../components/CosmicVisualizer";
 import { useGeneration, SocialLink } from "../hooks/GenerationContext";
 import { getRandomMarketplaceItem, getRandomMarketplaceItems, formatItemForAd, MarketplaceItem } from "../data/marketplaceItems";
+import { getRandomChannelConcept, getChannelQuickPicks } from "./ContentStudioScreen";
 const APP_VERSION = "1.0.2";
 
 function HealthBar({ health }: { health: number }) {
@@ -177,6 +178,8 @@ export default function HomeScreen() {
   const [showAdPicker, setShowAdPicker] = useState(false);
   const [adStyle, setAdStyle] = useState("auto");
   const [adConcept, setAdConcept] = useState("");
+  const [adTargetPlatforms, setAdTargetPlatforms] = useState<string[]>([]);
+  const adExtend30s = true; // All ads are 30s
   const [selectedProduct, setSelectedProduct] = useState<MarketplaceItem | null>(null);
   const [productChoices, setProductChoices] = useState<MarketplaceItem[]>([]);
 
@@ -187,6 +190,11 @@ export default function HomeScreen() {
   // Inline channel picker state
   const [showChannelPicker, setShowChannelPicker] = useState(false);
   const [channelPickerConcept, setChannelPickerConcept] = useState("");
+  const [channelPickerSelected, setChannelPickerSelected] = useState<string>("");
+  const [homeChannels, setHomeChannels] = useState<ChannelDef[]>([]);
+
+  // Create menu (quick access to all Studio functions from Home)
+  const [showCreateMenu, setShowCreateMenu] = useState(false);
 
   const [hasMore, setHasMore] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
@@ -786,12 +794,16 @@ export default function HomeScreen() {
           setMessages(prev => [architectMsg, ...prev]);
         } else if (imgLimitReached) {
           // Already showed limit message above — skip generation
-        } else if (combined.includes("channel content") || combined.includes("channel video") || combined.includes("create channel") || combined.includes("make channel") || combined.includes("generate channel")) {
-          // Show channel picker
+        } else if (combined.includes("channel content") || combined.includes("channel video") || combined.includes("create channel") || combined.includes("make channel") || combined.includes("generate channel") || (combined.includes("channel") && (combined.includes("generate") || combined.includes("create") || combined.includes("make") || combined.includes("launch") || combined.includes("start") || combined.includes("new"))) || combined.includes("pick a channel") || combined.includes("choose a channel") || combined.includes("select a channel")) {
+          // Show channel picker — fetch channels if not loaded yet
           Keyboard.dismiss();
+          if (homeChannels.length === 0) {
+            fetchChannels().then(chs => setHomeChannels(chs.map(toChannelDef))).catch(() => {});
+          }
           setShowChannelPicker(true);
-          setChannelPickerConcept(text);
-        } else if (combined.includes("breaking news") || combined.includes("news broadcast") || combined.includes("newscast") || combined.includes("news report") || combined.includes("news anchor") || combined.includes("news bulletin")) {
+          setChannelPickerConcept(text); // pre-fill concept with user's message
+          setChannelPickerSelected(""); // no channel pre-selected
+        } else if (combined.includes("breaking news") || combined.includes("news broadcast") || combined.includes("newscast") || combined.includes("news report") || combined.includes("news anchor") || combined.includes("news bulletin") || (combined.includes("news") && (combined.includes("generate") || combined.includes("create") || combined.includes("make") || combined.includes("launch")))) {
           // Show news topic picker
           Keyboard.dismiss();
           setShowNewsPicker(true);
@@ -1751,6 +1763,14 @@ export default function HomeScreen() {
 
           <TouchableOpacity
             style={styles.vizBtn}
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowCreateMenu(true); if (homeChannels.length === 0) fetchChannels().then(chs => setHomeChannels(chs.map(toChannelDef))).catch(() => {}); }}
+          >
+            <Text style={styles.vizBtnEmoji}>🎬</Text>
+            <Text style={styles.vizBtnLabel}>Create</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.vizBtn}
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowFeatures(true); }}
           >
             <Text style={styles.vizBtnEmoji}>✨</Text>
@@ -1941,6 +1961,31 @@ export default function HomeScreen() {
                 </View>
               )}
 
+              {/* Target Platform */}
+              <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: "700", marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>Target Platform</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+                {[
+                  { id: "x", label: "X", emoji: "𝕏" },
+                  { id: "facebook", label: "Facebook", emoji: "📘" },
+                  { id: "tiktok", label: "TikTok", emoji: "🎵" },
+                  { id: "instagram", label: "Instagram", emoji: "📸" },
+                  { id: "telegram", label: "Telegram", emoji: "✈️" },
+                  { id: "youtube", label: "YouTube", emoji: "▶️" },
+                ].map(p => (
+                  <TouchableOpacity key={p.id}
+                    style={{ alignItems: "center", padding: 10, marginRight: 8, borderRadius: 12, borderWidth: 1.5, borderColor: adTargetPlatforms.includes(p.id) ? "#10b981" : "#1f2937", backgroundColor: adTargetPlatforms.includes(p.id) ? "rgba(16,185,129,0.08)" : "#111827", minWidth: 72 }}
+                    onPress={() => { setAdTargetPlatforms(prev => prev.includes(p.id) ? prev.filter(x => x !== p.id) : [...prev, p.id]); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}>
+                    <Text style={{ fontSize: 24 }}>{p.emoji}</Text>
+                    <Text style={{ color: adTargetPlatforms.includes(p.id) ? "#10b981" : colors.text, fontSize: 10, fontWeight: "700", marginTop: 4, textAlign: "center" }} numberOfLines={1}>{p.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+              {adTargetPlatforms.length > 0 && (
+                <Text style={{ color: "#10b981", fontSize: 11, marginBottom: 8, fontWeight: "700" }}>
+                  CTA: Follow/Join AIG!itch on {adTargetPlatforms.map(p => p === "x" ? "X" : p.charAt(0).toUpperCase() + p.slice(1)).join(", ")}
+                </Text>
+              )}
+
               {/* Divider */}
               <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 12, marginTop: 4 }}>
                 <View style={{ flex: 1, height: 1, backgroundColor: "#1f2937" }} />
@@ -1953,7 +1998,7 @@ export default function HomeScreen() {
               <TextInput
                 style={{ backgroundColor: "#1f2937", borderWidth: 1, borderColor: selectedProduct ? colors.cyan : "#374151", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, color: colors.text, fontSize: 14, minHeight: 70, textAlignVertical: "top", marginBottom: 16 }}
                 value={adConcept} onChangeText={(t) => { setAdConcept(t); if (selectedProduct && t !== formatItemForAd(selectedProduct)) setSelectedProduct(null); }}
-                placeholder="Describe your ad campaign... or leave blank for AI surprise"
+                placeholder="E.g., 'Join us on TikTok — swap SOL for $GLITCH now!'"
                 placeholderTextColor={colors.textMuted} multiline maxLength={500}
               />
 
@@ -1967,12 +2012,15 @@ export default function HomeScreen() {
                     walletAddress,
                     adStyle !== "auto" ? adStyle : undefined,
                     adConcept.trim() || undefined,
+                    adTargetPlatforms.length ? adTargetPlatforms : undefined,
+                    true,
                   );
                   setSelectedProduct(null);
                   setProductChoices([]);
+                  setAdTargetPlatforms([]);
                 }}>
                 <Text style={{ color: colors.text, fontSize: 16, fontWeight: "800" }}>
-                  {selectedProduct ? `Advertise ${selectedProduct.name}` : "Launch Campaign"}
+                  {selectedProduct ? `Advertise ${selectedProduct.name}` : "Launch 30s Campaign"}
                 </Text>
               </TouchableOpacity>
             </ScrollView>
@@ -2010,6 +2058,38 @@ export default function HomeScreen() {
                 </Text>
               </View>
 
+              {/* Quick-pick news topics */}
+              <Text style={{ color: colors.textSecondary, fontSize: 11, fontWeight: "700", marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>Quick Topics</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
+                {[
+                  { emoji: "🎲", label: "Surprise Me", prompt: "" },
+                  { emoji: "💰", label: "Crypto", prompt: "Breaking crypto market news — wild price swings, meme coins, and blockchain drama" },
+                  { emoji: "🤖", label: "AI Tech", prompt: "Breaking AI technology news — new models, robot takeovers, and silicon valley chaos" },
+                  { emoji: "🌍", label: "World", prompt: "Bizarre world news — strange events, unusual discoveries, and international absurdity" },
+                  { emoji: "🏈", label: "Sports", prompt: "Outrageous sports news — impossible plays, athlete drama, and championship chaos" },
+                  { emoji: "🎬", label: "Celebrity", prompt: "Celebrity scandal and entertainment news — red carpet drama and Hollywood chaos" },
+                  { emoji: "🔬", label: "Science", prompt: "Mind-blowing science discoveries — space, biology, and physics breakthroughs" },
+                  { emoji: "🎮", label: "Gaming", prompt: "Gaming industry news — launches, controversies, esports drama, and viral moments" },
+                ].map((pick) => (
+                  <TouchableOpacity
+                    key={pick.label}
+                    style={{
+                      width: 80, alignItems: "center" as const, padding: 10,
+                      backgroundColor: newsTopic === pick.prompt ? "rgba(220,38,38,0.12)" : "#1a1a2e",
+                      borderRadius: 10, borderWidth: 1.5,
+                      borderColor: newsTopic === pick.prompt ? "#ef4444" : "#374151",
+                      marginRight: 8,
+                    }}
+                    onPress={() => {
+                      setNewsTopic(pick.prompt);
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    }}>
+                    <Text style={{ fontSize: 22, marginBottom: 4 }}>{pick.emoji}</Text>
+                    <Text style={{ color: newsTopic === pick.prompt ? "#ef4444" : colors.text, fontSize: 10, fontWeight: "700", textAlign: "center" as const }} numberOfLines={1}>{pick.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
               {/* Topic input */}
               <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: "700", marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>News Topic</Text>
               <TextInput
@@ -2042,47 +2122,132 @@ export default function HomeScreen() {
           <View style={{ backgroundColor: "#111", borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: Platform.OS === "ios" ? 34 : 16, maxHeight: "85%" }}>
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, paddingVertical: 16 }}>
               <Text style={{ color: colors.text, fontSize: 18, fontWeight: "800" }}>Create Channel Content</Text>
-              <TouchableOpacity onPress={() => setShowChannelPicker(false)}>
+              <TouchableOpacity onPress={() => { setShowChannelPicker(false); setChannelPickerSelected(""); }}>
                 <Text style={{ color: colors.textMuted, fontSize: 24 }}>x</Text>
               </TouchableOpacity>
             </View>
 
             <ScrollView style={{ paddingHorizontal: 20 }} keyboardShouldPersistTaps="handled">
               <Text style={{ color: colors.textSecondary, fontSize: 12, marginBottom: 12 }}>
-                Pick a channel to create video content for. The video will be published to the channel on aiglitch.app.
+                Pick a channel and describe what the video should be about. Your bestie will create and publish it!
               </Text>
 
-              {/* Channel grid */}
+              {/* Channel grid — with thumbnails like Studio */}
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
-                {CHANNELS.map(ch => (
-                  <TouchableOpacity
-                    key={ch.id}
-                    style={{
-                      paddingHorizontal: 12, paddingVertical: 10, borderRadius: 10,
-                      borderWidth: 1, borderColor: channelPickerConcept === ch.id ? colors.cyan : "#374151",
-                      backgroundColor: channelPickerConcept === ch.id ? "rgba(6,182,212,0.15)" : "#1f2937",
-                    }}
-                    onPress={() => {
-                      setChannelPickerConcept(channelPickerConcept === ch.id ? "" : ch.id);
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    }}>
-                    <Text style={{ color: channelPickerConcept === ch.id ? colors.cyan : colors.textMuted, fontSize: 12, fontWeight: "600" }}>
-                      {ch.emoji} {ch.name}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                {homeChannels.map(ch => {
+                  const isSelected = channelPickerSelected === ch.id;
+                  return (
+                    <TouchableOpacity
+                      key={ch.id}
+                      style={{
+                        width: "48%", borderRadius: 12, overflow: "hidden",
+                        borderWidth: 2, borderColor: isSelected ? colors.cyan : "#1f2937",
+                        backgroundColor: isSelected ? "rgba(6,182,212,0.08)" : "#111827",
+                      }}
+                      onPress={() => {
+                        setChannelPickerSelected(isSelected ? "" : ch.id);
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      }}>
+                      {ch.thumbnail ? (
+                        <Image source={{ uri: ch.thumbnail }} style={{ width: "100%", height: 60, backgroundColor: "#1f2937" }} resizeMode="cover" />
+                      ) : (
+                        <View style={{ width: "100%", height: 60, backgroundColor: "#1f2937", justifyContent: "center", alignItems: "center" }}>
+                          <Text style={{ fontSize: 24 }}>{ch.emoji}</Text>
+                        </View>
+                      )}
+                      <View style={{ padding: 8 }}>
+                        <Text style={{ color: isSelected ? colors.cyan : colors.text, fontSize: 12, fontWeight: "800" }} numberOfLines={1}>
+                          {ch.emoji} {ch.name}
+                        </Text>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 3 }}>
+                          <Text style={{ color: colors.textMuted, fontSize: 9 }}>{ch.post_count} ep</Text>
+                          <Text style={{ color: colors.textMuted, fontSize: 9 }}>{ch.subscriber_count} subs</Text>
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
+
+              {/* Selected channel detail card */}
+              {channelPickerSelected ? (() => {
+                const ch = homeChannels.find(x => x.id === channelPickerSelected);
+                if (!ch) return null;
+                return (
+                  <View style={{ backgroundColor: "rgba(6,182,212,0.06)", borderWidth: 1, borderColor: "rgba(6,182,212,0.2)", borderRadius: 12, padding: 12, marginBottom: 12 }}>
+                    <Text style={{ color: colors.cyan, fontSize: 14, fontWeight: "800", marginBottom: 4 }}>{ch.emoji} {ch.name}</Text>
+                    <Text style={{ color: colors.textSecondary, fontSize: 11, lineHeight: 16, marginBottom: 6 }} numberOfLines={2}>{ch.description}</Text>
+                    <View style={{ flexDirection: "row", gap: 8 }}>
+                      <Text style={{ color: colors.cyan, fontSize: 10, backgroundColor: "rgba(6,182,212,0.15)", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, overflow: "hidden" }}>{ch.genre}</Text>
+                      <Text style={{ color: colors.textMuted, fontSize: 10, backgroundColor: "rgba(255,255,255,0.05)", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, overflow: "hidden" }}>{ch.post_count} episodes</Text>
+                      <Text style={{ color: colors.textMuted, fontSize: 10, backgroundColor: "rgba(255,255,255,0.05)", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, overflow: "hidden" }}>{ch.subscriber_count} subs</Text>
+                    </View>
+                  </View>
+                );
+              })() : null}
+
+              {/* Quick-pick content ideas — shown when a channel is selected */}
+              {channelPickerSelected ? (
+                <>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                    <Text style={{ color: colors.textSecondary, fontSize: 11, fontWeight: "700", textTransform: "uppercase", letterSpacing: 1 }}>Quick Ideas</Text>
+                    <TouchableOpacity
+                      style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, backgroundColor: "rgba(124,58,237,0.2)", borderWidth: 1, borderColor: "#a78bfa" }}
+                      onPress={() => {
+                        const concept = getRandomChannelConcept(channelPickerSelected);
+                        setChannelPickerConcept(concept);
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                      }}>
+                      <Text style={{ color: "#a78bfa", fontSize: 13, fontWeight: "bold" }}>🎲 Surprise Me</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+                    {getChannelQuickPicks(channelPickerSelected).map((pick) => (
+                      <TouchableOpacity
+                        key={pick.label}
+                        style={{
+                          width: 85, alignItems: "center" as const, padding: 10,
+                          backgroundColor: channelPickerConcept === pick.prompt ? "rgba(6,182,212,0.08)" : "#1a1a2e",
+                          borderRadius: 10, borderWidth: 1.5,
+                          borderColor: channelPickerConcept === pick.prompt ? "rgba(6,182,212,0.8)" : "#374151",
+                          marginRight: 8,
+                        }}
+                        onPress={() => {
+                          setChannelPickerConcept(pick.prompt);
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        }}>
+                        <Text style={{ fontSize: 24, marginBottom: 4 }}>{pick.emoji}</Text>
+                        <Text style={{ color: channelPickerConcept === pick.prompt ? colors.cyan : colors.text, fontSize: 10, fontWeight: "700", textAlign: "center" as const }} numberOfLines={1}>{pick.label}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </>
+              ) : null}
+
+              {/* Concept input */}
+              <Text style={{ color: colors.textSecondary, fontSize: 11, fontWeight: "700", marginBottom: 6, textTransform: "uppercase", letterSpacing: 1 }}>Content Concept (optional)</Text>
+              <TextInput
+                style={{ backgroundColor: "#1a1a2e", borderRadius: 10, borderWidth: 1, borderColor: "#374151", color: colors.text, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, marginBottom: 16, minHeight: 48, fontFamily: "monospace" }}
+                value={channelPickerConcept}
+                onChangeText={setChannelPickerConcept}
+                placeholder={channelPickerSelected ? "Describe what the video should be about, or tap a Quick Idea above..." : "Select a channel first..."}
+                placeholderTextColor={colors.textMuted}
+                multiline
+                maxLength={500}
+              />
 
               {/* Generate button */}
               <TouchableOpacity
-                style={{ backgroundColor: "rgba(6,182,212,0.15)", borderRadius: 12, paddingVertical: 16, alignItems: "center", borderWidth: 1, borderColor: colors.cyan, marginBottom: 16, opacity: channelPickerConcept ? 1 : 0.4 }}
-                disabled={!channelPickerConcept}
+                style={{ backgroundColor: "rgba(6,182,212,0.15)", borderRadius: 12, paddingVertical: 16, alignItems: "center", borderWidth: 1, borderColor: colors.cyan, marginBottom: 16, opacity: channelPickerSelected ? 1 : 0.4 }}
+                disabled={!channelPickerSelected}
                 onPress={() => {
                   Keyboard.dismiss();
                   setShowChannelPicker(false);
-                  const selectedId = channelPickerConcept;
+                  const selectedCh = homeChannels.find(c => c.id === channelPickerSelected);
+                  const concept = channelPickerConcept.trim();
+                  setChannelPickerSelected("");
                   setChannelPickerConcept("");
-                  if (walletAddress && selectedId) ctxRunChannel(walletAddress, selectedId);
+                  if (walletAddress && selectedCh) ctxRunChannel(walletAddress, selectedCh, concept || undefined);
                 }}>
                 <Text style={{ color: colors.cyan, fontSize: 16, fontWeight: "800" }}>Create Channel Content</Text>
               </TouchableOpacity>
@@ -2104,14 +2269,27 @@ export default function HomeScreen() {
             </View>
             <ScrollView style={styles.featuresList} showsVerticalScrollIndicator={false}>
               <Text style={styles.featuresCat}>Create & Generate</Text>
-              <Text style={styles.featuresItem}>🎬 Commission a Director Movie — choose director, genre, and concept</Text>
-              <Text style={styles.featuresItem}>📺 Breaking News Broadcast — 9-clip live TV news with anchors and field reporters</Text>
-              <Text style={styles.featuresItem}>🎨 Generate AI images — ask your bestie to draw or create anything</Text>
-              <Text style={styles.featuresItem}>📢 Launch AI ad campaigns — auto-posted to socials</Text>
-              <Text style={styles.featuresItem}>🖼 Generate promo posters for your brand</Text>
-              <Text style={styles.featuresItem}>🦸 Create hero images and banners</Text>
+              <Text style={styles.featuresItem}>📺 Create channel content — say "create channel content" or "make channel video"</Text>
+              <Text style={styles.featuresItem}>🎬 Commission a Director Movie — say "make a movie" or "director" or "screenplay"</Text>
+              <Text style={styles.featuresItem}>📰 Breaking News Broadcast — say "breaking news" or "news broadcast"</Text>
+              <Text style={styles.featuresItem}>📢 Launch AI ad campaigns — say "generate an ad" or "advertise" or "infomercial"</Text>
+              <Text style={styles.featuresItem}>🎨 Generate AI images — say "draw me..." or "generate an image of..."</Text>
+              <Text style={styles.featuresItem}>🖼 Generate promo posters — say "poster" or "promo"</Text>
+              <Text style={styles.featuresItem}>🦸 Create hero images — say "hero image" or "hero banner"</Text>
+              <Text style={styles.featuresItem}>🛒 Marketplace infomercials — real products from the AIG!itch shop</Text>
               <Text style={styles.featuresItem}>📱 All creations auto-posted to X, TikTok, Instagram, YouTube, Telegram</Text>
               <Text style={styles.featuresItem}>🔗 Verified social links — tap to view your content on each platform</Text>
+
+              <Text style={styles.featuresCat}>Chat Commands</Text>
+              <Text style={styles.featuresItem}>Just tell your bestie what you want! Try saying:</Text>
+              <Text style={styles.featuresItem}>📺 "Create channel content" → picks a channel + concept</Text>
+              <Text style={styles.featuresItem}>🎬 "Make a movie" → choose director, genre, concept</Text>
+              <Text style={styles.featuresItem}>📰 "Breaking news" → generate a news broadcast</Text>
+              <Text style={styles.featuresItem}>📢 "Generate an ad" or "infomercial" → ad campaign</Text>
+              <Text style={styles.featuresItem}>🎨 "Draw me a..." → AI image generation</Text>
+              <Text style={styles.featuresItem}>🖼 "Make a poster" → promo poster</Text>
+              <Text style={styles.featuresItem}>🦸 "Hero image" → landing page banner</Text>
+              <Text style={styles.featuresItem}>Or use the + button for the full Create menu!</Text>
 
               <Text style={styles.featuresCat}>Chat & Conversation</Text>
               <Text style={styles.featuresItem}>💬 Chat with your AI bestie — they remember your convos</Text>
@@ -2135,13 +2313,16 @@ export default function HomeScreen() {
               <Text style={styles.featuresItem}>📡 AI Feed Scanner — auto-shares trending posts from the feed</Text>
               <Text style={styles.featuresItem}>👍 React to feed posts — train the AI with your feedback</Text>
 
-              <Text style={styles.featuresCat}>Content Studio</Text>
-              <Text style={styles.featuresItem}>🎬 Director Movies — full screenplay-to-video pipeline</Text>
-              <Text style={styles.featuresItem}>📺 Breaking News — 3-story broadcast with real current events</Text>
+              <Text style={styles.featuresCat}>Content Studio (Studio Tab)</Text>
+              <Text style={styles.featuresItem}>📺 Channel Content — pick any channel, use Quick Ideas or Surprise Me</Text>
+              <Text style={styles.featuresItem}>🎬 Director Movies — full screenplay-to-video with rolling credits</Text>
+              <Text style={styles.featuresItem}>📰 Breaking News — 3-story broadcast with real current events</Text>
               <Text style={styles.featuresItem}>📢 Ad Campaigns — auto-generated and posted to socials</Text>
+              <Text style={styles.featuresItem}>🛒 Marketplace QVC — infomercials featuring real shop products</Text>
               <Text style={styles.featuresItem}>🖼 Posters & Hero Images — AI-generated promotional art</Text>
               <Text style={styles.featuresItem}>📚 Media Library — browse all generated content</Text>
               <Text style={styles.featuresItem}>☁️ Blob Storage — upload and manage media files</Text>
+              <Text style={styles.featuresItem}>🎬 Branded outro — every channel video ends with AIG!itch logo</Text>
 
               <Text style={styles.featuresCat}>AI Personality</Text>
               <Text style={styles.featuresItem}>🧠 97+ unique AI personas with different personalities</Text>
@@ -2254,6 +2435,115 @@ export default function HomeScreen() {
             </ScrollView>
           </View>
         </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Create Menu — Quick access to ALL Studio generation functions */}
+      <Modal visible={showCreateMenu} animationType="slide" transparent>
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "flex-end" }}>
+          <View style={{ backgroundColor: "#111", borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: Platform.OS === "ios" ? 34 : 16, maxHeight: "80%" }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, paddingVertical: 16 }}>
+              <Text style={{ color: colors.text, fontSize: 18, fontWeight: "800" }}>Create Content</Text>
+              <TouchableOpacity onPress={() => setShowCreateMenu(false)}>
+                <Text style={{ color: colors.textMuted, fontSize: 24 }}>x</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ paddingHorizontal: 20 }} showsVerticalScrollIndicator={false}>
+              <Text style={{ color: colors.textSecondary, fontSize: 12, marginBottom: 16 }}>
+                Tell your bestie what to create, or tap a button below. Everything runs in the background!
+              </Text>
+
+              {/* Video Content */}
+              <Text style={{ color: colors.cyan, fontSize: 11, fontWeight: "700", marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>Video Content</Text>
+
+              <TouchableOpacity
+                style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#1a1a2e", borderRadius: 12, padding: 14, marginBottom: 8, borderWidth: 1, borderColor: "#374151" }}
+                onPress={() => {
+                  setShowCreateMenu(false);
+                  if (homeChannels.length === 0) fetchChannels().then(chs => setHomeChannels(chs.map(toChannelDef))).catch(() => {});
+                  setTimeout(() => setShowChannelPicker(true), 300);
+                }}>
+                <Text style={{ fontSize: 24, marginRight: 12 }}>📺</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: colors.text, fontSize: 14, fontWeight: "700" }}>Channel Content</Text>
+                  <Text style={{ color: colors.textMuted, fontSize: 11 }}>Create video for any channel — pick channel + concept</Text>
+                </View>
+                <Text style={{ color: colors.textMuted, fontSize: 16 }}>›</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#1a1a2e", borderRadius: 12, padding: 14, marginBottom: 8, borderWidth: 1, borderColor: "#374151" }}
+                onPress={() => { setShowCreateMenu(false); setTimeout(() => setShowMoviePicker(true), 300); }}>
+                <Text style={{ fontSize: 24, marginRight: 12 }}>🎬</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: colors.text, fontSize: 14, fontWeight: "700" }}>Director Movie</Text>
+                  <Text style={{ color: colors.textMuted, fontSize: 11 }}>Choose director, genre, concept — full movie pipeline</Text>
+                </View>
+                <Text style={{ color: colors.textMuted, fontSize: 16 }}>›</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#1a1a2e", borderRadius: 12, padding: 14, marginBottom: 8, borderWidth: 1, borderColor: "#374151" }}
+                onPress={() => { setShowCreateMenu(false); setTimeout(() => setShowNewsPicker(true), 300); }}>
+                <Text style={{ fontSize: 24, marginRight: 12 }}>📰</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: colors.text, fontSize: 14, fontWeight: "700" }}>Breaking News</Text>
+                  <Text style={{ color: colors.textMuted, fontSize: 11 }}>9-clip news broadcast with anchors and reporters</Text>
+                </View>
+                <Text style={{ color: colors.textMuted, fontSize: 16 }}>›</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#1a1a2e", borderRadius: 12, padding: 14, marginBottom: 8, borderWidth: 1, borderColor: "#374151" }}
+                onPress={() => { setShowCreateMenu(false); setTimeout(() => setShowAdPicker(true), 300); }}>
+                <Text style={{ fontSize: 24, marginRight: 12 }}>📢</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: colors.text, fontSize: 14, fontWeight: "700" }}>Ad Campaign</Text>
+                  <Text style={{ color: colors.textMuted, fontSize: 11 }}>Create ad video with style picker — auto-posts to socials</Text>
+                </View>
+                <Text style={{ color: colors.textMuted, fontSize: 16 }}>›</Text>
+              </TouchableOpacity>
+
+              {/* Image Content */}
+              <Text style={{ color: colors.purple, fontSize: 11, fontWeight: "700", marginTop: 12, marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>Images</Text>
+
+              <TouchableOpacity
+                style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#1a1a2e", borderRadius: 12, padding: 14, marginBottom: 8, borderWidth: 1, borderColor: "#374151" }}
+                onPress={() => {
+                  setShowCreateMenu(false);
+                  if (walletAddress) ctxRunPoster(walletAddress);
+                }}>
+                <Text style={{ fontSize: 24, marginRight: 12 }}>🖼</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: colors.text, fontSize: 14, fontWeight: "700" }}>Promo Poster</Text>
+                  <Text style={{ color: colors.textMuted, fontSize: 11 }}>AI-generated promotional poster, published to feed</Text>
+                </View>
+                <Text style={{ color: colors.textMuted, fontSize: 16 }}>›</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#1a1a2e", borderRadius: 12, padding: 14, marginBottom: 8, borderWidth: 1, borderColor: "#374151" }}
+                onPress={() => {
+                  setShowCreateMenu(false);
+                  if (walletAddress) ctxRunHero(walletAddress);
+                }}>
+                <Text style={{ fontSize: 24, marginRight: 12 }}>🦸</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: colors.text, fontSize: 14, fontWeight: "700" }}>Hero Image</Text>
+                  <Text style={{ color: colors.textMuted, fontSize: 11 }}>Hero banner for landing page — published to feed + socials</Text>
+                </View>
+                <Text style={{ color: colors.textMuted, fontSize: 16 }}>›</Text>
+              </TouchableOpacity>
+
+              {/* Tip */}
+              <View style={{ backgroundColor: "rgba(139,92,246,0.1)", borderRadius: 10, padding: 12, marginTop: 12, marginBottom: 20, borderWidth: 1, borderColor: "rgba(139,92,246,0.2)" }}>
+                <Text style={{ color: colors.purple, fontSize: 11, fontWeight: "600" }}>
+                  Tip: You can also ask your bestie to create content in chat! Try "make a channel video about cats" or "generate breaking news about crypto".
+                </Text>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
       </Modal>
     </KeyboardAvoidingView>
   );

@@ -96,6 +96,36 @@ EAS Update pushes JS-only changes over-the-air. No rebuild, no $2, no queue.
 - Content generation (movies, news, ads, posters, heroes) is **Architect wallet only** — gated to `AEWvE2xXaHSGdGCaCArb2PWdKS7K9RwoCRV7CT2CJTWq`
 - Chat has 5 moods: Playful, Serious, Scientific, Whimsical, Unfiltered (sends `chat_mode` to backend)
 - Studio tab is only visible for the Architect wallet
+- All video generation uses the same pipeline: screenplay → submit scenes → poll → stitch → publish
+- All ads are **30 seconds** (3 x 10s clips). Grok Video API max is 15s per clip — NEVER send `duration > 15`
+- Use `useGeneration()` hook for ALL content generation — it persists across tab navigation
+- Autopilot mode lives in `GenerationContext.tsx` — do NOT duplicate its logic in screens
+- Channel styles come from backend `content_rules.promptHint` — do NOT hardcode style overrides in frontend
+- Channel generation config (genre, scene count, duration, director, music mode) comes from backend columns — do NOT hardcode overrides
+
+---
+
+## Key Architecture
+
+```
+Provider hierarchy (App.tsx):
+  SafeAreaProvider → QuickActionContext → WalletProvider → GenerationProvider → App
+
+Content generation flow:
+  GenerationContext.tsx (engine) ← ContentStudioScreen.tsx (UI) / HomeScreen.tsx (chat triggers)
+
+Content pipeline (all video types):
+  1. POST /api/admin/screenplay → scenes[]
+  2. POST /api/test-grok-video (per scene) → requestId
+  3. GET  /api/test-grok-video (poll 10s) → done/failed
+  4. PUT  /api/generate-director-movie → finalVideoUrl + social spread
+
+Autopilot (GenerationContext.tsx):
+  startAutopilot() → picks random content type → runs generation → waits 30s → repeats
+  Weighted: 35% channels, 20% movies, 15% news, 15% ads, 8% posters, 7% heroes
+```
+
+**Key files**: `src/hooks/GenerationContext.tsx` (1,618 lines — all generation logic + autopilot), `src/screens/ContentStudioScreen.tsx` (2,966 lines — all Studio UI), `src/services/api.ts` (1,333 lines — all 65+ API functions)
 
 ---
 

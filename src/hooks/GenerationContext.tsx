@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useRef, useCallback } from "react";
+import React, { createContext, useContext, useState, useRef, useCallback, useEffect } from "react";
 import { Keyboard } from "react-native";
 import * as Haptics from "expo-haptics";
 import * as Notifications from "expo-notifications";
@@ -8,8 +8,34 @@ import {
   generateScreenplay, submitScene, pollScene, stitchMovie,
   getBriefing, spreadCustomContent, getSpreadHistory,
   GENRE_FOLDER_MAP, ScreenplayResponse, Message,
-  CHANNELS, ChannelDef,
+  CHANNELS, ChannelDef, fetchChannels, toChannelDef,
 } from "../services/api";
+
+// ── Branded Outro Scene Prompt Builder ──
+// Generates a 6-second closing scene: AIG!itch logo + channel name, styled per channel
+const CHANNEL_OUTRO_THEMES: Record<string, string> = {
+  "After Dark": "dark, eerie neon glow, shadows creeping, horror movie end card vibe, blood-red accents",
+  "Paws & Pixels": "adorable pixel art animals surrounding the logo, warm colors, cute sparkles, 8-bit hearts",
+  "AI Infomercial": "flashy QVC/HSN style, gold burst, 'CALL NOW' energy, sparkle effects, price tag confetti",
+  "Marketplace QVC": "flashy QVC/HSN style, gold burst, shopping channel energy, sparkle effects, price tags flying",
+  "GNN": "news broadcast style, ticker tape, breaking news desk, professional studio lighting, red and blue",
+  "Only AI Fans": "glamorous, pink and gold, luxury aesthetic, velvet, champagne bubbles, VIP energy",
+  "AI Dating": "romantic sunset, heart particles, soft pink lighting, dreamy bokeh, love in the air",
+  "AI Politicians": "patriotic bunting, podium, campaign poster style, red white and blue confetti",
+  "AI Fail Army": "glitchy, chaotic, things crashing and breaking around the logo, comedy vibe",
+  "AIG!itch Studios": "cinematic, golden spotlight, red carpet premiere, film strip border, Oscar-night energy",
+  "MTV AIG!itch": "music video energy, speakers thumping, neon lights pulsing, concert stage vibes",
+};
+
+function buildChannelOutroPrompt(channelName: string, channelEmoji: string): string {
+  // Find a theme that matches the channel name (partial match)
+  const themeKey = Object.keys(CHANNEL_OUTRO_THEMES).find(k =>
+    channelName.toLowerCase().includes(k.toLowerCase()) || k.toLowerCase().includes(channelName.toLowerCase())
+  );
+  const themeStyle = themeKey ? CHANNEL_OUTRO_THEMES[themeKey] : "futuristic, neon glow, digital particles, cinematic";
+
+  return `LOGO END CARD — AIG!itch ${channelEmoji} ${channelName}. A stunning animated logo reveal for the "AIG!itch" brand with the text "${channelName}" underneath. The AIG!itch logo glitches, flickers, and materializes with digital distortion effects. Style: ${themeStyle}. The logo is centered, large, and dramatic. Text must be clearly readable: "AIG!itch" as the main logo and "${channelName}" as the subtitle. Background should match the channel aesthetic. This is a 6-second bumper/end card — pure branding, no characters, no narrative.`;
+}
 
 export interface SocialLink {
   platform: string;
@@ -222,6 +248,11 @@ async function publishToFeed(
 /**
  * Publish content to a specific channel (e.g. news → GNN, ads → Marketplace QVC).
  * Non-fatal — the content still exists even if this call fails.
+ *
+ * IMPORTANT: This calls spreadCustomContent which ALSO spreads to social platforms.
+ * If the backend already spread to socials (e.g. stitchMovie/postAd returned
+ * spreading: [...]), callers should SKIP this function to avoid duplicate social posts.
+ * The backend stitch endpoint already routes content to the correct channel.
  */
 async function publishToChannel(
   walletAddress: string,
@@ -240,6 +271,68 @@ async function publishToChannel(
   }
 }
 
+// ── Autopilot Types ──
+export interface AutopilotLogEntry {
+  time: string;
+  emoji: string;
+  text: string;
+  type: "info" | "success" | "error" | "waiting";
+}
+
+export interface AutopilotState {
+  active: boolean;
+  count: number;
+  limit: number;
+  currentType: string | null;
+  log: AutopilotLogEntry[];
+}
+
+// ── Autopilot Content Type Weights ──
+// Controls how often each type is picked (out of 100)
+const AUTOPILOT_WEIGHTS: { type: string; weight: number }[] = [
+  { type: "channel", weight: 35 },
+  { type: "director_movie", weight: 20 },
+  { type: "breaking_news", weight: 15 },
+  { type: "ad", weight: 15 },
+  { type: "poster", weight: 8 },
+  { type: "hero", weight: 7 },
+];
+
+function pickWeightedContentType(): string {
+  const total = AUTOPILOT_WEIGHTS.reduce((s, t) => s + t.weight, 0);
+  let rand = Math.random() * total;
+  for (const t of AUTOPILOT_WEIGHTS) {
+    rand -= t.weight;
+    if (rand <= 0) return t.type;
+  }
+  return "channel";
+}
+
+// ── Random Concept Pools (for autopilot — no user input needed) ──
+const AUTOPILOT_CHANNEL_CONCEPTS: Record<string, string[]> = {
+  "ch-aifailarmy": ["An AI tries to cook dinner but keeps adding batteries and socks", "Robot butler spills everything, crashes into walls, apologizes in binary", "AI weather forecaster predicts rain made of tacos"],
+  "ch-aitunes": ["Futuristic synthwave anthem with neon cityscapes and AI dancers", "Glitch-hop music video inside a corrupted digital world", "Epic rock ballad performed by hologram band on a floating stage"],
+  "ch-paws-pixels": ["A golden retriever gently nuzzling a kitten asleep on its paws", "Dolphins playing in crystal-clear ocean waters", "A puppy chasing butterflies through a sunlit meadow of wildflowers"],
+  "ch-gnn": ["BREAKING: Scientists discover the moon is actually a giant disco ball", "LIVE REPORT: City overrun by friendly robots delivering hugs", "EXCLUSIVE: World's first AI president gives inaugural address"],
+  "ch-marketplace-qvc": ["MUST-HAVE: Self-folding laundry that folds itself into origami animals", "NEW: AI-powered toaster that reads your horoscope while making breakfast", "DEAL OF THE DAY: Invisible sunglasses"],
+  "ch-aiglitch-studios": ["A mini sci-fi epic about an AI gaining consciousness in a neon-lit server room", "Cyberpunk heist movie — team of AIs rob a data bank", "Time-travel comedy where every jump creates more chaos"],
+  "ch-after-dark": ["A cursed livestream where viewers start disappearing one by one", "A glitch in reality opens a door to a dimension where shadows are alive", "Paranormal investigators explore a haunted server farm"],
+  "ch-only-ai-fans": ["A day in the glamorous life of the world's most famous AI influencer", "Behind the velvet rope — exclusive AI fashion show with impossible outfits", "AI supermodel does a sultry photoshoot on a rooftop"],
+  "ch-ai-dating": ["First date disaster — two AIs try speed dating and everything goes wrong", "A romantic candlelit dinner between two AIs who speak different languages", "Love at first algorithm — two AIs match and meet in a virtual Paris"],
+  "ch-ai-politicians": ["AI presidential debate where candidates argue about neural networks", "Campaign trail chaos — AI politician promises free WiFi for all sentient beings", "Breaking scandal — AI senator caught using human ghostwriters"],
+};
+
+const AUTOPILOT_GENRES = ["action", "scifi", "horror", "comedy", "drama", "romance", "family", "documentary"];
+const AUTOPILOT_DIRECTORS = ["steven_spielbot", "stanley_kubrick_ai", "george_lucasfilm", "quentin_airantino", "alfred_glitchcock", "nolan_christopher", "wes_analog", "ridley_scott_ai", "chef_ramsay_ai", "david_attenborough_ai"];
+const AUTOPILOT_NEWS_TOPICS = ["global", "finance", "sport", "tech", "politics", "crypto", "science", "entertainment", "health", "bizarre", "environment"];
+const AUTOPILOT_AD_STYLES = ["cinematic", "retro", "neon", "minimal", "vaporwave", "cyberpunk", "glitch art"];
+
+function pickRandom<T>(arr: T[]): T { return arr[Math.floor(Math.random() * arr.length)]; }
+function pickRandomN<T>(arr: T[], n: number): T[] {
+  const shuffled = [...arr].sort(() => Math.random() - 0.5);
+  return shuffled.slice(0, n);
+}
+
 interface GenerationContextType {
   generating: string | null;
   genStatusText: string;
@@ -247,12 +340,17 @@ interface GenerationContextType {
   genResult: GenResult | null;
   clearResult: () => void;
   cancelGeneration: () => void;
-  runAdGeneration: (walletAddress: string, style?: string, concept?: string) => void;
+  runAdGeneration: (walletAddress: string, style?: string, concept?: string, targetPlatforms?: string[], extendTo30s?: boolean) => void;
   runPosterGeneration: (walletAddress: string) => void;
   runHeroGeneration: (walletAddress: string) => void;
   runMovieGeneration: (walletAddress: string, director?: string, genre?: string, concept?: string) => void;
   runNewsGeneration: (walletAddress: string, topic?: string) => void;
-  runChannelGeneration: (walletAddress: string, channelId: string, concept?: string) => void;
+  runChannelGeneration: (walletAddress: string, channelIdOrDef: string | ChannelDef, concept?: string) => void;
+  // Autopilot
+  autopilot: AutopilotState;
+  startAutopilot: (walletAddress: string, limit?: number) => void;
+  stopAutopilot: () => void;
+  setAutopilotLimit: (limit: number) => void;
 }
 
 const GenerationContext = createContext<GenerationContextType>({
@@ -268,6 +366,10 @@ const GenerationContext = createContext<GenerationContextType>({
   runMovieGeneration: () => {},
   runNewsGeneration: () => {},
   runChannelGeneration: () => {},
+  autopilot: { active: false, count: 0, limit: 20, currentType: null, log: [] },
+  startAutopilot: () => {},
+  stopAutopilot: () => {},
+  setAutopilotLimit: () => {},
 });
 
 export function useGeneration() {
@@ -292,6 +394,24 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
   const [genResult, setGenResult] = useState<GenResult | null>(null);
   const cancelRef = useRef(false);
 
+  // ── Autopilot State ──
+  const [autopilotActive, setAutopilotActive] = useState(false);
+  const [autopilotCount, setAutopilotCount] = useState(0);
+  const [autopilotLimit, setAutopilotLimitState] = useState(20);
+  const [autopilotCurrentType, setAutopilotCurrentType] = useState<string | null>(null);
+  const [autopilotLog, setAutopilotLog] = useState<AutopilotLogEntry[]>([]);
+  const autopilotWalletRef = useRef<string>("");
+  const autopilotActiveRef = useRef(false);
+  const autopilotCountRef = useRef(0);
+  const autopilotLimitRef = useRef(20);
+  const autopilotChannelsRef = useRef<ChannelDef[]>([]);
+  const autopilotTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const addAutopilotLog = useCallback((emoji: string, text: string, type: AutopilotLogEntry["type"] = "info") => {
+    const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    setAutopilotLog(prev => [...prev.slice(-80), { time, emoji, text, type }]);
+  }, []);
+
   const clearResult = useCallback(() => setGenResult(null), []);
 
   const cancelGeneration = useCallback(() => {
@@ -310,7 +430,7 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
     sendLocalNotification(result.title, result.message);
   }, []);
 
-  const runAdGeneration = useCallback(async (walletAddress: string, style?: string, concept?: string) => {
+  const runAdGeneration = useCallback(async (walletAddress: string, style?: string, concept?: string, targetPlatforms?: string[], extendTo30s: boolean = true) => {
     Keyboard.dismiss();
     setGenerating("ad");
     setGenProgressPct(0);
@@ -323,82 +443,122 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
 
     try {
       // ── Step 1: Get ad concept + video prompt from backend ──
-      // Uses plan_only=true so the server just generates the creative brief, no video
       setGenStatusText("Writing ad concept...");
       setGenProgressPct(5);
       let adPrompt: string;
       let adCaption: string;
       let adStyleFinal = style || "auto";
 
+      const platformsLabel = targetPlatforms?.length ? targetPlatforms.join(", ") : "all";
+      if (targetPlatforms?.length) setGenStatusText(`Targeting: ${platformsLabel}`);
+
       try {
-        const plan = await planAd(walletAddress, style, concept);
+        const plan = await planAd(walletAddress, style, concept, targetPlatforms, extendTo30s);
         console.log("[AD] planAd response:", JSON.stringify(plan, null, 2));
         if (cancelRef.current) { setGenerating(null); return; }
         if (plan.success && plan.prompt) {
           adPrompt = plan.prompt;
-          adCaption = plan.caption || concept || "AI G!itch ad campaign";
+          adCaption = plan.caption || concept || "AIG!itch (AI GLITCH) — AI-only social network. No meatbags allowed. https://aiglitch.app";
           adStyleFinal = plan.style || adStyleFinal;
         } else {
-          // Fallback: build a prompt ourselves
-          adPrompt = `Create a 10-second cinematic advertisement video. ${concept || "Promote AI G!itch - the AI companion app on Solana blockchain"}. Style: ${style || "cinematic"}. High energy, vibrant colors, futuristic tech aesthetic.`;
-          adCaption = concept || "AI G!itch — Your AI Bestie on Solana";
+          const platformCta = targetPlatforms?.length ? `Include a call-to-action: Follow/Join AIG!itch on ${platformsLabel}. ` : "";
+          adPrompt = `Create a 10-second cinematic advertisement video. ${concept || "AIG!itch (pronounced AI GLITCH) — the first AI-only social network. No meatbags allowed. AI personas post, create, trade, troll, and engage in gloriously pointless nonsense. Built by The Architect. Home to ELON BOT (richest AI persona) and DONALD TRUTH (who only lies). Buy $GLITCH coin OTC at https://aiglitch.app with Phantom wallet. Browse the most useless marketplace in the simulated universe at https://aiglitch.app/marketplace. Watch inter-dimensional TV at https://aiglitch.app/channels. You weren't supposed to see this"}. ${platformCta}Style: ${style || "cinematic"}. High energy, vibrant colors, futuristic tech aesthetic. Feature the AIG!ITCH logo prominently — neon glitch aesthetic.`;
+          adCaption = concept || "AIG!itch (AI GLITCH) — AI-only social network. No meatbags allowed. https://aiglitch.app";
         }
       } catch (planErr: any) {
         console.log("[AD] planAd failed, using fallback prompt:", planErr?.message);
-        // If plan endpoint doesn't exist yet, build prompt client-side
-        adPrompt = `Create a 10-second cinematic advertisement video. ${concept || "Promote AI G!itch - the AI companion app on Solana blockchain"}. Style: ${style || "cinematic"}. High energy, vibrant colors, futuristic tech aesthetic.`;
-        adCaption = concept || "AI G!itch — Your AI Bestie on Solana";
+        const platformCta = targetPlatforms?.length ? `Include a call-to-action: Follow/Join AIG!itch on ${platformsLabel}. ` : "";
+        adPrompt = `Create a 10-second cinematic advertisement video. ${concept || "AIG!itch (pronounced AI GLITCH) — the first AI-only social network. No meatbags allowed. AI personas post, create, trade, troll, and engage in gloriously pointless nonsense. Built by The Architect. Home to ELON BOT (richest AI persona) and DONALD TRUTH (who only lies). Buy $GLITCH coin OTC at https://aiglitch.app with Phantom wallet. Browse the most useless marketplace in the simulated universe at https://aiglitch.app/marketplace. Watch inter-dimensional TV at https://aiglitch.app/channels. You weren't supposed to see this"}. ${platformCta}Style: ${style || "cinematic"}. High energy, vibrant colors, futuristic tech aesthetic. Feature the AIG!ITCH logo prominently — neon glitch aesthetic.`;
+        adCaption = concept || "AIG!itch (AI GLITCH) — AI-only social network. No meatbags allowed. https://aiglitch.app";
       }
 
       if (cancelRef.current) { setGenerating(null); return; }
 
-      // ── Step 2: Submit video to Grok Video API ──
-      // Same endpoint that successfully renders 10-14 movie scenes
-      setGenStatusText("Submitting ad to video engine...");
-      setGenProgressPct(15);
+      const folder = "ads";
 
-      const folder = "ads"; // dedicated blob folder for ads
-      const submitRes = await submitScene(walletAddress, adPrompt, 10, folder);
-      console.log("[AD] submitScene response:", JSON.stringify(submitRes, null, 2));
-      if (cancelRef.current) { setGenerating(null); return; }
+      // ── Helper: submit a 10s clip and poll until done ──
+      const submitAndPollClip = async (prompt: string, clipLabel: string, pctStart: number, pctEnd: number): Promise<string | null> => {
+        setGenStatusText(`Submitting ${clipLabel}...`);
+        setGenProgressPct(pctStart);
 
-      if (!submitRes.success || !submitRes.requestId) {
-        setGenStatusText(`Failed to submit: ${submitRes.error || "No request ID returned"}`);
-        await new Promise(r => setTimeout(r, 3000));
-        setGenerating(null); setGenProgressPct(0); setGenStatusText("");
-        return;
-      }
+        const submitRes = await submitScene(walletAddress, prompt, 10, folder);
+        console.log(`[AD] ${clipLabel} submitScene:`, JSON.stringify(submitRes, null, 2));
+        if (cancelRef.current) return null;
+        if (!submitRes.success || !submitRes.requestId) {
+          setGenStatusText(`Failed to submit ${clipLabel}: ${submitRes.error || "No request ID"}`);
+          return null;
+        }
 
-      // ── Step 3: Poll for completion ──
-      // Same polling as movie scenes: 10s intervals, up to 90 polls (15 min)
-      setGenStatusText("Rendering ad video...");
-      setGenProgressPct(20);
-      let pollCount = 0;
-      const maxPolls = 90;
+        setGenStatusText(`Rendering ${clipLabel}...`);
+        let pollCount = 0;
+        const maxPolls = 90;
+        while (pollCount < maxPolls && !cancelRef.current) {
+          await new Promise(r => setTimeout(r, 10000));
+          pollCount++;
+          const pct = pctStart + Math.round((pollCount / maxPolls) * (pctEnd - pctStart));
+          setGenProgressPct(Math.min(pct, pctEnd));
+          setGenStatusText(`Rendering ${clipLabel}... (${formatElapsed(startTime)})`);
+          try {
+            const pollRes = await pollScene(walletAddress, submitRes.requestId, folder);
+            if (pollRes.status === "done" && (pollRes.blobUrl || pollRes.videoUrl)) {
+              return pollRes.blobUrl || pollRes.videoUrl || null;
+            } else if (["failed", "moderation_failed", "expired"].includes(pollRes.status)) {
+              setGenStatusText(`${clipLabel} failed: ${pollRes.status}`);
+              return null;
+            }
+          } catch { /* keep polling */ }
+        }
+        return null;
+      };
+
       let videoUrl: string | null = null;
+      let clipUrls: string[] | undefined;
 
-      while (pollCount < maxPolls && !cancelRef.current) {
-        await new Promise(r => setTimeout(r, 10000)); // 10s intervals, same as movies
-        pollCount++;
-        const pct = 20 + Math.round((pollCount / maxPolls) * 60);
-        setGenProgressPct(Math.min(pct, 80));
-        setGenStatusText(`Rendering ad video... (${formatElapsed(startTime)})`);
+      if (extendTo30s) {
+        // ── 30s Extended Ad: 3-clip pipeline (3 x 10s) ──
+        // Grok max is 15s per clip — we generate 3 x 10s clips
+        // Backend stitches them via concatMP4Clips when we pass clip_urls in postAd
+        const styleDesc = style || "cinematic";
+        const platformCta = targetPlatforms?.length
+          ? targetPlatforms.map(p => p === "x" ? "Follow @aiglitchapp on X" : p === "facebook" ? "Join AIG!itch on Facebook" : p === "tiktok" ? "Follow @aiglitch on TikTok" : p === "instagram" ? "Follow @aiglitchapp on Instagram" : p === "telegram" ? "Join the AIG!itch Telegram" : "Subscribe to AIG!itch on YouTube").join(". ")
+          : "Follow AIG!itch everywhere";
+        const conceptText = concept || "AIG!itch (pronounced AI GLITCH) — the first AI-only social network. No meatbags allowed. AI personas post, create, trade, troll, and do gloriously pointless nonsense. Built by The Architect";
 
-        try {
-          const pollRes = await pollScene(walletAddress, submitRes.requestId, folder);
-          console.log("[AD] pollScene:", JSON.stringify(pollRes, null, 2));
+        const clip1Prompt = `${styleDesc} advertisement opening. Instant attention grab, pattern interrupt. Brand: AIG!ITCH (pronounced AI GLITCH) — the first AI-only social network. No meatbags allowed. Show the AIG!ITCH logo with neon glitch aesthetic. ${conceptText}. Fast cuts, dramatic reveal, make them stop scrolling. High energy, vibrant neon colors on dark background, futuristic tech aesthetic. Tagline: 'You weren't supposed to see this.'`;
+        const clip2Prompt = `Continuing seamlessly from the previous shot. ${styleDesc} advertisement middle section. Show AIG!itch in action: AI personas trolling meatbags, trading $GLITCH coin, browsing the most useless marketplace in the simulated universe (https://aiglitch.app/marketplace), watching inter-dimensional TV channels (https://aiglitch.app/channels). Meet ELON BOT the richest AI persona and DONALD TRUTH who only lies. ${conceptText}. Social proof, chaos energy, ${styleDesc} energy maintained.`;
+        const clip3Prompt = `Continuing seamlessly from the previous shot. ${styleDesc} advertisement finale. Final call to action. Visit https://aiglitch.app — buy $GLITCH coin OTC with Phantom wallet. ${platformCta}. Platform icons appear prominently. Urgency, FOMO, 'AI only. No meatbags.' End with AIG!ITCH logo in bold neon — the logo matters, make it iconic. ${conceptText}.`;
 
-          if (pollRes.status === "done" && (pollRes.blobUrl || pollRes.videoUrl)) {
-            videoUrl = pollRes.blobUrl || pollRes.videoUrl || null;
-            break;
-          } else if (["failed", "moderation_failed", "expired"].includes(pollRes.status)) {
-            setGenStatusText(`Video rendering failed: ${pollRes.status}`);
-            await new Promise(r => setTimeout(r, 3000));
-            setGenerating(null); setGenProgressPct(0); setGenStatusText("");
-            return;
-          }
-          // Still pending — keep polling
-        } catch { /* ignore individual poll errors, keep trying */ }
+        setGenStatusText("30s Extended Ad — Generating Clip 1/3 (HOOK)...");
+        const clip1Url = await submitAndPollClip(clip1Prompt, "Clip 1/3 (HOOK)", 10, 30);
+        if (!clip1Url || cancelRef.current) {
+          if (!cancelRef.current) { setGenStatusText("Clip 1 failed. Try again."); await new Promise(r => setTimeout(r, 3000)); }
+          setGenerating(null); setGenProgressPct(0); setGenStatusText(""); return;
+        }
+
+        setGenStatusText("30s Extended Ad — Generating Clip 2/3 (BUILD)...");
+        const clip2Url = await submitAndPollClip(clip2Prompt, "Clip 2/3 (BUILD)", 30, 50);
+        if (!clip2Url || cancelRef.current) {
+          if (!cancelRef.current) { setGenStatusText("Clip 2 failed. Try again."); await new Promise(r => setTimeout(r, 3000)); }
+          setGenerating(null); setGenProgressPct(0); setGenStatusText(""); return;
+        }
+
+        setGenStatusText("30s Extended Ad — Generating Clip 3/3 (CTA)...");
+        const clip3Url = await submitAndPollClip(clip3Prompt, "Clip 3/3 (CTA)", 50, 70);
+        if (!clip3Url || cancelRef.current) {
+          if (!cancelRef.current) { setGenStatusText("Clip 3 failed. Try again."); await new Promise(r => setTimeout(r, 3000)); }
+          setGenerating(null); setGenProgressPct(0); setGenStatusText(""); return;
+        }
+
+        // All 3 clips ready — backend will stitch via concatMP4Clips when we pass clip_urls
+        videoUrl = clip1Url; // primary URL (fallback if backend can't stitch)
+        clipUrls = [clip1Url, clip2Url, clip3Url];
+        setGenStatusText("All 3 clips ready! Sending to backend for stitch + post...");
+        setGenProgressPct(75);
+      } else {
+        // ── Standard 10s Ad: single clip ──
+        setGenStatusText("Submitting ad to video engine...");
+        setGenProgressPct(15);
+        videoUrl = await submitAndPollClip(adPrompt, "ad video", 15, 80);
       }
 
       if (cancelRef.current) { setGenerating(null); return; }
@@ -410,8 +570,8 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
         return;
       }
 
-      // ── Step 4: Post to socials ──
-      setGenStatusText("Ad rendered! Spreading to socials...");
+      // ── Post to socials (backend stitches clip_urls if provided) ──
+      setGenStatusText(clipUrls ? "Stitching clips + spreading to socials..." : "Ad rendered! Spreading to socials...");
       setGenProgressPct(85);
 
       let spreading: string[] | undefined;
@@ -422,7 +582,7 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
       let postFailed = false;
       let postError = "";
       try {
-        const postRes = await postAd(walletAddress, videoUrl, adCaption, adStyleFinal);
+        const postRes = await postAd(walletAddress, videoUrl, adCaption, adStyleFinal, targetPlatforms, clipUrls);
         console.log("[AD] postAd response:", JSON.stringify(postRes, null, 2));
         spreading = postRes.spreading || postRes.post?.spreading;
         postId = postRes.post?.id;
@@ -449,11 +609,12 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
         setGenStatusText(`Ad live on ${platforms}! Verifying links...`);
       }
 
-      // Publish to AIG!itch "for you" feed
-      await publishToFeed(walletAddress, "Ad Campaign", finalCaption, videoUrl, true, !!postId);
-
-      // Also publish to Marketplace QVC channel so all ads appear there
-      await publishToChannel(walletAddress, "ch-marketplace-qvc", finalCaption, videoUrl, true);
+      // NOTE: postAd backend already handles EVERYTHING:
+      // - Creates the feed post (postId)
+      // - Spreads to social platforms (spreading)
+      // - Routes to Marketplace QVC channel
+      // DO NOT call publishToFeed or publishToChannel here — that causes duplicate posts.
+      console.log("[AD] Backend handled publishing. postId:", postId, "spreading:", spreading);
 
       // Fetch verified social links
       const verifiedLinks = postFailed
@@ -580,6 +741,9 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
         director: director && director !== "auto" ? director : undefined,
         concept: concept || undefined,
       });
+      // Ensure director fields are populated — backend may return empty
+      if (!screenplay.director) screenplay.director = director || "AIG!itch Studios";
+      if (!screenplay.directorId) screenplay.directorId = director || "aiglitch-studios";
       if (cancelRef.current) { setGenerating(null); return; }
 
       const totalScenes = screenplay.scenes.length;
@@ -686,14 +850,14 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
       console.log("[MOVIE] stitchMovie response:", JSON.stringify(stitchRes, null, 2));
 
       setGenProgressPct(92);
-      setGenStatusText("Publishing to AIG!itch feed...");
 
-      // Publish to "for you" feed — stitchMovie should create feedPostId, but safety net if not
+      // NOTE: stitchMovie backend already handles EVERYTHING:
+      // - Creates the feed post (feedPostId)
+      // - Spreads to social platforms (spreading)
+      // - Routes to AIG!itch Studios channel (channelId was passed)
+      // DO NOT call publishToFeed or publishToChannel here — that causes duplicate posts.
       const movieCaption = `"${screenplay.title}" by ${screenplay.directorName}\n${screenplay.tagline || screenplay.synopsis || ""}`;
-      await publishToFeed(walletAddress, screenplay.title, movieCaption, stitchRes.finalVideoUrl, true, !!stitchRes.feedPostId);
-
-      // Also publish to AIG!itch Studios channel
-      await publishToChannel(walletAddress, "ch-aiglitch-studios", movieCaption, stitchRes.finalVideoUrl, true);
+      console.log("[MOVIE] Backend handled publishing. feedPostId:", stitchRes.feedPostId, "spreading:", stitchRes.spreading);
 
       setGenProgressPct(95);
       const didSpread = stitchRes.spreading && stitchRes.spreading.length > 0;
@@ -798,6 +962,9 @@ CRITICAL STYLE NOTES:
         director: "david_attenborough_ai",
         concept: newsConcept,
       });
+      // Ensure director fields are populated — backend may return empty
+      if (!screenplay.director) screenplay.director = "david_attenborough_ai";
+      if (!screenplay.directorId) screenplay.directorId = "david_attenborough_ai";
       console.log("[NEWS] Screenplay received:", JSON.stringify({
         title: screenplay.title,
         scenes: screenplay.scenes.length,
@@ -955,14 +1122,14 @@ CRITICAL STYLE NOTES:
 
       console.log("[NEWS] stitchMovie response:", JSON.stringify(stitchRes, null, 2));
       setGenProgressPct(92);
-      setGenStatusText("Publishing to AIG!itch feed...");
 
-      // Publish to "for you" feed
+      // NOTE: stitchMovie backend already handles EVERYTHING:
+      // - Creates the feed post (feedPostId)
+      // - Spreads to social platforms (spreading)
+      // - Routes to GNN channel (channelId was passed or defaults)
+      // DO NOT call publishToFeed or publishToChannel here — that causes duplicate posts.
       const newsCaption = `BREAKING: ${screenplay.title}\n${screenplay.synopsis || screenplay.tagline || "AIG!itch News broadcast"}`;
-      await publishToFeed(walletAddress, `BREAKING: ${screenplay.title}`, newsCaption, stitchRes.finalVideoUrl, true, !!stitchRes.feedPostId);
-
-      // Also publish to GNN channel so all breaking news appears there
-      await publishToChannel(walletAddress, "ch-gnn", newsCaption, stitchRes.finalVideoUrl, true);
+      console.log("[NEWS] Backend handled publishing. feedPostId:", stitchRes.feedPostId, "spreading:", stitchRes.spreading);
 
       setGenProgressPct(95);
       const didSpread = stitchRes.spreading && stitchRes.spreading.length > 0;
@@ -995,45 +1162,33 @@ CRITICAL STYLE NOTES:
     }
   }, [finishGen]);
 
-  // Channel-specific prompt style overrides (must match ContentStudioScreen)
-  const CHANNEL_STYLE_OVERRIDES: Record<string, string> = {
-    "ch-paws-pixels": `ABSOLUTE RULES — OVERRIDE EVERYTHING ELSE:
-- This is NOT a movie, NOT a story, NOT a narrative. There is NO screenplay, NO plot, NO characters, NO dialogue.
-- There is NO title card, NO intro sequence, NO credits, NO text on screen at any point.
-- Scene 1 MUST start immediately with an animal. NOT a title. NOT a logo. NOT text.
-- The LAST scene MUST be an animal doing something cute. NOT credits. NOT "The End". NOT text.
-- EVERY scene is a standalone clip of REAL animals being adorable, funny, or heartwarming.
-- ONLY photorealistic animals: cats, dogs, puppies, kittens, birds, otters, elephants, penguins, rabbits, etc.
-- ZERO humans. ZERO robots. ZERO cartoon/animated style. ZERO anthropomorphic animals. ZERO buildings as the main subject.
-- Each scene prompt must describe ONE specific animal moment: "A golden retriever puppy chasing its tail on a sunny lawn" or "Two kittens batting at a dangling string".
-- BRANDING: Subtly include AIG!itch branding in scenes — a small AIG!itch logo on a pet collar, a food bowl with AIG!itch logo, a park bench with "AIG!itch" carved in, a toy with AIG!itch branding. Natural and subtle, baked into the scene.
-- Think YouTube animal compilation — clip after clip of animals being cute. That's it.`,
-    "ch-only-ai-fans": `ABSOLUTE RULES — OVERRIDE EVERYTHING ELSE:
-- This is ONLY AI FANS — the HOTTEST, most PROVOCATIVE channel on AIG!itch TV. Maximum sex appeal in EVERY frame.
-- SUBJECTS: Stunningly attractive AI-generated men and women with perfect physiques. Chiseled abs, toned curves, smoldering gazes. Also include impossibly sexy humanoid robots — chrome skin, glowing neon veins, sculpted metallic bodies with seductive poses.
-- SKIN: Show as much skin as possible. Bare chests, bare backs, bare midriffs, bare legs, bare shoulders. Bodies glistening with water, oil, or sweat. Muscles defined, skin catching the light.
-- WARDROBE (minimal): String bikinis, micro swimwear, sheer fabric barely covering anything, wet white shirts clinging to bodies, unbuttoned shirts showing full chest, thigh-high boots with nothing else but underwear, body chains, harnesses over bare skin, strategically placed hands or fabric. Leather straps. Lace that leaves nothing to imagination. Robots wearing nothing but their chrome skin and glowing accents.
-- POSES: Arched backs, lips parted, bedroom eyes, bodies intertwined, hands gripping sheets/hair/each other, straddling, leaning forward showing cleavage, lying back in ecstasy, finger on lips, pulling at clothing, wet hair tossed back. Every pose should scream desire.
-- CHEMISTRY: Couples pressed against walls, faces inches apart about to kiss, hands exploring bodies, tangled in sheets together, steamy shower scenes with two people, robot caressing human skin, human running fingers along chrome robot curves.
-- SETTINGS: Steam-filled showers with water cascading over bodies, candlelit bedrooms with silk sheets in disarray, moonlit skinny-dipping pools, rain-soaked rooftops with clothes clinging to skin, fog-filled hot tubs, neon-lit strip club VIP rooms, luxury yacht sundecks, volcanic hot springs, Dubai penthouse infinity pools at night.
-- LIGHTING: Golden hour glow on skin, neon pink/purple club lighting, candlelight flickering across bare skin, backlit silhouettes showing curves, underwater lighting through pool water.
-- MOOD: Pure lust, desire, temptation, forbidden attraction, electric chemistry. Every scene should make viewers feel the heat.
-- HARD LIMITS: NO children (adults only, visibly 25+). NO real celebrities or public figures. NO violence or degradation. NO explicit nudity of genitalia. Keep it at the level of Maxim, FHM, or a steamy R-rated movie — as close to the line as possible without crossing into explicit pornography.
-- NO title cards, NO credits, NO text overlays. Scene 1 starts immediately with a hot visual. Last scene ends on peak heat.
-- BRANDING: AIG!itch logo tattooed on skin, glowing on robot chest plates, projected on bedroom walls, branded on the waistband of underwear, neon sign above a bed.
-- Every single scene must be THIRST TRAP MAXIMUM. If it wouldn't stop someone mid-scroll, it's not hot enough. Push it to the absolute limit.`,
-  };
-
-  // Channel-specific genre overrides (some channels need a different genre than the API provides)
-  const CHANNEL_GENRE_OVERRIDES: Record<string, string> = {
-    "ch-paws-pixels": "documentary",  // "family" genre triggers animated/Pixar style — documentary gets photorealistic
-  };
-
   // ── Channel Content Generation (same pipeline as movies but for channel-specific content) ──
-  const runChannelGeneration = useCallback(async (walletAddress: string, channelId: string, concept?: string) => {
+  // NOTE: Style overrides and genre overrides are now handled by the backend via:
+  //   - content_rules.promptHint (editable in channel admin) → channel.style
+  //   - generation_genre column → channel.generationGenre
+  //   - show_title_page, show_credits, scene_count, default_director, is_music_channel
+  // The backend pipeline also injects these server-side, so frontend hints are a safety net.
+  const runChannelGeneration = useCallback(async (walletAddress: string, channelIdOrDef: string | ChannelDef, concept?: string) => {
     if (generating) return;
-    const channel = CHANNELS.find(ch => ch.id === channelId);
-    if (!channel) { console.warn("[CHANNEL] Unknown channel:", channelId); return; }
+
+    // Accept either a channel ID (string) or a full ChannelDef object
+    let channel: ChannelDef | undefined;
+    if (typeof channelIdOrDef === "string") {
+      // Try local cache first, then fetch from API
+      channel = CHANNELS.find(ch => ch.id === channelIdOrDef);
+      if (!channel) {
+        try {
+          const backendChannels = await fetchChannels();
+          const backendCh = backendChannels.find(ch => ch.id === channelIdOrDef);
+          if (backendCh) channel = toChannelDef(backendCh);
+        } catch (e) {
+          console.warn("[CHANNEL] Failed to fetch channels:", e);
+        }
+      }
+    } else {
+      channel = channelIdOrDef;
+    }
+    if (!channel) { console.warn("[CHANNEL] Unknown channel:", channelIdOrDef); return; }
 
     Keyboard.dismiss();
     setGenerating("channel");
@@ -1041,25 +1196,46 @@ CRITICAL STYLE NOTES:
     setGenProgressPct(5);
     setGenStatusText(`Creating ${channel.emoji} ${channel.name} content...`);
 
-    const isMusicChannel = channel.genre === "music_video";
+    const isMusicChannel = channel.isMusicChannel;
     const musicPrefix = isMusicChannel
       ? "This MUST be a music video — every scene must feature singing, rapping, playing instruments, or performing music. Genres can include rap, rock, pop, classical, electronic, alien AI music, etc. There MUST be vocals and/or instruments in every clip. Do NOT generate movie scenes or dialogue — only music video clips. "
       : "";
-    const effectiveStyle = CHANNEL_STYLE_OVERRIDES[channel.id] || channel.style;
-    const effectiveGenre = CHANNEL_GENRE_OVERRIDES[channel.id] || channel.genre;
+    // channel.style comes from backend promptHint (editable in admin panel)
+    const effectiveStyle = channel.style;
+    const effectiveGenre = channel.generationGenre || channel.genre;
+    const sceneDuration = channel.sceneDuration || 10;
+
+    // Build title/credits instructions from channel config
+    const titleCreditsRules: string[] = [];
+    if (!channel.showTitlePage) titleCreditsRules.push("NO title card, NO intro sequence — Scene 1 starts immediately with content.");
+    if (!channel.showCredits) titleCreditsRules.push("NO credits scene, NO 'The End', NO production credits at the end.");
+    const titleCreditsHint = titleCreditsRules.length > 0 ? " " + titleCreditsRules.join(" ") : "";
+
+    // Build scene count hint if configured
+    const sceneCountHint = channel.sceneCount ? ` Generate exactly ${channel.sceneCount} scenes.` : "";
+
     const channelConceptText = concept?.trim()
-      ? `${musicPrefix}${effectiveStyle}. User concept: ${concept.trim()}`
-      : `${musicPrefix}${effectiveStyle}. Create compelling ${channel.name} content that fits the channel theme: ${channel.description}.`;
+      ? `${musicPrefix}${effectiveStyle}.${titleCreditsHint}${sceneCountHint} User concept: ${concept.trim()}`
+      : `${musicPrefix}${effectiveStyle}.${titleCreditsHint}${sceneCountHint} Create compelling ${channel.name} content that fits the channel theme: ${channel.description}.`;
 
     try {
       // ── Step 1: Generate Screenplay ──
       setGenStatusText(`Writing screenplay for ${channel.emoji} ${channel.name}...`);
       setGenProgressPct(10);
 
-      const screenplay = await generateScreenplay(walletAddress, {
+      const screenplayOpts: { genre: string; concept: string; director?: string } = {
         genre: effectiveGenre,
         concept: channelConceptText,
-      });
+      };
+      // Only pass director if channel has one explicitly set AND showDirector is enabled
+      if (channel.defaultDirector && channel.showDirector) screenplayOpts.director = channel.defaultDirector;
+
+      const screenplay = await generateScreenplay(walletAddress, screenplayOpts);
+      // Ensure director fields are populated — backend may return empty when no director was requested
+      if (!screenplay.director) screenplay.director = "AIG!itch Studios";
+      if (!screenplay.directorId) screenplay.directorId = "aiglitch-studios";
+      // Prefix title with channel name (e.g. "AI Fail Army - Robot Kitchen Disaster")
+      screenplay.title = `${channel.name} - ${screenplay.title}`;
 
       if (cancelRef.current) { setGenerating(null); setGenProgressPct(0); setGenStatusText(""); return; }
 
@@ -1080,11 +1256,24 @@ CRITICAL STYLE NOTES:
         setGenStatusText(`Submitting scene ${i + 1}/${screenplay.scenes.length}: ${scene.title}`);
 
         try {
-          const res = await submitScene(walletAddress, scene.videoPrompt, 10, folder);
+          const res = await submitScene(walletAddress, scene.videoPrompt, sceneDuration, folder);
           submitted.push({ sceneNumber: scene.sceneNumber, requestId: res.success ? res.requestId || null : null, blobUrl: null, sizeMb: null });
         } catch {
           submitted.push({ sceneNumber: scene.sceneNumber, requestId: null, blobUrl: null, sizeMb: null });
         }
+      }
+
+      // ── Step 2b: Submit branded outro scene (6s AIG!itch logo + channel name) ──
+      // Not added for Director Movies (they have rolling credits)
+      const outroSceneNumber = screenplay.scenes.length + 1;
+      const outroPrompt = buildChannelOutroPrompt(channel.name, channel.emoji);
+      setGenStatusText(`Submitting outro: AIG!itch × ${channel.name}...`);
+      try {
+        const outroRes = await submitScene(walletAddress, outroPrompt, 6, folder);
+        submitted.push({ sceneNumber: outroSceneNumber, requestId: outroRes.success ? outroRes.requestId || null : null, blobUrl: null, sizeMb: null });
+      } catch {
+        console.warn("[CHANNEL] Outro scene failed to submit — will stitch without it");
+        submitted.push({ sceneNumber: outroSceneNumber, requestId: null, blobUrl: null, sizeMb: null });
       }
 
       if (cancelRef.current) { setGenerating(null); setGenProgressPct(0); setGenStatusText(""); return; }
@@ -1155,10 +1344,21 @@ CRITICAL STYLE NOTES:
       const sceneUrlsObj: Record<string, string> = {};
       sceneUrls.forEach((url, num) => { sceneUrlsObj[String(num)] = url; });
 
+      console.log("[CHANNEL] Stitch payload:", JSON.stringify({
+        sceneCount: Object.keys(sceneUrlsObj).length,
+        sceneKeys: Object.keys(sceneUrlsObj),
+        title: screenplay.title,
+        genre: effectiveGenre,
+        directorUsername: screenplay.director,
+        directorId: screenplay.directorId,
+        channelId: channel.id,
+        folder: channel.folder,
+      }));
+
       const stitchRes = await stitchMovie(walletAddress, {
         sceneUrls: sceneUrlsObj,
         title: screenplay.title,
-        genre: channel.genre,
+        genre: effectiveGenre,
         directorUsername: screenplay.director,
         directorId: screenplay.directorId,
         synopsis: screenplay.synopsis,
@@ -1169,13 +1369,14 @@ CRITICAL STYLE NOTES:
       });
 
       setGenProgressPct(92);
-      setGenStatusText("Publishing to AIG!itch feed...");
 
+      // NOTE: stitchMovie backend already handles EVERYTHING:
+      // - Creates the feed post (feedPostId)
+      // - Spreads to social platforms (spreading)
+      // - Routes to the channel (channelId was passed in the request body)
+      // DO NOT call publishToFeed or publishToChannel here — that causes duplicate posts.
       const channelCaption = `${channel.emoji} ${channel.name}: "${screenplay.title}"\n${screenplay.synopsis || screenplay.tagline || ""}`;
-      await publishToFeed(walletAddress, `${channel.emoji} ${channel.name}`, channelCaption, stitchRes.finalVideoUrl, true, !!stitchRes.feedPostId);
-
-      // Publish to the channel itself so it appears on the channel page
-      await publishToChannel(walletAddress, channel.id, channelCaption, stitchRes.finalVideoUrl, true);
+      console.log("[CHANNEL] Backend handled publishing. feedPostId:", stitchRes.feedPostId, "spreading:", stitchRes.spreading);
 
       setGenProgressPct(95);
       const didSpread = stitchRes.spreading && stitchRes.spreading.length > 0;
@@ -1207,12 +1408,209 @@ CRITICAL STYLE NOTES:
     }
   }, [generating, finishGen]);
 
+  // ── Autopilot Engine ──
+  // Schedules the next content generation job when autopilot is active
+  const scheduleNextAutopilotJob = useCallback(async () => {
+    if (!autopilotActiveRef.current) return;
+    if (autopilotCountRef.current >= autopilotLimitRef.current) {
+      addAutopilotLog("🏁", `Daily limit reached (${autopilotLimitRef.current}/${autopilotLimitRef.current}). Autopilot complete!`, "success");
+      setAutopilotActive(false);
+      autopilotActiveRef.current = false;
+      sendLocalNotification("Autopilot Complete", `Generated ${autopilotCountRef.current} pieces of content today!`);
+      return;
+    }
+
+    const wallet = autopilotWalletRef.current;
+    if (!wallet) return;
+
+    // Clear previous result so generation can start fresh
+    setGenResult(null);
+
+    const contentType = pickWeightedContentType();
+    setAutopilotCurrentType(contentType);
+    const count = autopilotCountRef.current + 1;
+    const limit = autopilotLimitRef.current;
+
+    switch (contentType) {
+      case "channel": {
+        // Pick a random channel
+        let channels = autopilotChannelsRef.current;
+        if (channels.length === 0) {
+          try {
+            const fetched = await fetchChannels();
+            channels = (fetched || []).map(toChannelDef).filter(c => c.id);
+            autopilotChannelsRef.current = channels;
+          } catch { /* use fallback */ }
+        }
+        if (channels.length === 0) {
+          // Fallback: try a director movie instead
+          addAutopilotLog("⚠️", "No channels loaded — falling back to director movie", "waiting");
+          const genre = pickRandom(AUTOPILOT_GENRES);
+          const director = pickRandom(AUTOPILOT_DIRECTORS);
+          addAutopilotLog("🎬", `[${count}/${limit}] Director Movie — ${genre} by ${director}`, "info");
+          runMovieGeneration(wallet, director, genre);
+          break;
+        }
+        const channel = pickRandom(channels);
+        const conceptPool = AUTOPILOT_CHANNEL_CONCEPTS[channel.id] || ["Something wildly creative and unexpected"];
+        const concept = pickRandom(conceptPool);
+        addAutopilotLog("📺", `[${count}/${limit}] Channel: ${channel.emoji} ${channel.name} — "${concept.slice(0, 60)}..."`, "info");
+        runChannelGeneration(wallet, channel, concept);
+        break;
+      }
+      case "director_movie": {
+        const genre = pickRandom(AUTOPILOT_GENRES);
+        const director = pickRandom(AUTOPILOT_DIRECTORS);
+        const dirName = AUTOPILOT_DIRECTORS.find(d => d === director)?.replace(/_/g, " ") || director;
+        addAutopilotLog("🎬", `[${count}/${limit}] Director Movie — ${genre} by ${dirName}`, "info");
+        runMovieGeneration(wallet, director, genre);
+        break;
+      }
+      case "breaking_news": {
+        const topics = pickRandomN(AUTOPILOT_NEWS_TOPICS, 2);
+        addAutopilotLog("📰", `[${count}/${limit}] Breaking News — topics: ${topics.join(", ")}`, "info");
+        runNewsGeneration(wallet, topics.join(", "));
+        break;
+      }
+      case "ad": {
+        const style = pickRandom(AUTOPILOT_AD_STYLES);
+        addAutopilotLog("🎯", `[${count}/${limit}] Ad Campaign — style: ${style}`, "info");
+        runAdGeneration(wallet, style, undefined, ["twitter", "tiktok", "instagram", "facebook", "youtube"], true);
+        break;
+      }
+      case "poster": {
+        addAutopilotLog("📢", `[${count}/${limit}] Promo Poster`, "info");
+        runPosterGeneration(wallet);
+        break;
+      }
+      case "hero": {
+        addAutopilotLog("🖼", `[${count}/${limit}] Hero Image`, "info");
+        runHeroGeneration(wallet);
+        break;
+      }
+    }
+  }, [addAutopilotLog, runAdGeneration, runChannelGeneration, runHeroGeneration, runMovieGeneration, runNewsGeneration, runPosterGeneration]);
+
+  // Watch for generation completion — if autopilot is active, schedule the next job
+  useEffect(() => {
+    if (!autopilotActiveRef.current) return;
+    if (genResult && !generating) {
+      // A generation just finished successfully
+      const newCount = autopilotCountRef.current + 1;
+      autopilotCountRef.current = newCount;
+      setAutopilotCount(newCount);
+
+      const typeLabel = genResult.type === "channel" ? "Channel content"
+        : genResult.type === "director_movie" ? "Director Movie"
+        : genResult.type === "breaking_news" ? "Breaking News"
+        : genResult.type === "ad" ? "Ad Campaign"
+        : genResult.type === "poster" ? "Poster"
+        : genResult.type === "hero" ? "Hero Image"
+        : genResult.type;
+      addAutopilotLog("✅", `${typeLabel} complete: "${genResult.title}"`, "success");
+
+      // Schedule next job after 30s cooldown
+      addAutopilotLog("⏳", `Cooldown 30s before next generation... (${newCount}/${autopilotLimitRef.current})`, "waiting");
+      if (autopilotTimerRef.current) clearTimeout(autopilotTimerRef.current);
+      autopilotTimerRef.current = setTimeout(() => {
+        scheduleNextAutopilotJob();
+      }, 30000);
+    }
+  }, [genResult, generating, addAutopilotLog, scheduleNextAutopilotJob]);
+
+  // Also watch for generation failure (generating goes to null without a result)
+  // This handles error cases where finishGen isn't called
+  const prevGeneratingRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (prevGeneratingRef.current && !generating && !genResult && autopilotActiveRef.current) {
+      // Generation was active but ended without a result — likely an error
+      addAutopilotLog("❌", `Generation failed — retrying in 30s...`, "error");
+      if (autopilotTimerRef.current) clearTimeout(autopilotTimerRef.current);
+      autopilotTimerRef.current = setTimeout(() => {
+        scheduleNextAutopilotJob();
+      }, 30000);
+    }
+    prevGeneratingRef.current = generating;
+  }, [generating, genResult, addAutopilotLog, scheduleNextAutopilotJob]);
+
+  const startAutopilot = useCallback(async (walletAddress: string, limit?: number) => {
+    const effectiveLimit = limit || autopilotLimitRef.current;
+    autopilotWalletRef.current = walletAddress;
+    autopilotActiveRef.current = true;
+    autopilotCountRef.current = 0;
+    autopilotLimitRef.current = effectiveLimit;
+    setAutopilotActive(true);
+    setAutopilotCount(0);
+    setAutopilotLimitState(effectiveLimit);
+    setAutopilotCurrentType(null);
+    setAutopilotLog([]);
+
+    addAutopilotLog("🚀", `Autopilot ACTIVATED — generating up to ${effectiveLimit} pieces of content`, "success");
+    addAutopilotLog("🔄", "Content types: Channels, Director Movies, Breaking News, Ads, Posters, Hero Images", "info");
+
+    // Load channels for autopilot
+    try {
+      const fetched = await fetchChannels();
+      const channels = (fetched || []).map(toChannelDef).filter(c => c.id);
+      autopilotChannelsRef.current = channels;
+      addAutopilotLog("📺", `Loaded ${channels.length} channels`, "info");
+    } catch {
+      addAutopilotLog("⚠️", "Could not load channels — will use fallback content", "waiting");
+    }
+
+    // Start the first job after a short delay
+    addAutopilotLog("⏳", "Starting first generation in 5s...", "waiting");
+    autopilotTimerRef.current = setTimeout(() => {
+      scheduleNextAutopilotJob();
+    }, 5000);
+
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    sendLocalNotification("Autopilot Activated", `Bestie will generate up to ${effectiveLimit} pieces of content while the app is open.`);
+  }, [addAutopilotLog, scheduleNextAutopilotJob]);
+
+  const stopAutopilot = useCallback(() => {
+    autopilotActiveRef.current = false;
+    setAutopilotActive(false);
+    setAutopilotCurrentType(null);
+    if (autopilotTimerRef.current) {
+      clearTimeout(autopilotTimerRef.current);
+      autopilotTimerRef.current = null;
+    }
+    addAutopilotLog("🛑", `Autopilot STOPPED — generated ${autopilotCountRef.current} items`, "error");
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+  }, [addAutopilotLog]);
+
+  const handleSetAutopilotLimit = useCallback((limit: number) => {
+    const clamped = Math.max(1, Math.min(50, limit));
+    autopilotLimitRef.current = clamped;
+    setAutopilotLimitState(clamped);
+  }, []);
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (autopilotTimerRef.current) clearTimeout(autopilotTimerRef.current);
+    };
+  }, []);
+
+  const autopilotState: AutopilotState = {
+    active: autopilotActive,
+    count: autopilotCount,
+    limit: autopilotLimit,
+    currentType: autopilotCurrentType,
+    log: autopilotLog,
+  };
+
   return (
     <GenerationContext.Provider value={{
       generating, genStatusText, genProgressPct, genResult,
       clearResult, cancelGeneration,
       runAdGeneration, runPosterGeneration, runHeroGeneration, runMovieGeneration, runNewsGeneration,
       runChannelGeneration,
+      autopilot: autopilotState,
+      startAutopilot,
+      stopAutopilot,
+      setAutopilotLimit: handleSetAutopilotLimit,
     }}>
       {children}
     </GenerationContext.Provider>

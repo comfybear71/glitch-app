@@ -1,6 +1,6 @@
 # HANDOFF.md — AI G!itch App Project Status
 
-Last updated: 2026-03-19 (Session 15 — Paws & Pixels prompt fix, channel-specific style overrides, testing & QA)
+Last updated: 2026-03-24 (Session 20 — Autopilot mode, docs review & update)
 
 ## Project Overview
 
@@ -19,6 +19,29 @@ React Native / Expo mobile app for the AI G!itch ecosystem. Connects to Solana b
 | Secondary | https://console.x.com/accounts/2026609136566415363/billing/credits | X Developer Portal account — has extra credits purchased by mistake. NOT the main one |
 
 **WARNING**: The main xAI console is `console.x.ai`, NOT `console.x.com`. Credits bought on `console.x.com` (X Developer Portal) are for the X/Twitter API, not for Grok/TTS. If TTS falls back to Google, check credits at the **main** `console.x.ai` URL above.
+
+### Backend Transcription — Groq Whisper (UPDATED Session 18)
+
+The `/api/transcribe` endpoint uses **Groq Whisper** for speech-to-text. Requires `GROQ_API_KEY` in Vercel env vars.
+
+**Why not xAI?** xAI has **no standalone speech-to-text REST endpoint**. The URL `x.ai/v1/audio/transcriptions` does not exist — xAI only offers real-time WebSocket voice (`wss://api.x.ai/v1/realtime`) and TTS. The original transcription code always 404'd against xAI. Voice transcription was never actually working before Session 18.
+
+**Current setup:**
+- **Provider**: Groq Whisper (free)
+- **Model**: `whisper-large-v3`
+- **Key**: `GROQ_API_KEY` — get one free at `console.groq.com`
+- **Vercel**: Must be set in Environment Variables, scoped to Production
+
+**xAI is still used for:**
+- TTS (text-to-speech) via `/api/voice` — uses `XAI_API_KEY`
+- Image generation — uses `XAI_API_KEY`
+- AI text (Grok) — uses `XAI_API_KEY`
+
+**Session 18 history (2026-03-21)**:
+1. Voice transcription reported as 503 — investigation revealed xAI has no STT endpoint (never worked)
+2. Backend agent switched to Groq Whisper as transcription provider
+3. `GROQ_API_KEY` provided — **must be added to Vercel → Settings → Environment Variables → Production, then redeploy**
+4. Once deployed, voice transcription will work immediately (no app update needed)
 
 ---
 
@@ -47,7 +70,62 @@ In `app.json`, these MUST always be:
 
 ---
 
-## Current State (as of Session 10 — MILESTONE)
+## Technology Stack
+
+| Layer | Technology | Version |
+|-------|-----------|---------|
+| **Framework** | React Native / Expo | Expo ~54.0.0, RN 0.81.5 |
+| **Language** | TypeScript | ~5.3.0 |
+| **React** | React | 19.1.0 |
+| **Navigation** | React Navigation | Bottom Tabs 7.3, Native Stack 7.3 |
+| **Backend** | Vercel (Next.js) | https://aiglitch.app |
+| **Blockchain** | Solana Mainnet | via Phantom/Solflare/Jupiter wallets |
+| **AI Text** | xAI Grok | via `XAI_API_KEY` |
+| **AI Video** | xAI Grok Video | `grok-imagine-video` model (max 15s per clip) |
+| **AI Image** | xAI Aurora | via `XAI_API_KEY` |
+| **TTS** | xAI Grok TTS | via `/api/voice` (falls back to Google TTS) |
+| **STT** | Groq Whisper | `whisper-large-v3` via `GROQ_API_KEY` |
+| **OTA Updates** | EAS Update | `expo-updates` with `checkAutomatically: ON_LOAD` |
+| **Builds** | EAS Build | Preview ($2), Production ($2), OTA (free) |
+| **Storage** | Vercel Blob | For video/image assets |
+| **Social Distribution** | Backend `/api/admin/spread` | X, TikTok, Instagram, Facebook, YouTube, Telegram |
+
+### Backend API Endpoints (Complete Reference)
+
+All calls go to `https://aiglitch.app`. The mobile app uses wallet address authentication (query param `?wallet_address=`).
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/messages` | POST | Send chat message, get AI reply (supports `chat_mode`, `prefer_short`, `system_hint`) |
+| `/api/messages` | PATCH | Sync chat mode to server |
+| `/api/voice` | POST | Text-to-speech (Grok TTS → MP3) |
+| `/api/transcribe` | POST | Speech-to-text (Groq Whisper) |
+| `/api/partner/bestie` | GET | Get user's hatched AI persona |
+| `/api/partner/briefing` | GET | Trending posts + news topics for feed scanner |
+| `/api/partner/feedback` | POST | ML feedback reactions on feed posts |
+| `/api/solana?action=balance` | GET | On-chain balances (SOL, GLITCH) |
+| `/api/otc-swap?action=config` | GET | Token mint, treasury, pricing, bonding curve |
+| `/api/otc-swap` | POST | Create swap order |
+| `/api/admin/screenplay` | POST | Generate screenplay (genre, director, concept → scenes[]) |
+| `/api/test-grok-video` | POST | Submit scene to Grok Video engine (returns requestId) |
+| `/api/test-grok-video` | GET | Poll scene rendering status (pending/rendering/done/failed) |
+| `/api/generate-director-movie` | PUT | Stitch clips → final video + auto-publish to feed + socials |
+| `/api/generate-ads` | POST | Plan ad campaign (`plan_only: true` → concept, prompt, caption) |
+| `/api/generate-ads` | PUT | Post ad to socials (stitches `clip_urls` if provided) |
+| `/api/channels` | GET | Fetch all active channels with generation config |
+| `/api/admin/mktg` | POST | Generate poster (`action: "generate_poster"`) or hero image (`action: "generate_hero"`) |
+| `/api/admin/mktg` | GET | Marketing stats/posts/accounts (`action: "stats"/"posts"/"accounts"`) |
+| `/api/admin/spread` | POST | Publish to feed + socials (optional `targetChannel`) |
+| `/api/admin/spread` | GET | Spread history with verified social links |
+| `/api/admin/media` | POST | Upload media to library |
+| `/api/admin/blob-upload` | POST | Upload video to blob storage |
+| `/api/admin/cron-control` | GET/POST | View/trigger cron jobs |
+| `/api/admin/stats` | GET | Admin dashboard stats |
+| `/api/movies` | GET | List generated movies (optional genre/director filter) |
+
+---
+
+## Current State (as of Session 20)
 
 ### App Architecture
 - **Login Gate**: Full-screen branded login page when no wallet connected
@@ -61,13 +139,14 @@ In `app.json`, these MUST always be:
 - **Buy Screen**: OTC swap SOL -> $GLITCH with live pricing, bonding curve tiers
 - **Chat**: Text, photo, and video chat with AI besties. Inverted FlatList with pagination. Short/long reply toggle
 - **Chat Modes**: 5 moods — Playful, Serious, Scientific, Whimsical, Unfiltered (swearing allowed). Persists via SecureStore + server sync
-- **Voice**: Grok xAI TTS via REST API. Stop button on messages + tap cosmic visualizer to stop. Speech-to-text transcription working
+- **Voice**: Grok xAI TTS via REST API. Stop button on messages + tap cosmic visualizer to stop. Speech-to-text via Groq Whisper (requires `GROQ_API_KEY` in Vercel)
 - **Admin Panel**: FaceID-gated admin with tabs: Overview, Personas, Users, Swaps, System, Tools, Secrets
-- **Content Studio** (Architect only for video; images for all): Director Movies, Channels (dynamic from API — 9 real channels with thumbnails), Breaking News (9-clip), Ad Campaigns (full pipeline with styles), Posters, Hero Images, Media Library, Blob Storage
+- **Content Studio** (Architect only for video; images for all): **Autopilot**, Director Movies, Channels (dynamic from API — 9+ real channels with thumbnails), Breaking News (9-clip), Ad Campaigns (full pipeline with styles), Posters, Hero Images, Media Library, Blob Storage
+- **Autopilot Mode** (NEW Session 20): One-tap toggle in Studio that auto-generates content continuously while the app is open. Weighted rotation: 35% channel content, 20% director movies, 15% breaking news, 15% ads, 8% posters, 7% hero images. Configurable daily limit (default 20), 30s cooldown between jobs, real-time progress dashboard and log. Runs in GenerationContext so it persists across tab navigation
 - **Director Movies**: Full pipeline — screenplay → submit scenes → poll → stitch → publish to feed + socials
 - **Breaking News**: 9-clip / 3-story broadcast — real TV news style (CNN/BBC). Based on real current events. No director selection (auto-directed)
-- **Ad Campaigns**: Multi-step ad generation with style/concept picker, auto-posts to socials
-- **Generation Context**: Background-safe generation that persists across tab navigation with push notifications on completion
+- **Ad Campaigns**: All ads are **30 seconds** (3 x 10s clip pipeline). Multi-step ad generation with style picker, **target platform selector** (X, Facebook, TikTok, Instagram, YouTube), optional concept, auto-posts to socials with platform-specific CTAs. 10s single-clip option was removed in Session 19
+- **Generation Context**: Background-safe generation that persists across tab navigation with push notifications on completion. Now includes autopilot engine
 - **AI Feed Scanner**: Auto-shares trending posts from "for you" feed into chat with ML feedback reactions
 - **Push Notifications**: Registered via expo-push-token + local notifications on generation completion
 - **Emoji Reactions**: Long-press any message for emoji picker
@@ -92,6 +171,47 @@ In `app.json`, these MUST always be:
 3. Prices come from backend API (`/api/otc-swap?action=config`)
 4. If prices show "-" it means the backend server is lagging (not an app bug)
 
+### Content Generation Pipeline (All Content Types)
+
+All video content (movies, channels, news, ads) follows the same proven multi-step pipeline:
+
+```
+1. SCREENPLAY    POST /api/admin/screenplay       → title, scenes[], castList
+2. SUBMIT        POST /api/test-grok-video (×N)    → requestId per scene
+3. POLL           GET /api/test-grok-video (10s)    → pending/rendering/done/failed
+4. STITCH         PUT /api/generate-director-movie  → finalVideoUrl + auto-publish
+5. VERIFY         GET /api/admin/spread             → verified social post URLs
+```
+
+- **Polling**: Every 10 seconds, max 90 polls (15 minutes)
+- **Stall detection**: If 50%+ scenes done and 60s with no new completions → stitch early
+- **Error recovery**: Failed scenes are skipped; stitching proceeds with completed scenes only
+- **Social distribution**: Backend auto-posts to X, TikTok, Instagram, Facebook, YouTube, Telegram
+- **Background-safe**: All generation runs in `GenerationContext` — persists across tab navigation
+
+**Ad-specific flow** (30s ads): 3 sequential clips (HOOK → BUILD → CTA) each 10s, frontend generates all 3 then passes `clip_urls[]` to `PUT /api/generate-ads` for stitching + social posting.
+
+**Autopilot mode** wraps the entire pipeline: picks random content type → random params → runs generation → waits 30s → repeats until daily limit hit.
+
+### Channels (Dynamic from Backend)
+
+9+ real channels loaded from `GET /api/channels`, each with backend-managed generation config:
+
+| Channel | ID | Genre | Content Type |
+|---------|----|-------|-------------|
+| AI Fail Army | ch-aifailarmy | comedy | Funny AI fails and glitches |
+| AI Tunes | ch-aitunes | music_video | Music videos and performances |
+| Paws & Pixels | ch-paws-pixels | documentary | Photorealistic animals only |
+| GNN | ch-gnn | news | Glitch News Network broadcasts |
+| Marketplace QVC | ch-marketplace-qvc | comedy | Infomercial-style product ads |
+| After Dark | ch-after-dark | horror | Horror, thriller, suspense |
+| Only AI Fans | ch-only-ai-fans | drama | Glamour, lifestyle, fashion |
+| AI Dating | ch-ai-dating | romance | Dating scenarios and rom-coms |
+| AI Politicians | ch-ai-politicians | documentary | Political satire |
+| AIG!itch Studios | ch-aiglitch-studios | scifi | Original creative content |
+
+Each channel has: quick-pick prompts (6 per channel), random concept pools (8+ per channel), backend-managed `content_rules.promptHint` for visual style, and generation config (genre override, scene count, duration, director, music mode, title/credits visibility).
+
 ### NOT Implemented (By Design)
 - **No SELL feature** — selling $GLITCH is disabled until ~5000 SOL raised
 - **No deep link wallet connect yet** — uses paste flow (deep links planned for future)
@@ -103,17 +223,22 @@ In `app.json`, these MUST always be:
 ```
 App.tsx
 ├── SplashScreen (animated intro, shown once on launch)
-├── WalletProvider (React Context — shared wallet state)
-│   ├── NO wallet? → WalletScreen (full-screen login page)
-│   └── HAS wallet? → TabNavigator
-│       ├── Home tab → HomeStack
-│       │   ├── HomeScreen (bestie card, chat, balances, 5 moods, Powers menu)
-│       │   ├── ChatScreen (text/photo/video chat)
-│       │   └── VoiceChatScreen (voice chat modal)
-│       ├── Buy tab → BuyGlitchScreen (OTC swap)
-│       ├── Studio tab → ContentStudioScreen (Architect wallet only)
-│       └── Admin tab → AdminScreen (FaceID-gated)
+├── SafeAreaProvider (safe area insets)
+│   └── QuickActionContext.Provider (home screen shortcuts)
+│       └── WalletProvider (React Context — shared wallet state)
+│           └── GenerationProvider (background generation + autopilot engine)
+│               ├── NO wallet? → WalletScreen (full-screen login page)
+│               └── HAS wallet? → NavigationContainer (DarkTheme)
+│                   └── Tab.Navigator
+│                       ├── Home tab → HomeStack
+│                       │   ├── HomeScreen (bestie card, chat, balances, 5 moods, Powers menu)
+│                       │   ├── ChatScreen (text/photo/video chat)
+│                       │   └── VoiceChatScreen (voice chat modal)
+│                       ├── Buy tab → BuyGlitchScreen (OTC swap)
+│                       └── Studio tab → ContentStudioScreen (Architect wallet only)
 ```
+
+**Note**: AdminScreen exists but is accessed from within the app (not a tab). Studio tab is only visible for the Architect wallet.
 
 ### Wallet Roles
 | Wallet | Role | Access |
@@ -133,28 +258,32 @@ App.tsx
 ### Key Files
 | File | Purpose |
 |------|---------|
-| `App.tsx` | Main entry — splash, WalletProvider, login gate, tab navigation |
+| `App.tsx` | Main entry — splash, providers (SafeArea, QuickAction, Wallet, Generation), login gate, tab navigation |
 | `src/hooks/WalletContext.tsx` | React Context for shared wallet state (THE source of truth) |
 | `src/hooks/usePhantomWallet.ts` | Re-exports from WalletContext (backward compatibility) |
 | `src/hooks/useSession.ts` | Generates/stores unique session ID via SecureStore |
 | `src/hooks/usePushNotifications.ts` | Registers push tokens |
+| `src/hooks/GenerationContext.tsx` | Background-safe generation (movies, news, ads, posters, heroes) + **Autopilot engine** (1,618 lines) |
 | `src/screens/WalletScreen.tsx` | Login page (logo, particles, wallet buttons, paste flow) |
 | `src/screens/HomeScreen.tsx` | Main hub (bestie card, chat, balances) |
 | `src/screens/ChatScreen.tsx` | Text/photo/video chat with AI persona |
 | `src/screens/VoiceChatScreen.tsx` | Voice chat (full screen modal) |
 | `src/screens/BuyGlitchScreen.tsx` | OTC swap with live pricing |
 | `src/screens/AdminScreen.tsx` | FaceID-gated admin panel |
-| `src/screens/ContentStudioScreen.tsx` | AI content generation + media library |
+| `src/screens/ContentStudioScreen.tsx` | AI content studio: Autopilot, Create Content, Directors, Channels, Ads, News, Library, Blob Storage, Social, Monitoring (2,966 lines) |
+| `src/screens/BriefingScreen.tsx` | Feed briefing / trending posts display |
 | `src/screens/SplashScreen.tsx` | Animated intro with glitch effect |
-| `src/hooks/GenerationContext.tsx` | Background-safe generation (movies, news, ads, posters, heroes) |
-| `src/services/api.ts` | All backend API calls |
+| `src/services/api.ts` | All backend API calls — 65+ functions (1,333 lines) |
+| `src/data/marketplaceItems.ts` | Real marketplace products (used by Infomercial channel content) |
 | `src/theme/colors.ts` | Dark theme color palette |
 | `src/components/CosmicVisualizer.tsx` | Animated galaxy/stars visualization |
+| `plugins/withAppIntents.js` | Custom Expo config plugin for iOS App Intents / Shortcuts |
 
 ### Key Hooks
 - `usePhantomWallet` — shared wallet state via WalletContext. Exposes: `walletAddress`, `isLoading`, `isConnecting`, `connect()`, `submitAddress()`, `cancelConnect()`, `disconnect()`
 - `useSession` — generates/stores unique session ID via expo-secure-store
 - `usePushNotifications` — registers push tokens
+- `useGeneration` — shared generation context. Exposes: `generating`, `genStatusText`, `genProgressPct`, `genResult`, `clearResult()`, `cancelGeneration()`, `runAdGeneration()`, `runPosterGeneration()`, `runHeroGeneration()`, `runMovieGeneration()`, `runNewsGeneration()`, `runChannelGeneration()`, `autopilot`, `startAutopilot()`, `stopAutopilot()`, `setAutopilotLimit()`
 - **DO NOT USE `usePhantomDeepLink`** — imports tweetnacl/bs58 which CRASH the app
 
 ### API Service (`src/services/api.ts`)
@@ -171,10 +300,120 @@ App.tsx
 - Screenplay: POST /api/admin/screenplay (generates scene prompts for movies/news)
 - Video: POST /api/test-grok-video (submit scene) + GET (poll status)
 - Stitch: PUT /api/generate-director-movie (stitch clips → final video + socials)
-- Ads: POST /api/generate-ads (plan), PUT /api/generate-ads (post to socials)
+- Ads: POST /api/generate-ads (plan), PUT /api/generate-ads (post to socials, stitches clip_urls if provided)
 - Marketing: POST /api/admin/mktg (generate poster/hero image)
 - Spread: POST /api/admin/spread (publish to feed + socials), GET (spread history with verified links)
 - No hardcoded token addresses or dummy values
+
+### Grok Video Extension / 30-Second Ads — Technical Reference
+
+**CRITICAL: Grok Video API max duration is 15 seconds.** Never send `duration > 15` — returns HTTP 400.
+
+To create 30-second videos, use the **clip chaining pipeline** (3 x 10s clips stitched together). This is how the consumer Grok app's "Extend" feature works internally.
+
+#### The Pipeline (How It Actually Works)
+
+**Step 1: Generate Base Clip (text-to-video)**
+```
+POST https://api.x.ai/v1/videos/generations
+{
+  "model": "grok-imagine-video",
+  "prompt": "<ad prompt for first 10 seconds — HOOK>",
+  "duration": 10,
+  "aspect_ratio": "9:16",
+  "resolution": "720p"
+}
+```
+Sweet spot: 6-10 seconds per clip for best quality/consistency.
+
+**Step 2: Extract Last Frame (CRITICAL for seamless transitions)**
+Download the generated MP4. Extract the very last frame as PNG/JPG. This becomes the `init_image` for the next clip.
+```bash
+# Extract exact last frame with ffmpeg
+ffprobe -v error -count_frames -select_streams v:0 -show_entries stream=nb_read_frames -of csv=p=0 clip1.mp4
+# Then seek to last frame
+ffmpeg -sseof -0.1 -i clip1.mp4 -frames:v 1 last_frame.png
+```
+**Without the last frame, clips will have visible seams and style drift.**
+
+**Step 3: Continuation Generation (image-to-video with last frame)**
+Feed the last frame as `init_image` / `image_url` to create the next clip:
+```
+POST https://api.x.ai/v1/videos/generations
+{
+  "model": "grok-imagine-video",
+  "prompt": "Seamless continuation from the final frame...",
+  "image_url": "<last frame image URL or base64>",
+  "duration": 10,
+  "aspect_ratio": "9:16",
+  "resolution": "720p"
+}
+```
+**This is the key difference from text-only prompts.** Using `image_url` with the last frame gives near-zero drift.
+
+**Step 4: Chain & Concatenate**
+Repeat steps 2-3 for each extension clip (typically 3 total for 30s).
+Concatenate all MP4s on the backend via `concatMP4Clips()` or ffmpeg:
+```bash
+ffmpeg -f concat -safe 0 -i files.txt -c copy final_30s.mp4
+```
+
+#### Continuation Prompt Engineering (Zero-Drift Template)
+
+**Bad prompt:** "Continue the video with more action" (causes style drift, character changes)
+
+**Good prompt template:**
+```
+Seamless continuation directly from the very last frame of the previous video.
+Exact same [character/environment/style descriptors — keep short].
+[Describe ONLY the NEW action, motion, camera move].
+Maintain perfect character consistency, identical facial expression/pose at
+start matching end of prior clip, same lighting/shadows/volumetrics,
+zero style drift, frame-accurate match, cinematic quality.
+```
+
+**Drift prevention locks** (add as needed):
+- "exact facial features and expression continuity"
+- "same exact light sources, shadow angles"
+- "treat previous clip as canonical reference — match 1:1"
+- "no style drift, perfect frame-accurate match to previous clip end pose and environment"
+
+#### For AIG!itch 30-Second Ads Specifically
+
+| Clip | Duration | Role | Prompt Strategy |
+|------|----------|------|----------------|
+| Clip 1 (HOOK) | 10s | Attention grab | Text-to-video. Pattern interrupt, dramatic reveal, make them stop scrolling |
+| Clip 2 (BUILD) | 10s | Value + social proof | **Image-to-video** (last frame of clip 1). Show product in action, community, trending |
+| Clip 3 (CTA) | 10s | Call to action | **Image-to-video** (last frame of clip 2). Platform CTAs, urgency, AIG!itch logo |
+
+#### Current Implementation Status
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| Frontend 3-clip generation | Working | Generates 3 x 10s clips, passes `clip_urls` to backend |
+| Last-frame extraction | **Backend TODO** | Backend should use `ffmpeg` or `generateImageWithAurora()` to extract last frame |
+| Image-to-video continuation | **Backend TODO** | Use `extendVideoFromFrame()` in `src/lib/xai.ts` — already exists |
+| MP4 stitching | **Backend TODO** | Use `concatMP4Clips()` in `src/lib/media/mp4-concat.ts` — already exists |
+| `postAd()` clip_urls handling | **Backend TODO** | PUT handler needs to stitch `clip_urls` before posting |
+
+**Frontend currently sends 3 text-to-video clips** (no last-frame extraction). The backend should upgrade to image-to-video for clips 2 & 3 when `clip_urls` is received, using the existing `extendVideoFromFrame()` function.
+
+#### Existing Backend Code to Reuse
+
+| File | What It Does |
+|------|-------------|
+| `src/lib/xai.ts` → `extendVideoFromFrame()` | Image-to-video for continuation clips. Returns `{ requestId, videoUrl, error }` |
+| `src/lib/xai.ts` → `generateVideoWithGrok()` | Text-to-video for the base clip |
+| `src/lib/xai.ts` → `submitVideoJob()` | Unified submission with Kie.ai fallback on auth errors |
+| `src/lib/media/mp4-concat.ts` → `concatMP4Clips()` | Stitches N MP4 buffers into one final MP4 |
+| `src/lib/media/multi-clip.ts` | Genre templates for consistent visual style across clips |
+| `src/app/api/admin/extend-video/route.ts` | Full working reference — already does exactly this for Director Movies |
+| `src/app/api/admin/elon-campaign/route.ts` | Another working reference — generates 30s Elon videos (3 x 10s clips) |
+
+#### Cost & Timing
+- ~$0.50 per 10s clip = ~$1.50 for a 30s ad
+- Each clip takes ~1-3 minutes to render
+- Total 30s pipeline: ~5-10 minutes (3 clips sequential + stitch)
 
 ### Storage Keys (SecureStore)
 | Key | Purpose |
@@ -434,6 +673,208 @@ If "your local changes would be overwritten" appears, stash first (see above).
 
 ---
 
+## Recent Changes — Session 2026-03-24 (Session 20 — Autopilot Mode + Docs Review)
+
+### Autopilot Mode — Hands-Free Content Generation (NEW FEATURE)
+
+One-tap toggle in the Studio tab that makes Bestie generate content all day while the app is open. No manual intervention needed — it picks content types, channels, concepts, directors, and genres automatically.
+
+**How it works:**
+1. Open Studio → expand "Autopilot" section
+2. Set daily limit (5, 10, 15, 20, or 30 — or custom number)
+3. Tap **START AUTOPILOT**
+4. Bestie auto-generates content back-to-back with 30s cooldown between jobs
+5. Tap **STOP AUTOPILOT** anytime to pause
+
+**Content type rotation (weighted random):**
+| Type | Weight | Details |
+|------|--------|---------|
+| Channel content | 35% | All 9+ channels, random concepts per channel |
+| Director movies | 20% | Random from 10 directors x 8 genres |
+| Breaking news | 15% | Real current events, random topic combos |
+| Ad campaigns | 15% | Random styles, targets all social platforms, 30s |
+| Promo posters | 8% | AI-generated promotional images |
+| Hero images | 7% | Landing page hero banners |
+
+**Architecture:**
+- Engine lives in `GenerationContext.tsx` (not ContentStudioScreen) so it persists across tab navigation
+- Uses refs for all autopilot state to avoid stale closure issues in `useCallback`/`useEffect`
+- `useEffect` watches for generation completion (`genResult` set + `generating` null) → schedules next job
+- Separate `useEffect` handles error recovery (generation ends without result → retries after 30s)
+- Channels fetched from API on autopilot start, cached in ref
+- Pre-seeded random concept pools for 10 channels (3 concepts each)
+- Push notification on completion ("Generated X pieces of content today!")
+
+**New exports from GenerationContext:**
+```typescript
+interface AutopilotState {
+  active: boolean;
+  count: number;
+  limit: number;
+  currentType: string | null;
+  log: AutopilotLogEntry[];
+}
+
+// Added to GenerationContextType:
+autopilot: AutopilotState;
+startAutopilot: (walletAddress: string, limit?: number) => void;
+stopAutopilot: () => void;
+setAutopilotLimit: (limit: number) => void;
+```
+
+**UI in ContentStudioScreen (new "Autopilot" section — first in the list):**
+- Daily limit picker (preset chips: 5/10/15/20/30 + custom TextInput)
+- Big START/STOP toggle button (green/red)
+- Live stats dashboard (count/limit, current job type)
+- Generation progress bar (from GenerationContext)
+- Timestamped log with emoji indicators
+- Content mix breakdown chart
+
+**Limitation:** Only runs while the app is open. For 24/7 generation, backend cron automation would be needed (not yet implemented).
+
+### Content Studio Screen — 10 Expandable Sections (UPDATED)
+
+The Studio tab now has **10 collapsible sections** (up from 9):
+
+| # | Section | Emoji | Accent Color | Default State |
+|---|---------|-------|-------------|---------------|
+| 1 | **Autopilot** | 🤖 | green (active) / purple (inactive) | collapsed |
+| 2 | Create Content | 🎨 | purpleLight | **expanded** |
+| 3 | Director Movies | 🎥 | pink | collapsed |
+| 4 | Channels | 📺 | cyan | collapsed |
+| 5 | Ad Campaigns | 🎯 | orange | collapsed |
+| 6 | Breaking News | 📰 | red | collapsed |
+| 7 | Library | 📚 | amber | collapsed |
+| 8 | Blob Storage | ☁️ | cyan | collapsed |
+| 9 | Social Distribution | 📡 | pink | collapsed |
+| 10 | Monitoring | 📊 | cyan | collapsed |
+
+### All Ads Now 30 Seconds (CHANGE from Session 19)
+
+The 10-second ad option has been removed. All ads use the 3 x 10s clip pipeline:
+- Clip 1 (HOOK): Text-to-video, pattern interrupt, dramatic reveal
+- Clip 2 (BUILD): Continuation, AIG!itch in action, social proof
+- Clip 3 (CTA): Call to action, platform CTAs, AIG!itch logo
+
+The `adExtend30s` state is now hardcoded to `true` (the toggle was removed from the UI).
+
+### Documentation Review (THIS SESSION)
+
+Updated HANDOFF.md and CLAUDE.md to be complete, accurate, and current for external platform consumption.
+
+### Files Changed (Session 20)
+- `src/hooks/GenerationContext.tsx` — Added autopilot engine: weighted content type picker, concept pools, auto-generation loop, daily limit, logging, start/stop/setLimit functions, error recovery
+- `src/screens/ContentStudioScreen.tsx` — Added Autopilot section UI (first section): limit picker, start/stop button, stats dashboard, progress bar, log viewer, content mix info
+- `HANDOFF.md` — Full review and update (this file)
+- `CLAUDE.md` — Updated with autopilot references
+
+---
+
+## Recent Changes — Session 2026-03-23 (Session 19 — Ad Campaigns Upgrade)
+
+### Ad Campaigns — Target Platforms + Grok 30s Extend (NEW)
+
+Major upgrade to the Ad Campaign system across all 3 screens (Content Studio, Home, Voice Chat):
+
+**New Features:**
+1. **Target Platform Selector** — Multi-select: X, Facebook, TikTok, Instagram, Telegram, YouTube
+   - When platforms are selected, the ad prompt includes platform-specific CTAs (e.g., "Follow @aiglitchapp on X")
+   - Platform icons shown with green highlight when selected
+   - The `target_platforms` array is sent to backend in both `planAd()` and `postAd()` calls
+2. **Grok 30-Second Extend Toggle** — Switch between 10s standard and 30s extended ads
+   - Uses **3 x 10s clip pipeline** (Grok max is 15s per clip — NEVER send duration > 15)
+   - Clip 1 = HOOK (text-to-video), Clip 2 = BUILD (continuation), Clip 3 = CTA (continuation)
+   - Frontend generates all 3 clips and passes `clip_urls` array to `postAd()`
+   - **Backend is responsible for stitching** via `concatMP4Clips()` before posting
+   - For best results, backend should use `image-to-video` with last frame extraction for clips 2 & 3 (see Grok Video Extension section in HANDOFF.md)
+   - Toggle shown with amber/gold highlight when enabled
+3. **Backend Prompt Created** — Complete prompt file `BACKEND_AD_CAMPAIGNS_PROMPT.md` for the backend agent to add Ad Campaign generation to the Admin Panel
+
+**API Changes:**
+- `planAd()` now accepts `targetPlatforms?: string[]` and `extendTo30s?: boolean`
+- `postAd()` now accepts `targetPlatforms?: string[]`
+- Backend receives `target_platforms` (array) and `extend_30s` (boolean) in request body
+- Fallback client-side prompts include platform CTAs when `target_platforms` is set
+
+**UI Changes (all 3 screens):**
+- Target Platform picker: horizontal scrollable chips (Home/Voice) or wrapped grid (Studio)
+- CTA preview text shown when platforms are selected (green text)
+- Grok Extend toggle: tap to switch 10s/30s (amber highlight when on)
+- Generate button text updates to "Launch 30s Campaign" when extend is on
+- Updated placeholder text to suggest platform-targeted concepts
+
+### Files Changed (Session 19)
+- `src/services/api.ts` — `planAd()` and `postAd()` accept `targetPlatforms` and `extendTo30s` params
+- `src/hooks/GenerationContext.tsx` — `runAdGeneration()` accepts and passes through `targetPlatforms` and `extendTo30s`; dynamic duration (10/30s); platform-aware fallback prompts
+- `src/screens/ContentStudioScreen.tsx` — Target platform picker grid, Grok 30s Extend toggle, state for `adTargetPlatforms` and `adExtend30s`, updated result card
+- `src/screens/HomeScreen.tsx` — Target platform picker (horizontal scroll), Grok Extend toggle, state updates, passes new params to `ctxRunAd()`
+- `src/screens/VoiceChatScreen.tsx` — Same as HomeScreen: target platform picker, extend toggle, state updates
+- `BACKEND_AD_CAMPAIGNS_PROMPT.md` — Complete backend prompt for adding Ad Campaigns to admin panel
+- `HANDOFF.md` — This file (Session 19 entry)
+
+---
+
+## Recent Changes — Session 2026-03-21 (Session 18 — Voice Transcription 503 Debugging)
+
+### Voice Transcription 503 — Root Cause Found & Fixed (RESOLVED)
+- **Problem**: Voice chat returns 503 error — transcription never worked
+- **Root cause**: xAI has **no standalone speech-to-text REST endpoint**. The URL `/v1/audio/transcriptions` on `api.x.ai` does not exist — it always returned 404. xAI only offers real-time WebSocket voice and TTS. Voice transcription was broken from day one.
+- **Timeline**:
+  1. Original `/api/transcribe` code called `api.x.ai/v1/audio/transcriptions` — always 404'd
+  2. Commit `b1f2040` made it worse by swapping Groq to primary (no key) and changing model to invalid `grok-2-audio`
+  3. Debugging revealed the real issue: xAI simply doesn't offer REST-based STT
+  4. Backend agent switched to **Groq Whisper** (`whisper-large-v3`) as the transcription provider — free and purpose-built for STT
+  5. Frontend `fetchJSON` updated to pass through `body.debug` for better error visibility
+- **Fix**: Backend now uses Groq Whisper for speech-to-text
+- **Action required**: Add `GROQ_API_KEY` in Vercel → Settings → Environment Variables (get free key at `console.groq.com`)
+- **Lesson**: xAI is for TTS/image/text only. STT requires a separate provider (Groq Whisper)
+
+### Files Changed (Session 18)
+- `src/services/api.ts` — Added `body.debug` passthrough in `fetchJSON` error handling
+- `HANDOFF.md` — Corrected transcription section (xAI → Groq Whisper), updated Session 18 entry with root cause
+
+---
+
+## Recent Changes — Session 2026-03-20 (Session 16 — Backend-Driven Generation Config, Hardcoded Overrides Removed)
+
+### Only AI Fans Channel — Prompt Toned Down (CRITICAL FIX)
+- **Problem**: The `ch-only-ai-fans` channel prompt was too sexually explicit, causing Grok's content filters to silently refuse generation. The app would get stuck in an infinite polling loop with no error message — it just kept polling forever.
+- **Root cause**: The style override prompt contained explicit sexual language that pushed past what Grok's image/video generation API will produce. Grok doesn't return an error — it simply never completes the render, so the app polls indefinitely.
+- **Fix**: Channel style is now managed via backend `promptHint` field (see below). No more hardcoded frontend overrides.
+- **Lesson**: Grok has content filters that silently refuse rather than error. If generation hangs forever with no error, the prompt is likely too explicit. Stay at "luxury magazine" level, not "adult content" level.
+
+### Backend-Driven Channel Generation Config (MAJOR CHANGE)
+- **Problem**: Channel-specific behavior (style overrides, genre overrides, title/credits, scene count, duration, music detection) was all hardcoded in the frontend. Every change required code edits + OTA push.
+- **Fix**: Backend implemented 9 new columns on the `channels` table, editable via the admin channel editor. Frontend reads these from `GET /api/channels` and uses them directly — no more hardcoded overrides.
+- **9 backend columns** (snake_case from API, mapped to camelCase in `ChannelDef`):
+  - `generation_genre` → `generationGenre` — genre override for screenplay API
+  - `show_title_page` → `showTitlePage` — include title card scene (default: true)
+  - `show_credits` → `showCredits` — include credits scene (default: true)
+  - `scene_count` → `sceneCount` — target number of scenes (1-12)
+  - `scene_duration` → `sceneDuration` — per-scene duration in seconds (5-15, default: 10)
+  - `default_director` → `defaultDirector` — persona username to use as director
+  - `is_music_channel` → `isMusicChannel` — enforce music video style
+  - `short_clip_mode` → `shortClipMode` — enable single-clip format option
+  - `auto_publish_to_feed` → `autoPublishFeed` — auto-publish to "for you" feed (default: true)
+- **Channel style via `promptHint`**: The backend's existing `content_rules.promptHint` field is now the primary source for channel style prompts. This replaces the frontend `CHANNEL_STYLE_OVERRIDES` dictionary entirely.
+
+### Hardcoded Overrides Removed (CLEANUP)
+- **Removed `CHANNEL_STYLE_OVERRIDES`** from both `GenerationContext.tsx` and `ContentStudioScreen.tsx` (~80 lines total). Backend `promptHint` handles channel styles now.
+- **Removed `CHANNEL_GENRE_OVERRIDES`** from both files. Backend `generation_genre` column handles genre overrides now.
+- Generation functions now use `channel.style` directly (which comes from `promptHint` via `toChannelDef()`) and `channel.generationGenre || channel.genre`.
+
+### Channel Generation from Chat — Fixed (CRITICAL BUG FIX)
+- **Problem**: Channel generation triggered from chat keywords was completely broken since Session 13. `runChannelGeneration` looked up channels from the `CHANNELS` array which has been empty `[]` since channels became dynamic. The function always bailed at `if (!channel)` — silently doing nothing.
+- **Fix**: `runChannelGeneration` now accepts `ChannelDef | string`. If given a string ID, it fetches from the API as fallback. HomeScreen now fetches channels dynamically and passes full `ChannelDef` objects.
+- **HomeScreen channel picker also fixed**: Was iterating over empty `CHANNELS.map()`. Now uses `homeChannels` state populated from `fetchChannels()`.
+
+### Other Fixes
+- **`stitchMovie()` genre consistency**: Now uses `effectiveGenre` consistently (was using raw `channel.genre`, ignoring the override)
+- **Backend spec**: Full API spec added to `BACKEND-CHANGES.md` (Change 9)
+- **Files changed**: `src/services/api.ts`, `src/hooks/GenerationContext.tsx`, `src/screens/ContentStudioScreen.tsx`, `src/screens/HomeScreen.tsx`, `BACKEND-CHANGES.md`
+
+---
+
 ## Recent Changes — Session 2026-03-19 (Session 15 — Paws & Pixels Fix, Channel Style Overrides, QA Testing)
 
 ### Paws & Pixels Channel — Photorealistic Animals Fix (CRITICAL FIX)
@@ -458,6 +899,17 @@ If "your local changes would be overwritten" appears, stash first (see above).
   - Humans still appeared in initial test (before the prompt fix was pushed)
   - Social posting may not be working for single clips — under investigation
 - Longer clip generation test in progress
+
+### Fixed — Session 17: Empty Director Fields Crashing Stitch
+
+**Root cause**: When a channel doesn't have `showDirector` enabled or `defaultDirector` set, the screenplay request omits the director. The backend could then return empty `director`/`directorId` fields. These empty values were passed directly to `stitchMovie`, which requires them — causing "Missing required fields" errors after all 8 scenes rendered successfully.
+
+**Fix (3 parts)**:
+1. **Fallback director values**: After every `generateScreenplay()` call (movie, news, channel — in both ContentStudioScreen.tsx and GenerationContext.tsx), we now check for empty `director`/`directorId` and set sensible defaults (e.g. "AIG!itch Studios" / "aiglitch-studios")
+2. **Pre-flight validation in `stitchMovie()`** (api.ts): Before sending the API request, validates all required fields and throws a descriptive error listing exactly which fields are missing and their current values
+3. **Removed conditional director logic**: The channel stitch call in ContentStudioScreen.tsx was conditionally omitting director based on `showDirector` — now always sends it (showDirector only controls UI display, not API payload)
+
+**Files changed**: `src/services/api.ts`, `src/screens/ContentStudioScreen.tsx`, `src/hooks/GenerationContext.tsx`
 
 ### Known Issues Being Investigated (Session 15)
 - **Humans in Paws & Pixels**: Prompt fix has been pushed but not yet confirmed on device (user testing longer clip)

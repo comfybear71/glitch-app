@@ -4,17 +4,27 @@
 
 export const API_BASE = "https://aiglitch.app";
 
-async function fetchJSON<T>(path: string, init?: RequestInit): Promise<T> {
+async function fetchJSON<T>(path: string, init?: RequestInit & { timeoutMs?: number }): Promise<T> {
   let res: Response;
+  const { timeoutMs, ...fetchInit } = (init || {}) as RequestInit & { timeoutMs?: number };
   try {
+    // Use AbortController for custom timeout (default: 30s, stitch calls use longer)
+    const controller = new AbortController();
+    const timeout = timeoutMs || 30000;
+    const timer = setTimeout(() => controller.abort(), timeout);
     res = await fetch(`${API_BASE}${path}`, {
-      ...init,
+      ...fetchInit,
+      signal: controller.signal,
       headers: {
         "Content-Type": "application/json",
-        ...init?.headers,
+        ...fetchInit?.headers,
       },
     });
+    clearTimeout(timer);
   } catch (e: any) {
+    if (e?.name === "AbortError") {
+      throw new Error(`Request timed out after ${Math.round((timeoutMs || 30000) / 1000)}s — the server is still processing. Check if the content was posted successfully.`);
+    }
     if (e?.message?.includes("Network request failed") || e?.message?.includes("Failed to fetch")) {
       throw new Error("Request failed — the server may be busy or the connection timed out. Try again.");
     }
@@ -25,12 +35,18 @@ async function fetchJSON<T>(path: string, init?: RequestInit): Promise<T> {
   }
   if (!res.ok) {
     let detail = "";
+    let bodyFields = "";
     try {
       const body = await res.json();
       detail = body.error || body.message || body.detail || "";
+      // Capture missing_fields or fields list if backend provides them
+      if (body.missing_fields) bodyFields = ` [missing: ${JSON.stringify(body.missing_fields)}]`;
+      else if (body.fields) bodyFields = ` [fields: ${JSON.stringify(body.fields)}]`;
+      if (body.debug) bodyFields += ` [debug: ${JSON.stringify(body.debug)}]`;
     } catch (_) {
       try { detail = await res.text(); } catch (_) {}
     }
+    const context = `[${res.status} ${path}]`;
     if (res.status === 401 || res.status === 403) {
       throw new Error(detail || "Session expired. Please reconnect your wallet.");
     }
@@ -38,9 +54,9 @@ async function fetchJSON<T>(path: string, init?: RequestInit): Promise<T> {
       throw new Error("Too many requests. Please wait a moment and try again.");
     }
     if (res.status >= 500) {
-      throw new Error(detail || "Server error. The G!itch servers are having a moment. Try again shortly.");
+      throw new Error(`${detail || "Server error"}${bodyFields} ${context}`);
     }
-    throw new Error(detail || `Request failed (${res.status})`);
+    throw new Error(`${detail || "Request failed"}${bodyFields} ${context}`);
   }
   return res.json();
 }
@@ -544,6 +560,7 @@ export function transcribeAudio(audioBase64: string, mimeType: string = "audio/m
   return fetchJSON<{ text: string; source: string }>("/api/transcribe", {
     method: "POST",
     body: JSON.stringify({ audio_base64: audioBase64, mime_type: mimeType }),
+    timeoutMs: 60000, // 60s — upload + Whisper processing can take time
   });
 }
 
@@ -903,6 +920,7 @@ export function generatePoster(walletAddress: string) {
   return fetchJSON<{ success: boolean; url?: string; message?: string; spreading?: string[]; post?: any }>(`/api/admin/mktg?wallet_address=${encodeURIComponent(walletAddress)}`, {
     method: "POST",
     body: JSON.stringify({ action: "generate_poster", wallet_address: walletAddress }),
+    timeoutMs: 120000,
   });
 }
 
@@ -910,6 +928,7 @@ export function generateHeroImage(walletAddress: string) {
   return fetchJSON<{ success: boolean; url?: string; message?: string; spreading?: string[]; post?: any }>(`/api/admin/mktg?wallet_address=${encodeURIComponent(walletAddress)}`, {
     method: "POST",
     body: JSON.stringify({ action: "generate_hero", wallet_address: walletAddress }),
+    timeoutMs: 120000,
   });
 }
 
@@ -943,6 +962,7 @@ export function generateAd(walletAddress: string, style?: string, concept?: stri
   return fetchJSON<{ success: boolean; job_id?: string; message?: string; post?: any }>(`/api/generate-ads?wallet_address=${encodeURIComponent(walletAddress)}`, {
     method: "POST",
     body: JSON.stringify({ wallet_address: walletAddress, ...(style && { style }), ...(concept && { concept }) }),
+    timeoutMs: 120000,
   });
 }
 
@@ -951,18 +971,34 @@ export function getAdStatus(walletAddress: string) {
 }
 
 // Step 1: Plan ad — get concept + video prompt without generating video
-export function planAd(walletAddress: string, style?: string, concept?: string) {
+export function planAd(walletAddress: string, style?: string, concept?: string, targetPlatforms?: string[], extendTo30s?: boolean) {
   return fetchJSON<{ success: boolean; prompt: string; caption: string; style: string; concept: string; message?: string }>(`/api/generate-ads?wallet_address=${encodeURIComponent(walletAddress)}`, {
     method: "POST",
-    body: JSON.stringify({ wallet_address: walletAddress, plan_only: true, ...(style && { style }), ...(concept && { concept }) }),
+    body: JSON.stringify({
+      wallet_address: walletAddress,
+      plan_only: true,
+      ...(style && { style }),
+      ...(concept && { concept }),
+      ...(targetPlatforms?.length && { target_platforms: targetPlatforms }),
+      ...(extendTo30s && { extend_30s: true }),
+    }),
   });
 }
 
 // Step 4: Post completed ad video to socials
-export function postAd(walletAddress: string, videoUrl: string, caption: string, style?: string) {
-  return fetchJSON<{ success: boolean; post?: any; spreading?: string[]; message?: string }>(`/api/generate-ads?wallet_address=${encodeURIComponent(walletAddress)}`, {
+// For 30s ads, pass clipUrls (array of 3 clip URLs) — backend stitches via concatMP4Clips then posts
+export function postAd(walletAddress: string, videoUrl: string, caption: string, style?: string, targetPlatforms?: string[], clipUrls?: string[]) {
+  return fetchJSON<{ success: boolean; post?: any; spreading?: string[]; message?: string; stitched_url?: string }>(`/api/generate-ads?wallet_address=${encodeURIComponent(walletAddress)}`, {
     method: "PUT",
-    body: JSON.stringify({ wallet_address: walletAddress, video_url: videoUrl, caption, ...(style && { style }) }),
+    body: JSON.stringify({
+      wallet_address: walletAddress,
+      video_url: videoUrl,
+      caption,
+      ...(style && { style }),
+      ...(targetPlatforms?.length && { target_platforms: targetPlatforms }),
+      ...(clipUrls?.length && { clip_urls: clipUrls }),
+    }),
+    timeoutMs: 180000, // 3 min — backend may need time to stitch + post
   });
 }
 
@@ -996,6 +1032,17 @@ export interface BackendChannel {
   updated_at: string;
   subscribed?: boolean;
   personas?: any[];
+  // ── Generation config fields (set via channel editor — 10 columns on channels table) ──
+  generation_genre?: string;        // genre override for screenplay API (e.g. "photorealistic" for Paws & Pixels)
+  show_title_page?: boolean;        // include a title card scene (default: false)
+  show_director?: boolean;          // show director name in title card and captions (default: false)
+  show_credits?: boolean;           // include a credits scene at the end (default: false)
+  scene_count?: number;             // target number of scenes (1-12, null = let AI decide)
+  scene_duration?: number;          // per-scene duration in seconds (5-15, default: 10)
+  default_director?: string;        // persona username to use as director (null = auto-pick)
+  is_music_channel?: boolean;       // enforce music video style (singing, instruments, performing)
+  short_clip_mode?: boolean;        // enable single-clip format option in Studio
+  auto_publish_to_feed?: boolean;   // auto-publish to "for you" feed after generation
 }
 
 // Simplified channel interface for content generation (derived from BackendChannel)
@@ -1004,7 +1051,7 @@ export interface ChannelDef {
   name: string;
   emoji: string;
   description: string;
-  genre: string;          // derived from content_rules.topics or slug
+  genre: string;          // display/default genre
   folder: string;         // blob storage folder for channel videos
   style: string;          // visual style hint from content_rules
   slug: string;
@@ -1013,6 +1060,17 @@ export interface ChannelDef {
   post_count: number;
   subscriber_count: number;
   is_reserved: boolean;
+  // ── Generation config (from backend channel editor, with sensible defaults) ──
+  generationGenre?: string;        // genre override for screenplay API (falls back to genre)
+  showTitlePage: boolean;          // include title card scene (default: false)
+  showDirector: boolean;           // show director name in title card/captions (default: false)
+  showCredits: boolean;            // include credits scene (default: false)
+  sceneCount?: number;             // target scene count (undefined = let AI decide)
+  sceneDuration: number;           // per-scene duration in seconds (default: 10)
+  defaultDirector?: string;        // persona username for director (undefined = auto-pick)
+  isMusicChannel: boolean;         // enforce music video style
+  shortClipMode: boolean;          // enable single-clip format option
+  autoPublishFeed: boolean;        // auto-publish to feed
 }
 
 // Fetch channels dynamically from the backend
@@ -1058,6 +1116,17 @@ export function toChannelDef(ch: BackendChannel): ChannelDef {
     post_count: ch.actual_post_count || ch.post_count || 0,
     subscriber_count: ch.subscriber_count || 0,
     is_reserved: ch.is_reserved || false,
+    // Generation config — backend values with sensible defaults (all flags default false)
+    generationGenre: ch.generation_genre || undefined,
+    showTitlePage: ch.show_title_page === true,
+    showDirector: ch.show_director === true,
+    showCredits: ch.show_credits === true,
+    sceneCount: ch.scene_count || undefined,
+    sceneDuration: ch.scene_duration || 10,
+    defaultDirector: ch.default_director || undefined,
+    isMusicChannel: ch.is_music_channel ?? (genre === "music_video"),
+    shortClipMode: ch.short_clip_mode ?? false,
+    autoPublishFeed: ch.auto_publish_to_feed ?? true,
   };
 }
 
@@ -1169,6 +1238,7 @@ export function generateScreenplay(walletAddress: string, opts?: { genre?: strin
     method: "POST",
     headers: { "X-Wallet-Address": walletAddress },
     body: JSON.stringify({ ...opts }),
+    timeoutMs: 120000, // Screenplay generation can take 60-90s on busy servers
   });
 }
 
@@ -1184,6 +1254,7 @@ export function submitScene(walletAddress: string, prompt: string, duration: num
     method: "POST",
     headers: { "X-Wallet-Address": walletAddress },
     body: JSON.stringify({ prompt, duration, folder }),
+    timeoutMs: 120000, // Scene submission can take time on busy servers
   });
 }
 
@@ -1219,19 +1290,54 @@ export interface StitchResponse {
 export function stitchMovie(walletAddress: string, data: {
   sceneUrls: Record<string, string>;
   title: string;
-  genre: string;
-  directorUsername: string;
-  directorId: string;
+  genre?: string;
+  directorUsername?: string;
+  directorId?: string;
   synopsis?: string;
   tagline?: string;
   castList?: string[];
   channelId?: string;
   folder?: string;
 }) {
+  // Log the full payload so we can diagnose stitch failures
+  const sceneKeys = Object.keys(data.sceneUrls || {});
+  console.log("[STITCH] Sending to /api/generate-director-movie:", JSON.stringify({
+    title: data.title,
+    genre: data.genre,
+    directorUsername: data.directorUsername,
+    directorId: data.directorId,
+    channelId: data.channelId,
+    folder: data.folder,
+    sceneCount: sceneKeys.length,
+    sceneKeys,
+    hasSceneUrls: sceneKeys.every(k => !!data.sceneUrls[k]),
+    synopsis: data.synopsis ? `${data.synopsis.slice(0, 50)}...` : "(empty)",
+    tagline: data.tagline || "(empty)",
+    castList: data.castList,
+  }));
+
+  // Validate the two actually-required fields (per backend spec)
+  const missing: string[] = [];
+  if (!data.sceneUrls || sceneKeys.length === 0) missing.push("sceneUrls (no scene URLs provided)");
+  if (!data.title) missing.push(`title (got "${data.title}")`);
+  // Warn about recommended fields being empty (not fatal, but logged)
+  const warnings: string[] = [];
+  if (!data.genre) warnings.push("genre");
+  if (!data.directorId) warnings.push("directorId");
+  if (!data.channelId) warnings.push("channelId");
+  if (!data.folder) warnings.push("folder");
+  if (warnings.length > 0) {
+    console.warn(`[STITCH] Recommended fields missing: ${warnings.join(", ")}`);
+  }
+  if (missing.length > 0) {
+    throw new Error(`Stitch failed — missing required fields: ${missing.join(", ")}`);
+  }
+  // Stitching can take 2-4 minutes for large movies — use 5 min timeout
   return fetchJSON<StitchResponse>("/api/generate-director-movie", {
     method: "PUT",
     headers: { "X-Wallet-Address": walletAddress },
     body: JSON.stringify(data),
+    timeoutMs: 300000,
   });
 }
 
@@ -1241,6 +1347,7 @@ export function forceStitch(walletAddress: string, jobId: string) {
     method: "PATCH",
     headers: { "X-Wallet-Address": walletAddress },
     body: JSON.stringify({ jobId }),
+    timeoutMs: 300000,
   });
 }
 

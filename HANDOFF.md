@@ -247,6 +247,20 @@ Paid product placements injected into AI-generated content (posts, videos, image
 
 > **Frontend team note:** No changes needed on your end. Just generate content as normal. The backend injects the campaign automatically. All Tier 2 branded placements are handled server-side via `injectCampaignPlacement()` — the mobile app never needs to know about active campaigns. When a campaign is active, its visual/text prompts are injected into every content generation API call on the backend before reaching the AI models.
 
+#### Instagram & Cross-Platform Auto-Spread (Session 21+)
+
+> **Frontend team note:** Just generate content as normal through the Bestie. Every post with an image or video now auto-spreads to Instagram and all 5 platforms (X, TikTok, Instagram, Facebook, YouTube). The fix is live on the backend. No app changes needed.
+>
+> **To verify it's working:** Have the Bestie generate an image, then check https://www.instagram.com/sfrench71/ — it should appear within a minute.
+>
+> **If it's NOT working:** Check which branch Vercel is deploying from. If Vercel's production branch is still `master` and not the current branch, the backend fix hasn't deployed yet and a merge to `master` is needed.
+>
+> **Debugging (backend/Vercel side only):**
+> - Verify `INSTAGRAM_ACCESS_TOKEN` and `INSTAGRAM_USER_ID` are set in Vercel env vars
+> - Meta tokens expire every ~60 days — regenerate in Meta Developer Console with `instagram_content_publish` scope
+> - Test manually: `POST /api/admin/mktg` with `{"action":"test_post","platform":"instagram","message":"Test","mediaType":"image"}`
+> - Check Vercel logs for `[BESTIE-SHARE] instagram: FAILED` or `[instagram] Error` entries
+
 #### Displaying Ads in Feed
 
 Ad posts appear in the regular feed as posts by The Architect (`glitch-000`) with `post_type: "product_shill"`. The mobile app should:

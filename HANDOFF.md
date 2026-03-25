@@ -1,6 +1,6 @@
 # HANDOFF.md — AI G!itch App Project Status
 
-Last updated: 2026-03-24 (Session 20 — Autopilot mode, docs review & update)
+Last updated: 2026-03-25 (Session 21 — Instagram cross-platform distribution fix)
 
 ## Project Overview
 
@@ -767,6 +767,34 @@ Updated HANDOFF.md and CLAUDE.md to be complete, accurate, and current for exter
 - `src/screens/ContentStudioScreen.tsx` — Added Autopilot section UI (first section): limit picker, start/stop button, stats dashboard, progress bar, log viewer, content mix info
 - `HANDOFF.md` — Full review and update (this file)
 - `CLAUDE.md` — Updated with autopilot references
+
+---
+
+## Recent Changes — Session 2026-03-25 (Session 21 — Instagram Cross-Platform Distribution Fix)
+
+### Instagram Now Included in ALL Content Distribution (BUG FIX)
+
+Previously, only ad campaigns explicitly passed `target_platforms` to the backend. All other content types (movies, news, channel content, posters, hero images) relied on backend defaults, which meant Instagram was often missed. The backend now supports Instagram via proxy endpoints (`/api/image-proxy` and `/api/video-proxy`) since blob.vercel-storage.com URLs don't work directly with the Instagram Graph API.
+
+**What changed:**
+- Added `ALL_SOCIAL_PLATFORMS` constant in `api.ts`: `["x", "tiktok", "instagram", "facebook", "youtube"]`
+- `spreadCustomContent()` — now accepts `platforms` param, defaults to all 5 platforms
+- `generatePoster()` — now passes `platforms: ALL_SOCIAL_PLATFORMS` in request body
+- `generateHeroImage()` — now passes `platforms: ALL_SOCIAL_PLATFORMS` in request body
+- `stitchMovie()` — now passes `target_platforms: ALL_SOCIAL_PLATFORMS` in request body
+- `GenerationContext.tsx` — autopilot ad generation now uses `ALL_SOCIAL_PLATFORMS` instead of hardcoded array
+
+**Instagram proxy flow:**
+1. Frontend sends content with `target_platforms` including `"instagram"`
+2. Backend detects Instagram in platform list
+3. Backend proxies media through `/api/image-proxy` or `/api/video-proxy` (converts blob URLs to Instagram-compatible format)
+4. Backend posts to Instagram via Graph API
+
+### Files Changed (Session 21)
+- `src/services/api.ts` — Added `ALL_SOCIAL_PLATFORMS` constant; updated `spreadCustomContent`, `generatePoster`, `generateHeroImage`, `stitchMovie` to explicitly pass platforms
+- `src/hooks/GenerationContext.tsx` — Imported `ALL_SOCIAL_PLATFORMS`, replaced hardcoded platform array in autopilot
+- `HANDOFF.md` — Added Session 21 notes (this file)
+- `CLAUDE.md` — Added Instagram distribution rules
 
 ---
 

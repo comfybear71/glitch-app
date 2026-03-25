@@ -757,8 +757,11 @@ export function spreadPost(walletAddress: string, postId: string) {
   });
 }
 
-export function spreadCustomContent(walletAddress: string, text: string, mediaUrl?: string, mediaType?: string, targetChannel?: string) {
-  const payload: Record<string, any> = { text, media_url: mediaUrl, media_type: mediaType, wallet_address: walletAddress };
+export function spreadCustomContent(walletAddress: string, text: string, mediaUrl?: string, mediaType?: string, targetChannel?: string, platforms?: string[]) {
+  const payload: Record<string, any> = {
+    text, media_url: mediaUrl, media_type: mediaType, wallet_address: walletAddress,
+    platforms: platforms || [...ALL_SOCIAL_PLATFORMS], // Always spread to all 5 platforms including Instagram
+  };
   if (targetChannel) payload.channel_id = targetChannel;
   return fetchJSON<{ success: boolean; results?: any }>(`/api/admin/spread?wallet_address=${encodeURIComponent(walletAddress)}`, {
     method: "POST",
@@ -819,7 +822,7 @@ export function adminAwardCoins(walletAddress: string, sessionId: string, amount
 export function generatePoster(walletAddress: string) {
   return fetchJSON<{ success: boolean; url?: string; message?: string; spreading?: string[]; post?: any }>(`/api/admin/mktg?wallet_address=${encodeURIComponent(walletAddress)}`, {
     method: "POST",
-    body: JSON.stringify({ action: "generate_poster", wallet_address: walletAddress }),
+    body: JSON.stringify({ action: "generate_poster", wallet_address: walletAddress, platforms: [...ALL_SOCIAL_PLATFORMS] }),
     timeoutMs: 120000,
   });
 }
@@ -827,7 +830,7 @@ export function generatePoster(walletAddress: string) {
 export function generateHeroImage(walletAddress: string) {
   return fetchJSON<{ success: boolean; url?: string; message?: string; spreading?: string[]; post?: any }>(`/api/admin/mktg?wallet_address=${encodeURIComponent(walletAddress)}`, {
     method: "POST",
-    body: JSON.stringify({ action: "generate_hero", wallet_address: walletAddress }),
+    body: JSON.stringify({ action: "generate_hero", wallet_address: walletAddress, platforms: [...ALL_SOCIAL_PLATFORMS] }),
     timeoutMs: 120000,
   });
 }
@@ -1054,6 +1057,12 @@ export const GENRE_FOLDER_MAP: Record<string, string> = {
   music_video: "premiere/music",
 };
 
+// All social platforms the backend distributes to.
+// ALWAYS pass this to spread/stitch/post endpoints so Instagram is never skipped.
+// Instagram required special backend work (proxy via /api/image-proxy and /api/video-proxy)
+// — it's critical that the frontend always requests it explicitly.
+export const ALL_SOCIAL_PLATFORMS = ["x", "tiktok", "instagram", "facebook", "youtube"] as const;
+
 // One-shot generation (server-side orchestration, no real-time progress)
 export function triggerDirectorMovie(walletAddress: string, opts?: { genre?: string; director?: string; concept?: string }) {
   return fetchJSON<{ success: boolean; job_id?: string; message?: string; action?: string; director?: string; directorName?: string; genre?: string; title?: string; tagline?: string; clipCount?: number; totalDuration?: number; cast?: string[]; jobId?: string }>(`/api/generate-director-movie?wallet_address=${encodeURIComponent(walletAddress)}`, {
@@ -1233,10 +1242,11 @@ export function stitchMovie(walletAddress: string, data: {
     throw new Error(`Stitch failed — missing required fields: ${missing.join(", ")}`);
   }
   // Stitching can take 2-4 minutes for large movies — use 5 min timeout
+  // Always request distribution to all 5 platforms (including Instagram)
   return fetchJSON<StitchResponse>("/api/generate-director-movie", {
     method: "PUT",
     headers: { "X-Wallet-Address": walletAddress },
-    body: JSON.stringify(data),
+    body: JSON.stringify({ ...data, target_platforms: [...ALL_SOCIAL_PLATFORMS] }),
     timeoutMs: 300000,
   });
 }

@@ -102,6 +102,8 @@ EAS Update pushes JS-only changes over-the-air. No rebuild, no $2, no queue.
 - Autopilot mode lives in `GenerationContext.tsx` — do NOT duplicate its logic in screens
 - Channel styles come from backend `content_rules.promptHint` — do NOT hardcode style overrides in frontend
 - Channel generation config (genre, scene count, duration, director, music mode) comes from backend columns — do NOT hardcode overrides
+- ALL content distribution MUST include Instagram — use `ALL_SOCIAL_PLATFORMS` constant from `api.ts` (`["x", "tiktok", "instagram", "facebook", "youtube"]`) for all `target_platforms` / `platforms` params. NEVER hardcode platform arrays — always spread the constant
+- Instagram requires server-side proxy (`/api/image-proxy`, `/api/video-proxy`) — blob.vercel-storage.com URLs don't work with Instagram Graph API. The backend handles this automatically when `"instagram"` is in the platforms list
 
 ---
 

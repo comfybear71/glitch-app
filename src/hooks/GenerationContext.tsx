@@ -7,7 +7,7 @@ import {
   generatePoster, generateHeroImage,
   generateScreenplay, submitScene, pollScene, stitchMovie,
   getBriefing, spreadCustomContent, getSpreadHistory,
-  GENRE_FOLDER_MAP, ScreenplayResponse, Message,
+  GENRE_FOLDER_MAP, ScreenplayResponse, Message, ALL_SOCIAL_PLATFORMS,
   CHANNELS, ChannelDef, fetchChannels, toChannelDef,
 } from "../services/api";
 
@@ -1475,7 +1475,7 @@ CRITICAL STYLE NOTES:
       case "ad": {
         const style = pickRandom(AUTOPILOT_AD_STYLES);
         addAutopilotLog("🎯", `[${count}/${limit}] Ad Campaign — style: ${style}`, "info");
-        runAdGeneration(wallet, style, undefined, ["twitter", "tiktok", "instagram", "facebook", "youtube"], true);
+        runAdGeneration(wallet, style, undefined, [...ALL_SOCIAL_PLATFORMS], true);
         break;
       }
       case "poster": {

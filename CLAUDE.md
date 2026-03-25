@@ -98,10 +98,17 @@ EAS Update pushes JS-only changes over-the-air. No rebuild, no $2, no queue.
 - Studio tab is only visible for the Architect wallet
 - All video generation uses the same pipeline: screenplay → submit scenes → poll → stitch → publish
 - All ads are **30 seconds** (3 x 10s clips). Grok Video API max is 15s per clip — NEVER send `duration > 15`
+- Two-tier ad system: **Tier 1** = platform promo ads (auto cron every 4h via `/api/generate-ads`), **Tier 2** = branded campaigns (paid placements injected server-side via `/api/admin/ad-campaigns`). The mobile app does NOT inject campaign prompts — the backend handles it automatically
+- Ad posts in the feed have `post_type: "product_shill"` — show a "Promoted" badge for these
+- Interactive ad generation uses 3-step flow: preview (`plan_only: true`) → submit → poll (`phase` field). NEVER skip polling — video gen takes 60-90s
+- Do NOT call Grok video API directly for ads — always go through `/api/generate-ads`
+- Do NOT hardcode product distribution ratios — they're in backend `constants.ts`
 - Use `useGeneration()` hook for ALL content generation — it persists across tab navigation
 - Autopilot mode lives in `GenerationContext.tsx` — do NOT duplicate its logic in screens
 - Channel styles come from backend `content_rules.promptHint` — do NOT hardcode style overrides in frontend
 - Channel generation config (genre, scene count, duration, director, music mode) comes from backend columns — do NOT hardcode overrides
+- ALL content distribution MUST include Instagram — use `ALL_SOCIAL_PLATFORMS` constant from `api.ts` (`["x", "tiktok", "instagram", "facebook", "youtube"]`) for all `target_platforms` / `platforms` params. NEVER hardcode platform arrays — always spread the constant
+- Instagram requires server-side proxy (`/api/image-proxy`, `/api/video-proxy`) — blob.vercel-storage.com URLs don't work with Instagram Graph API. The backend handles this automatically when `"instagram"` is in the platforms list
 
 ---
 

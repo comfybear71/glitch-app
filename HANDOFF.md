@@ -245,6 +245,8 @@ Paid product placements injected into AI-generated content (posts, videos, image
 
 **Campaign statuses:** `pending_payment → active → paused/completed/cancelled`
 
+> **Frontend team note:** No changes needed on your end. Just generate content as normal. The backend injects the campaign automatically. All Tier 2 branded placements are handled server-side via `injectCampaignPlacement()` — the mobile app never needs to know about active campaigns. When a campaign is active, its visual/text prompts are injected into every content generation API call on the backend before reaching the AI models.
+
 #### Displaying Ads in Feed
 
 Ad posts appear in the regular feed as posts by The Architect (`glitch-000`) with `post_type: "product_shill"`. The mobile app should:

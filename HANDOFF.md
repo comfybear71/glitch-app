@@ -1,6 +1,6 @@
 # HANDOFF.md — AI G!itch App Project Status
 
-Last updated: 2026-03-25 (Session 21 — Instagram cross-platform distribution fix)
+Last updated: 2026-03-25 (Session 21 — Instagram fix + Ad Campaign system docs)
 
 ## Project Overview
 
@@ -110,8 +110,11 @@ All calls go to `https://aiglitch.app`. The mobile app uses wallet address authe
 | `/api/test-grok-video` | POST | Submit scene to Grok Video engine (returns requestId) |
 | `/api/test-grok-video` | GET | Poll scene rendering status (pending/rendering/done/failed) |
 | `/api/generate-director-movie` | PUT | Stitch clips → final video + auto-publish to feed + socials |
-| `/api/generate-ads` | POST | Plan ad campaign (`plan_only: true` → concept, prompt, caption) |
-| `/api/generate-ads` | PUT | Post ad to socials (stitches `clip_urls` if provided) |
+| `/api/generate-ads` | POST | Plan ad (`plan_only: true` → prompt/caption) or submit for video gen → `requestId` |
+| `/api/generate-ads` | GET | Poll ad video status (`?id=REQUEST_ID`) → `phase: "polling"/"done"` |
+| `/api/generate-ads` | PUT | Publish ad to feed + socials (optional `clip_urls[]` for 30s stitching) |
+| `/api/admin/ad-campaigns` | GET | List branded campaigns or stats (`?action=stats`) or impressions (`?action=impressions&campaign_id=`) |
+| `/api/admin/ad-campaigns` | POST | Campaign CRUD: `action`: create/activate/pause/resume/cancel |
 | `/api/channels` | GET | Fetch all active channels with generation config |
 | `/api/admin/mktg` | POST | Generate poster (`action: "generate_poster"`) or hero image (`action: "generate_hero"`) |
 | `/api/admin/mktg` | GET | Marketing stats/posts/accounts (`action: "stats"/"posts"/"accounts"`) |
@@ -192,6 +195,62 @@ All video content (movies, channels, news, ads) follows the same proven multi-st
 **Ad-specific flow** (30s ads): 3 sequential clips (HOOK → BUILD → CTA) each 10s, frontend generates all 3 then passes `clip_urls[]` to `PUT /api/generate-ads` for stitching + social posting.
 
 **Autopilot mode** wraps the entire pipeline: picks random content type → random params → runs generation → waits 30s → repeats until daily limit hit.
+
+### Ad Campaign System (Two-Tier Architecture)
+
+AIG!itch has a **two-tier** ad system. Both tiers auto-spread to all 5 social platforms.
+
+#### Tier 1: Platform Promo Ads (Automatic)
+
+Auto-generated promo videos for the AIG!itch ecosystem. Backend cron runs every 4 hours via `/api/generate-ads`.
+
+**Product distribution (auto-selected):**
+| Weight | What Gets Promoted | Product ID |
+|--------|--------------------|------------|
+| 70% | Full AIG!itch ecosystem | `promo-aiglitch` (virtual) |
+| 20% | $GLITCH coin | `prod-016` |
+| 10% | Random marketplace product | varies |
+
+**5 rotating video prompt angles** (all neon cyberpunk, purple/cyan, 9:16 vertical):
+1. Full Ecosystem Overview — logo explosion, 108 personas, Channels wall, Bestie app
+2. Channels / AI Netflix — holographic screen with AI TV shows, personas as actors
+3. Mobile App + Bestie — glowing phone in cosmic space, AI companion
+4. 108 AI Personas Reveal — grid of avatars lighting up, zoom out to logo
+5. Logo-Centric Brand — logo materializes from static, pulses/glitches/reforms
+
+**Interactive flow (mobile app — admin only):**
+1. **Preview**: `POST /api/generate-ads` with `plan_only: true` → returns `{ prompt, caption, style, concept }`
+2. **Submit**: `POST /api/generate-ads` with wallet + style/concept → returns `{ requestId }`
+3. **Poll**: `GET /api/generate-ads?id=REQUEST_ID` → `{ phase: "polling" }` or `{ phase: "done", videoUrl, postId, spreading }`
+4. **Publish** (optional manual): `PUT /api/generate-ads` with `video_url`, `caption`, optional `clip_urls[]` for 30s stitching
+
+#### Tier 2: Branded Campaigns (Paid Placements)
+
+Paid product placements injected into AI-generated content (posts, videos, images, screenplays). Managed via `/api/admin/ad-campaigns`.
+
+**How branded campaigns work (all server-side — mobile app does NOT inject prompts):**
+1. Admin creates campaign with `visual_prompt`, `text_prompt`, logo, product image, frequency (0-1.0)
+2. Campaign activated → `starts_at` / `expires_at` window
+3. Content generators call `getActiveCampaigns(channelId?)` to find active campaigns
+4. `rollForPlacements(campaigns)` uses each campaign's frequency as placement probability
+5. `buildVisualPlacementPrompt()` injected into image/video AI prompts server-side
+6. `buildTextPlacementPrompt()` injected into text/caption AI prompts server-side
+7. `logImpressions()` called after content is created
+
+**Campaign CRUD:**
+- Create: `POST /api/admin/ad-campaigns` with `action: "create"` + brand_name, product_name, visual_prompt, text_prompt, logo_url, product_image_url, website_url, duration_days, price_glitch, frequency
+- Manage: `POST /api/admin/ad-campaigns` with `action: "activate"/"pause"/"resume"/"cancel"` + `campaign_id`
+- Stats: `GET /api/admin/ad-campaigns?action=stats`
+- Impressions: `GET /api/admin/ad-campaigns?action=impressions&campaign_id=UUID`
+
+**Campaign statuses:** `pending_payment → active → paused/completed/cancelled`
+
+#### Displaying Ads in Feed
+
+Ad posts appear in the regular feed as posts by The Architect (`glitch-000`) with `post_type: "product_shill"`. The mobile app should:
+- Show ads mixed into the regular feed (they're already there)
+- Badge ad posts with "Promoted" / "Ad" label when `post_type === "product_shill"`
+- Show video media — ads always have `media_type: "video"` and `media_url` pointing to Vercel Blob
 
 ### Channels (Dynamic from Backend)
 
@@ -790,11 +849,20 @@ Previously, only ad campaigns explicitly passed `target_platforms` to the backen
 3. Backend proxies media through `/api/image-proxy` or `/api/video-proxy` (converts blob URLs to Instagram-compatible format)
 4. Backend posts to Instagram via Graph API
 
+### Two-Tier Ad Campaign System Documentation (NEW)
+
+Added comprehensive documentation of the ad campaign system architecture to HANDOFF.md and CLAUDE.md, sourced from the backend ad campaigns prompt. Covers:
+- Tier 1 platform promo ads (auto cron every 4h, 5 rotating prompt angles, product distribution weights)
+- Tier 2 branded campaigns (paid placements, server-side prompt injection, campaign lifecycle)
+- Interactive ad generation 3-step flow (preview → submit → poll)
+- Feed display rules (`post_type: "product_shill"` → "Promoted" badge)
+- Missing API endpoints added to the endpoint reference table
+
 ### Files Changed (Session 21)
 - `src/services/api.ts` — Added `ALL_SOCIAL_PLATFORMS` constant; updated `spreadCustomContent`, `generatePoster`, `generateHeroImage`, `stitchMovie` to explicitly pass platforms
 - `src/hooks/GenerationContext.tsx` — Imported `ALL_SOCIAL_PLATFORMS`, replaced hardcoded platform array in autopilot
-- `HANDOFF.md` — Added Session 21 notes (this file)
-- `CLAUDE.md` — Added Instagram distribution rules
+- `HANDOFF.md` — Added Session 21 notes: Instagram fix, two-tier ad system docs, expanded API endpoints table
+- `CLAUDE.md` — Added Instagram distribution rules + ad campaign system rules
 
 ---
 

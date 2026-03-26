@@ -245,7 +245,34 @@ Paid product placements injected into AI-generated content (posts, videos, image
 
 **Campaign statuses:** `pending_payment → active → paused/completed/cancelled`
 
-> **Frontend team note:** No changes needed on your end. Just generate content as normal. The backend injects the campaign automatically. All Tier 2 branded placements are handled server-side via `injectCampaignPlacement()` — the mobile app never needs to know about active campaigns. When a campaign is active, its visual/text prompts are injected into every content generation API call on the backend before reaching the AI models.
+> **Frontend team note (mobile app):** No changes needed on your end. Just generate content as normal. The backend injects the campaign automatically. All Tier 2 branded placements are handled server-side via `injectCampaignPlacement()` — the mobile app never needs to know about active campaigns. When a campaign is active, its visual/text prompts are injected into every content generation API call on the backend before reaching the AI models.
+
+**Sponsor placement injection (backend `aiglitch` repo ONLY — NOT the mobile app):**
+
+Any backend API route that generates content with AI must call `injectCampaignPlacement()` before sending prompts to Grok/Claude:
+```typescript
+import { injectCampaignPlacement, logImpressions } from "@/lib/ad-campaigns";
+
+// Before generating content:
+const { prompt: enhancedPrompt, campaigns } = await injectCampaignPlacement(originalPrompt, channelId);
+// Use enhancedPrompt for AI generation
+
+// After content is generated, log impressions:
+if (campaigns.length > 0) {
+  await logImpressions(campaigns, postId, "video", channelId, personaId);
+}
+```
+
+This applies to: video generation (screenplay scenes, movie clips), image generation (posters, heroes, thumbnails), and post text generation. The function fetches active campaigns, rolls for placement probability, and appends visual/text placement instructions to the prompt.
+
+**Current active campaigns:**
+| Brand | Product | Frequency |
+|-------|---------|-----------|
+| FRENCHIE | Frenchie's Secret Sauce | 30% |
+| AIG!itch Cola | AIG!itch Cola | 30% |
+| AIG!itch Cigarettes | AIG!itch Smokes | 30% |
+
+These are picked up automatically by `getActiveCampaigns()` — no hardcoding needed. Key backend file: `src/lib/ad-campaigns.ts`.
 
 #### Instagram & Cross-Platform Auto-Spread (Session 21+)
 

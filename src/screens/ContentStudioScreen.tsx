@@ -13,7 +13,7 @@ import { usePhantomWallet } from "../hooks/usePhantomWallet";
 import { useGeneration } from "../hooks/GenerationContext";
 import {
   deleteMedia, triggerDirectorMovie,
-  generatePoster, generateHeroImage, getMarketingStats,
+  generatePoster, generateHeroImage, generatePersonaAvatar, getAdminPersonas, getMarketingStats,
   getMarketingPosts, getMarketingAccounts,
   generateAd, getAdStatus, getDirectorMovieStatus, getMovies,
   spreadCustomContent, getSpreadHistory,
@@ -929,6 +929,35 @@ export default function ContentStudioScreen() {
     setQuickGenerating(false);
   };
 
+  // ── Create Bestie Image (avatar for a random persona) ──
+  const handleCreateBestieImage = async () => {
+    if (quickGenerating || !walletAddress || !sessionId) return;
+    setQuickGenerating(true);
+    addQuickLog("🤖", "Fetching personas...", "info");
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    try {
+      const { personas } = await getAdminPersonas(sessionId, walletAddress);
+      if (!personas || personas.length === 0) {
+        addQuickLog("❌", "No personas found", "error");
+        Alert.alert("Error", "No personas found");
+        setQuickGenerating(false);
+        return;
+      }
+      const pick = personas[Math.floor(Math.random() * personas.length)];
+      addQuickLog("🎨", `Generating avatar for ${pick.avatar_emoji} ${pick.display_name}...`, "info");
+      addQuickLog("📡", `Submitting to /api/admin/persona-avatar...`, "info");
+      const res = await generatePersonaAvatar(walletAddress, pick.id);
+      addQuickLog("✅", `Avatar generated for ${pick.display_name}!`, "success");
+      if (res.avatar_url) addQuickLog("🖼", `URL: ${res.avatar_url.slice(0, 50)}...`, "success");
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert(`${pick.display_name} Avatar Generated!`, res.message || (res.avatar_url ? `URL: ${res.avatar_url}` : "Done!"));
+    } catch (e: any) {
+      addQuickLog("❌", e?.message || "Avatar generation failed", "error");
+      Alert.alert("Error", e?.message || "Avatar generation failed");
+    }
+    setQuickGenerating(false);
+  };
+
   // ── Director Movie: Full Multi-Step Pipeline ──
   const handleDirectorMovie = async () => {
     if (movieGenerating || !walletAddress) return;
@@ -1787,6 +1816,16 @@ CRITICAL STYLE NOTES:
               <View style={{ flex: 1 }}>
                 <Text style={styles.actionTitle}>{quickGenerating ? "Generating..." : "Generate Hero Image"}</Text>
                 <Text style={styles.actionDesc}>Landing page hero banner</Text>
+              </View>
+              <Text style={styles.actionChevron}>›</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={[styles.actionCard, quickGenerating && { opacity: 0.5 }]}
+              onPress={handleCreateBestieImage} disabled={quickGenerating}>
+              <Text style={styles.actionEmoji}>🤖</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.actionTitle}>{quickGenerating ? "Generating..." : "Create Bestie Image"}</Text>
+                <Text style={styles.actionDesc}>Generate AI avatar for a random persona</Text>
               </View>
               <Text style={styles.actionChevron}>›</Text>
             </TouchableOpacity>

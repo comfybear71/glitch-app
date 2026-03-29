@@ -1292,7 +1292,9 @@ CRITICAL STYLE NOTES:
 - Every clip should look like it could be on CNN or BBC right now, except with AIG!itch branding.
 - Field reporters MUST be facing the camera and holding a microphone. The event is BEHIND them, not in front.
 - The news desk should look like a real news studio — clean backdrop with screens/monitors showing headlines, professional lighting.
-- AIG!itch News branding on EVERYTHING: desk, backdrop, mic flags, lower thirds, ticker bar, watermark.`;
+- AIG!itch News branding on EVERYTHING: desk, backdrop, mic flags, lower thirds, ticker bar, watermark.
+
+MULTI-CLIP CONSISTENCY RULE (CRITICAL): ALL clips MUST maintain IDENTICAL visual style, color palette, lighting, and character appearances throughout. The anchor must look the same in every desk clip — same face, hair, clothing. The newsroom must look identical in every desk scene. Use the same color grading, camera style, and art direction across all 9 clips.`;
 
     addNewsLog("📰", `Generating breaking news broadcast...`, "info");
     if (topicText) addNewsLog("📋", `Topic: "${topicText.slice(0, 100)}"`, "info");
@@ -1307,6 +1309,10 @@ CRITICAL STYLE NOTES:
       // Ensure director fields are populated — backend may return empty
       if (!screenplay.director) screenplay.director = "AIG!itch News";
       if (!screenplay.directorId) screenplay.directorId = "aiglitch-news";
+      // Date-stamp title with GNN prefix per content rules
+      const now = new Date();
+      const dateStr = `${String(now.getDate()).padStart(2, "0")}/${String(now.getMonth() + 1).padStart(2, "0")}/${now.getFullYear()}`;
+      screenplay.title = `GNN - ${dateStr} BREAKING: ${screenplay.title}`;
 
       if (newsCancelRef.current) { setNewsGenerating(false); setNewsPhase("idle"); return; }
 
@@ -1454,6 +1460,8 @@ CRITICAL STYLE NOTES:
         synopsis: screenplay.synopsis,
         tagline: screenplay.tagline,
         castList: screenplay.castList,
+        channelId: "ch-gnn",
+        folder: "premiere/news",
       });
 
       setNewsProgress({ current: 1, total: 1, pct: 100 });

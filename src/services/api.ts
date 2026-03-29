@@ -1296,7 +1296,7 @@ export interface StitchResponse {
   spreading?: string[];
 }
 
-export function stitchMovie(walletAddress: string, data: {
+export async function stitchMovie(walletAddress: string, data: {
   sceneUrls: Record<string, string>;
   title: string;
   genre?: string;
@@ -1342,13 +1342,43 @@ export function stitchMovie(walletAddress: string, data: {
     throw new Error(`Stitch failed — missing required fields: ${missing.join(", ")}`);
   }
   // Stitching can take 2-4 minutes for large movies — use 5 min timeout
-  // Always request distribution to all 5 platforms (including Instagram)
-  return fetchJSON<StitchResponse>("/api/generate-director-movie", {
-    method: "PUT",
-    headers: { "X-Wallet-Address": walletAddress },
-    body: JSON.stringify({ ...data, target_platforms: [...ALL_SOCIAL_PLATFORMS] }),
-    timeoutMs: 300000,
+  // Uses FormData POST (not JSON PUT) for Safari compatibility
+  const formData = new FormData();
+  const payload = { ...data, target_platforms: [...ALL_SOCIAL_PLATFORMS] };
+  // Flatten sceneUrls into individual form fields for reliable transmission
+  Object.entries(payload).forEach(([key, value]) => {
+    if (key === "sceneUrls" && typeof value === "object") {
+      formData.append(key, JSON.stringify(value));
+    } else if (Array.isArray(value)) {
+      formData.append(key, JSON.stringify(value));
+    } else if (value !== undefined && value !== null) {
+      formData.append(key, String(value));
+    }
   });
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 300000);
+  try {
+    const res = await fetch(`${API_BASE}/api/generate-director-movie`, {
+      method: "POST",
+      headers: { "X-Wallet-Address": walletAddress },
+      // Do NOT set Content-Type — browser sets multipart/form-data boundary automatically
+      body: formData,
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => ({}));
+      throw new Error(errBody.error || errBody.message || `Stitch failed [${res.status}]`);
+    }
+    return (await res.json()) as StitchResponse;
+  } catch (e: any) {
+    clearTimeout(timer);
+    if (e?.name === "AbortError") {
+      throw new Error("Stitch timed out after 5 minutes — the server may still be processing. Check if the content was posted.");
+    }
+    throw e;
+  }
 }
 
 // Force-stitch an existing job
@@ -1432,6 +1462,7 @@ export function generatePersonaAvatar(walletAddress: string, personaId: string) 
   return fetchJSON<{ success: boolean; avatar_url?: string; message?: string }>(`/api/admin/persona-avatar?wallet_address=${encodeURIComponent(walletAddress)}`, {
     method: "POST",
     body: JSON.stringify({ persona_id: personaId, use_grok: true, wallet_address: walletAddress }),
+    timeoutMs: 120000, // 120s — Grok image generation can take 60-90s
   });
 }
 

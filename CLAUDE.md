@@ -15,7 +15,7 @@ After ANY code changes, these commands must run IN ORDER before previewing on iP
 git pull origin <your-assigned-branch>
 npm install
 npx expo export --platform ios
-eas update --branch preview --message "Description of changes"
+EAS_SKIP_AUTO_FINGERPRINT=1 eas update --branch preview --message "Description of changes"
 ```
 This is FREE and INSTANT — no $2 build cost, no queue wait. The app picks up the update on next launch.
 
@@ -61,7 +61,7 @@ EAS Update pushes JS-only changes over-the-air. No rebuild, no $2, no queue.
 1. `git pull origin <branch>`
 2. `npm install`
 3. `npx expo export --platform ios` ← FREE local test
-4. `eas update --branch preview --message "what changed"` ← FREE + instant
+4. `EAS_SKIP_AUTO_FINGERPRINT=1 eas update --branch preview --message "what changed"` ← FREE + instant
 5. Relaunch the app — update downloads automatically
 
 **IMPORTANT**: The FIRST preview build after this setup MUST be a full `eas build --profile preview --platform ios` to bake in `expo-updates`. After that, all JS changes can use `eas update`.
@@ -142,10 +142,11 @@ Autopilot (GenerationContext.tsx):
 |---------|---------|------|---------|
 | Preview | `eas build --profile preview --platform ios` | $2 | First install / native changes |
 | Production | `eas build --profile production --platform ios` | $2 | App Store / TestFlight only |
-| OTA Update | `eas update --branch preview --message "..."` | FREE | JS-only changes (most changes) |
+| OTA Update | `EAS_SKIP_AUTO_FINGERPRINT=1 eas update --branch preview --message "..."` | FREE | JS-only changes (most changes) |
 
 **NEVER use production profile for testing.**
 **Prefer `eas update` over `eas build` for JS-only changes.**
+**Always prefix `eas update` with `EAS_SKIP_AUTO_FINGERPRINT=1`** to avoid fingerprint errors.
 
 ---
 
@@ -164,7 +165,7 @@ Autopilot (GenerationContext.tsx):
 1. `git pull origin <branch>`
 2. `npm install`
 3. `npx expo export --platform ios` ← **FREE local test. Must say "Bundled" with no errors**
-4. `eas update --branch preview --message "what changed"` ← **FREE + instant**
+4. `EAS_SKIP_AUTO_FINGERPRINT=1 eas update --branch preview --message "what changed"` ← **FREE + instant**
 5. Relaunch the app — update downloads automatically
 
 **If the app needs a fresh install (native changes or first time):**

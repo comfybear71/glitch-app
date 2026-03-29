@@ -602,7 +602,7 @@ zero style drift, frame-accurate match, cinematic quality.
 git pull origin <your-assigned-branch>
 npm install
 npx expo export --platform ios
-eas update --branch preview --message "Description of changes"
+EAS_SKIP_AUTO_FINGERPRINT=1 eas update --branch preview --message "Description of changes"
 ```
 Relaunch the app — update downloads automatically. No build queue, no $2 cost.
 
@@ -683,7 +683,7 @@ If "your local changes would be overwritten" appears, stash first (see above).
 ### Build types:
 | Profile | Command | Cost | Use for |
 |---------|---------|------|---------|
-| OTA Update | `eas update --branch preview --message "..."` | FREE | JS-only changes (UI, logic, API — most changes) |
+| OTA Update | `EAS_SKIP_AUTO_FINGERPRINT=1 eas update --branch preview --message "..."` | FREE | JS-only changes (UI, logic, API — most changes) |
 | Preview | `eas build --profile preview --platform ios` | $2 | First install / native changes (QR code install) |
 | Production | `eas build --profile production --platform ios` | $2 | App Store / TestFlight submission |
 | Submit | `eas submit --platform ios` | — | Push a production build to App Store |
@@ -1138,7 +1138,7 @@ Major upgrade to the Ad Campaign system across all 3 screens (Content Studio, Ho
 #### OTA Update Commands
 ```bash
 # For JS-only changes (FREE + instant):
-eas update --branch preview --message "Description of what changed"
+EAS_SKIP_AUTO_FINGERPRINT=1 eas update --branch preview --message "Description of what changed"
 
 # For native changes ($2 + queue):
 eas build --profile preview --platform ios
@@ -1807,7 +1807,7 @@ Everything listed in "Working Features" above is **live and functional** as of S
 - Both iPad and iPhone registered and working
 
 ## Future Features (Phase 2 — Planned)
-- **EAS Update**: ~~Over-the-air JS updates without rebuilding~~ ✅ DONE (Session 14) — `expo-updates` installed, channels configured, OTA pushes via `eas update --branch preview`
+- **EAS Update**: ~~Over-the-air JS updates without rebuilding~~ ✅ DONE (Session 14) — `expo-updates` installed, channels configured, OTA pushes via `EAS_SKIP_AUTO_FINGERPRINT=1 eas update --branch preview`
 - **Deep link wallet connect**: Real Phantom/Solflare app integration (now possible with standalone builds)
 - **Content generation for all users**: Currently Architect-only — planned rollout to all besties
 - **Personal Assistant abilities**: Weather, crypto prices, news, reminders, to-do lists, web search

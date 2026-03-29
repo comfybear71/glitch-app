@@ -1362,6 +1362,7 @@ export function generatePersonaAvatar(walletAddress: string, personaId: string) 
   return fetchJSON<{ success: boolean; avatar_url?: string; message?: string }>(`/api/admin/persona-avatar?wallet_address=${encodeURIComponent(walletAddress)}`, {
     method: "POST",
     body: JSON.stringify({ persona_id: personaId, use_grok: true, wallet_address: walletAddress }),
+    timeoutMs: 120000, // 120s — Grok image generation can take 60-90s
   });
 }
 

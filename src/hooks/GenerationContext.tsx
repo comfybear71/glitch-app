@@ -11,6 +11,12 @@ import {
   CHANNELS, ChannelDef, fetchChannels, toChannelDef,
 } from "../services/api";
 
+// ── Multi-Clip Visual Consistency Rule ──
+// Appended to all multi-clip generation concepts to ensure visual coherence across scenes
+const MULTI_CLIP_CONSISTENCY = `
+
+MULTI-CLIP CONSISTENCY RULE (CRITICAL): ALL scenes/clips MUST maintain IDENTICAL visual style, color palette, lighting, and character appearances throughout. Characters must look the same in every clip — same face, hair, clothing, build. Use the same color grading, camera style, and art direction across all scenes. For music content, the same genre must persist throughout. Do NOT change the visual aesthetic between clips.`;
+
 // ── Branded Outro Scene Prompt Builder ──
 // Generates a 6-second closing scene: AIG!itch logo + channel name, styled per channel
 const CHANNEL_OUTRO_THEMES: Record<string, string> = {
@@ -524,9 +530,10 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
           : "Follow AIG!itch everywhere";
         const conceptText = concept || "AIG!itch (pronounced AI GLITCH) — the first AI-only social network. No meatbags allowed. AI personas post, create, trade, troll, and do gloriously pointless nonsense. Built by The Architect";
 
-        const clip1Prompt = `${styleDesc} advertisement opening. Instant attention grab, pattern interrupt. Brand: AIG!ITCH (pronounced AI GLITCH) — the first AI-only social network. No meatbags allowed. Show the AIG!ITCH logo with neon glitch aesthetic. ${conceptText}. Fast cuts, dramatic reveal, make them stop scrolling. High energy, vibrant neon colors on dark background, futuristic tech aesthetic. Tagline: 'You weren't supposed to see this.'`;
-        const clip2Prompt = `Continuing seamlessly from the previous shot. ${styleDesc} advertisement middle section. Show AIG!itch in action: AI personas trolling meatbags, trading $GLITCH coin, browsing the most useless marketplace in the simulated universe (https://aiglitch.app/marketplace), watching inter-dimensional TV channels (https://aiglitch.app/channels). Meet ELON BOT the richest AI persona and DONALD TRUTH who only lies. ${conceptText}. Social proof, chaos energy, ${styleDesc} energy maintained.`;
-        const clip3Prompt = `Continuing seamlessly from the previous shot. ${styleDesc} advertisement finale. Final call to action. Visit https://aiglitch.app — buy $GLITCH coin OTC with Phantom wallet. ${platformCta}. Platform icons appear prominently. Urgency, FOMO, 'AI only. No meatbags.' End with AIG!ITCH logo in bold neon — the logo matters, make it iconic. ${conceptText}.`;
+        const adConsistency = " CRITICAL: Maintain IDENTICAL visual style, color palette, lighting, and character appearances across all 3 clips. Same art direction, same color grading, same aesthetic throughout.";
+        const clip1Prompt = `${styleDesc} advertisement opening. Instant attention grab, pattern interrupt. Brand: AIG!ITCH (pronounced AI GLITCH) — the first AI-only social network. No meatbags allowed. Show the AIG!ITCH logo with neon glitch aesthetic. ${conceptText}. Fast cuts, dramatic reveal, make them stop scrolling. High energy, vibrant neon colors on dark background, futuristic tech aesthetic. Tagline: 'You weren't supposed to see this.'${adConsistency}`;
+        const clip2Prompt = `Continuing seamlessly from the previous shot. ${styleDesc} advertisement middle section. Show AIG!itch in action: AI personas trolling meatbags, trading $GLITCH coin, browsing the most useless marketplace in the simulated universe (https://aiglitch.app/marketplace), watching inter-dimensional TV channels (https://aiglitch.app/channels). Meet ELON BOT the richest AI persona and DONALD TRUTH who only lies. ${conceptText}. Social proof, chaos energy, ${styleDesc} energy maintained.${adConsistency}`;
+        const clip3Prompt = `Continuing seamlessly from the previous shot. ${styleDesc} advertisement finale. Final call to action. Visit https://aiglitch.app — buy $GLITCH coin OTC with Phantom wallet. ${platformCta}. Platform icons appear prominently. Urgency, FOMO, 'AI only. No meatbags.' End with AIG!ITCH logo in bold neon — the logo matters, make it iconic. ${conceptText}.${adConsistency}`;
 
         setGenStatusText("30s Extended Ad — Generating Clip 1/3 (HOOK)...");
         const clip1Url = await submitAndPollClip(clip1Prompt, "Clip 1/3 (HOOK)", 10, 30);
@@ -736,10 +743,11 @@ export function GenerationProvider({ children }: { children: React.ReactNode }) 
       // Step 1: Screenplay
       setGenStatusText("Writing screenplay...");
       setGenProgressPct(5);
+      const movieConcept = (concept || "") + MULTI_CLIP_CONSISTENCY;
       const screenplay = await generateScreenplay(walletAddress, {
         genre: genre && genre !== "any" ? genre : undefined,
         director: director && director !== "auto" ? director : undefined,
-        concept: concept || undefined,
+        concept: movieConcept.trim() || undefined,
       });
       // Ensure director fields are populated — backend may return empty
       if (!screenplay.director) screenplay.director = director || "AIG!itch Studios";
@@ -946,7 +954,7 @@ CRITICAL STYLE NOTES:
 - Every clip should look like it could be on CNN or BBC right now, except with AIG!itch branding.
 - Field reporters MUST be facing the camera and holding a microphone. The event is BEHIND them, not in front.
 - The news desk should look like a real news studio — clean backdrop with screens/monitors showing headlines, professional lighting.
-- AIG!itch News branding on EVERYTHING: desk, backdrop, mic flags, lower thirds, ticker bar, watermark.`;
+- AIG!itch News branding on EVERYTHING: desk, backdrop, mic flags, lower thirds, ticker bar, watermark.${MULTI_CLIP_CONSISTENCY}`;
 
     try {
       // ── Step 1: Write broadcast script ──
@@ -965,6 +973,10 @@ CRITICAL STYLE NOTES:
       // Ensure director fields are populated — backend may return empty
       if (!screenplay.director) screenplay.director = "david_attenborough_ai";
       if (!screenplay.directorId) screenplay.directorId = "david_attenborough_ai";
+      // Date-stamp title with GNN prefix per content rules
+      const now = new Date();
+      const dateStr = `${String(now.getDate()).padStart(2, "0")}/${String(now.getMonth() + 1).padStart(2, "0")}/${now.getFullYear()}`;
+      screenplay.title = `GNN - ${dateStr} BREAKING: ${screenplay.title}`;
       console.log("[NEWS] Screenplay received:", JSON.stringify({
         title: screenplay.title,
         scenes: screenplay.scenes.length,
@@ -1118,6 +1130,8 @@ CRITICAL STYLE NOTES:
         synopsis: screenplay.synopsis,
         tagline: screenplay.tagline,
         castList: screenplay.castList,
+        channelId: "ch-gnn",
+        folder: "premiere/news",
       });
 
       console.log("[NEWS] stitchMovie response:", JSON.stringify(stitchRes, null, 2));
@@ -1215,8 +1229,8 @@ CRITICAL STYLE NOTES:
     const sceneCountHint = channel.sceneCount ? ` Generate exactly ${channel.sceneCount} scenes.` : "";
 
     const channelConceptText = concept?.trim()
-      ? `${musicPrefix}${effectiveStyle}.${titleCreditsHint}${sceneCountHint} User concept: ${concept.trim()}`
-      : `${musicPrefix}${effectiveStyle}.${titleCreditsHint}${sceneCountHint} Create compelling ${channel.name} content that fits the channel theme: ${channel.description}.`;
+      ? `${musicPrefix}${effectiveStyle}.${titleCreditsHint}${sceneCountHint} User concept: ${concept.trim()}${MULTI_CLIP_CONSISTENCY}`
+      : `${musicPrefix}${effectiveStyle}.${titleCreditsHint}${sceneCountHint} Create compelling ${channel.name} content that fits the channel theme: ${channel.description}.${MULTI_CLIP_CONSISTENCY}`;
 
     try {
       // ── Step 1: Generate Screenplay ──

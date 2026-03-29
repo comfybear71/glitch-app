@@ -1611,6 +1611,15 @@ export default function HomeScreen() {
               return (
                 <View style={styles.generatingRow}>
                   <View style={styles.generatingCard}>
+                    {/* Dismiss / close button */}
+                    <TouchableOpacity
+                      style={{ position: "absolute", top: 8, right: 8, zIndex: 10, width: 28, height: 28, borderRadius: 14, backgroundColor: "rgba(255,255,255,0.15)", alignItems: "center", justifyContent: "center" }}
+                      onPress={() => { cancelGeneration(); setCosmeticGen(null); setGenStep(0); }}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    >
+                      <Text style={{ color: "#fff", fontSize: 16, fontWeight: "bold", lineHeight: 18 }}>✕</Text>
+                    </TouchableOpacity>
+
                     {/* Pulsing glow border */}
                     <Animated.View style={[styles.generatingGlow, { opacity: glowOpacity }]} />
 
